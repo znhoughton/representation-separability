@@ -148,8 +148,12 @@ def build_verb_distributions(cfg, rng):
         [np.full(n, c, dtype=int) for c, n in enumerate(n_per_class)]
     )
 
-    n_cross = int(np.floor(class_overlap * n_pref))
-    n_within = int(np.floor((item_overlap - class_overlap) * n_pref))
+    # +1e-9 guards against float subtraction artifacts (e.g. 0.7 - 0.2 ==
+    # 0.49999999999999994 in float64) silently flooring to one less than
+    # intended -- with the defaults below this otherwise gives 24 within-
+    # class tokens instead of 25.
+    n_cross = int(np.floor(class_overlap * n_pref + 1e-9))
+    n_within = int(np.floor((item_overlap - class_overlap) * n_pref + 1e-9))
     n_idio = n_pref - n_cross - n_within
     assert n_idio >= 0, "item_overlap - class_overlap too large for n_pref"
 
@@ -367,10 +371,16 @@ def class_direction(embeddings, class_of, n_classes):
             return None
         return (direction / norm).reshape(1, -1)   # (1, d)
     else:
-        # general case: PCA on the class-mean matrix (between-class scatter)
+        # general case: PCA on the class-mean matrix (between-class scatter).
+        # Mean-centering n_classes rows makes them sum to zero, so the
+        # matrix has rank at most n_classes - 1 -- SVD still returns
+        # min(n_classes, d) components, and any beyond n_classes - 1
+        # correspond to a numerically near-zero singular value, i.e. an
+        # arbitrary noise direction rather than real between-class signal.
+        # Keep only the n_classes - 1 that are actually meaningful.
         centered = means - means.mean(axis=0, keepdims=True)
         _, _, vt = np.linalg.svd(centered, full_matrices=False)
-        return vt  # rows are between-class directions
+        return vt[:n_classes - 1]  # rows are between-class directions
 
 
 def residual_covariance(embeddings, class_of, n_classes):
@@ -617,14 +627,27 @@ def validate_against_ground_truth(embeddings, class_of, n_classes,
     true_c_of_verb = true_c_full[class_of]
     true_c_dir = class_direction(true_c_of_verb, class_of, n_classes)
 
-    # true residual subspace: top-(d_half) PCs of the true (padded) r_v's
-    k2 = min(d_half, true_r_full.shape[0] - 1, true_r_full.shape[1])
-    _, _, vt2 = np.linalg.svd(true_r_full - true_r_full.mean(axis=0, keepdims=True),
-                               full_matrices=False)
+    # true residual subspace: top-(d_half) PCs of the true (padded) r_v's,
+    # centered PER CLASS -- matching how the inferred side (`residuals`
+    # above) is centered. r_v is architecturally verb-private, but it's
+    # still trained on that verb's own samples from P_v, which do carry
+    # real class-correlated structure (shared within-class tokens), so r
+    # can end up with a nonzero per-class mean in practice. Centering
+    # true_r globally instead of per-class would leave that per-class-mean
+    # component in true_r_sub while the inferred side has already had it
+    # removed (it's indistinguishable from c's contribution at the level
+    # of the combined embedding), silently making the two subspaces being
+    # compared not apples-to-apples.
+    true_r_means = np.array(
+        [true_r_full[class_of == c].mean(axis=0) for c in range(n_classes)]
+    )
+    true_r_residuals = true_r_full - true_r_means[class_of]
+    k2 = min(d_half, true_r_residuals.shape[0] - 1, true_r_residuals.shape[1])
+    _, _, vt2 = np.linalg.svd(true_r_residuals, full_matrices=False)
     true_r_sub = vt2[:k2]
 
     angle_c = principal_angles(inferred_c_dir, true_c_dir).max() if true_c_dir is not None else np.nan
-    angle_r = principal_angles(inferred_r_sub, true_r_sub).min()
+    angle_r = principal_angles(inferred_r_sub, true_r_sub).max()
 
     return angle_c, angle_r
 
@@ -832,6 +855,7 @@ def run_sweep(sweep_cfg):
           f"({len(cells) * 2} total training runs), across {n_workers} "
           f"worker processes.")
 
+    Path(sweep_cfg["out_csv"]).parent.mkdir(parents=True, exist_ok=True)
     with open(sweep_cfg["out_csv"], "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
