@@ -59,12 +59,16 @@ measurement, never as a shortcut in the main comparison):
 
 USAGE
 -----
-    python separability_experiment.py --mode single   # one config, full diagnostics
-    python separability_experiment.py --mode sweep     # full d x n_total_classes x seed grid
+    python separability_experiment.py                 # full sweep (default)
+    python separability_experiment.py --mode sweep     # same, explicit
+    python separability_experiment.py --mode single    # one config, full
+                                                        # diagnostics --
+                                                        # good smoke test
+                                                        # before the sweep
 
-Adjust CONFIG below to sweep embedding dimension d, overlap structure,
-number of training steps, etc. Adjust SWEEP_CONFIG (including n_workers)
-for the grid sweep.
+Adjust CONFIG below for the single-run diagnostics. Adjust SWEEP_CONFIG
+(including n_workers and the grid values) for the full sweep, which is
+what runs by default.
 
 DEPENDENCIES: numpy, torch, scikit-learn (Ledoit-Wolf shrinkage), tqdm.
 
@@ -80,6 +84,7 @@ which is where the parallelism in this workload actually lives.
 
 import os
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -92,6 +97,12 @@ from tqdm import tqdm
 # ----------------------------------------------------------------------
 # CONFIG
 # ----------------------------------------------------------------------
+
+# scripts/separability_experiment.py -> repo root, so output paths below
+# are anchored to the repo's data/ dir regardless of which directory the
+# script is invoked from (bare relative filenames would otherwise land
+# wherever the caller's cwd happened to be).
+REPO_ROOT = Path(__file__).resolve().parent.parent
 
 CONFIG = dict(
     n_classes=2,
@@ -678,7 +689,7 @@ SWEEP_CONFIG = dict(
     n_seeds=5,
     focal_classes=(0, 1),  # arbitrary by design -- see
                             # measure_focal_pair_separability docstring
-    out_csv="sweep_results.csv",
+    out_csv=str(REPO_ROOT / "data" / "sweep_results.csv"),
     n_workers=20,           # sweep cells are fully independent (separate
                             # data, models, seeds), so this is run as a
                             # CPU multiprocessing pool rather than
@@ -934,16 +945,21 @@ if __name__ == "__main__":
         description="Model A vs Model B separability experiment."
     )
     parser.add_argument(
-        "--mode", choices=["single", "sweep"], default="single",
-        help="'single' runs one (d, n_classes) configuration with full "
-             "diagnostics (sanity checks, permutation null, validation). "
-             "'sweep' runs the full d x n_total_classes x seed grid and "
-             "writes results to CSV (see SWEEP_CONFIG at the top of the "
-             "'SWEEP' section for grid size / cost)."
+        "--mode", choices=["single", "sweep"], default="sweep",
+        help="'sweep' (default) runs the full d x n_total_classes x seed "
+             "grid and writes results to CSV (see SWEEP_CONFIG at the top "
+             "of the 'SWEEP' section for grid size / cost). 'single' runs "
+             "one (d, n_classes) configuration with full diagnostics "
+             "(sanity checks, permutation null, validation) -- useful as "
+             "a quick smoke test of the pipeline before committing to the "
+             "full sweep."
     )
     args = parser.parse_args()
 
     if args.mode == "single":
         main()
     else:
+        print("Running the full sweep (--mode sweep is the default; pass "
+              "--mode single first if you just want to smoke-test the "
+              "pipeline on one configuration).\n")
         run_sweep(SWEEP_CONFIG)
