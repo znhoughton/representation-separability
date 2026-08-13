@@ -878,18 +878,28 @@ SWEEP_CONFIG = dict(
     sigma=1.0,
     n_steps=8000,          # reduced from the single-run default (20000) so
                             # the full grid completes in reasonable time --
-                            # verified via check_convergence.py to reach a
-                            # stable (if noisy at large d/n_total_classes)
-                            # plateau well before this budget; increase if
-                            # convergence checks fail on your hardware/config.
-    lr=0.05,                # check_convergence.py found this produces a noisy,
-                            # non-smooth plateau (not still-improving, but not
-                            # cleanly converged either) at large d and
-                            # n_total_classes -- warmup was tried and ruled
-                            # out as a fix (see check_convergence.py). A lower
-                            # lr is the next thing to test there
-                            # (--lr override) before trusting this value at
-                            # the new, more extreme cells in this grid.
+                            # verified via check_convergence.py: at lr=0.01
+                            # (see below), every combination checked converges
+                            # smoothly and is essentially flat by step 2000-4000,
+                            # well inside this budget. Increase if convergence
+                            # checks on the new, more extreme cells (60-500
+                            # classes) suggest otherwise.
+    lr=0.01,                # was 0.05, which check_convergence.py showed causes
+                            # Adam to overshoot at large d/n_total_classes (e.g.
+                            # d=128, n_total_classes=20: loss spiked to ~11.1 by
+                            # step 500) and settle into a noisy plateau at a
+                            # substantially WORSE loss than clean convergence
+                            # reaches (~10.5 vs ~8.25). Warmup didn't fix this
+                            # (see check_convergence.py's CHECK_CONFIG); lr=0.01
+                            # does -- smooth, monotonic descent, converged well
+                            # before step 8000, and lower final loss than
+                            # lr=0.05 even at cells that were already stable
+                            # under it (e.g. d=4, n_total_classes=2: 7.86 vs
+                            # 8.03). Checked at n_total_classes up to 20, not
+                            # yet at the new 60/100/500 cells -- worth another
+                            # check_convergence.py pass there if time allows,
+                            # but no evidence so far that lr=0.01 has a
+                            # downside anywhere in the grid.
     batch_size=64,
     n_seeds=5,
     focal_classes=(0, 1),  # arbitrary by design -- see
