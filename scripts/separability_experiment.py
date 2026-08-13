@@ -108,6 +108,7 @@ cells using CPU multiprocessing (see run_sweep / SWEEP_CONFIG["n_workers"]),
 which is where the parallelism in this workload actually lives.
 """
 
+import math
 import os
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
@@ -876,14 +877,43 @@ SWEEP_CONFIG = dict(
     item_overlap=0.7,
     mu=60.0,
     sigma=1.0,
-    n_steps=8000,          # reduced from the single-run default (20000) so
-                            # the full grid completes in reasonable time --
-                            # verified via check_convergence.py: at lr=0.01
-                            # (see below), every combination checked converges
-                            # smoothly and is essentially flat by step 2000-4000,
-                            # well inside this budget. Increase if convergence
-                            # checks on the new, more extreme cells (60-500
-                            # classes) suggest otherwise.
+    exposures_per_verb=853,  # replaces a fixed n_steps. n_steps is now DERIVED
+                            # per cell as ceil(exposures_per_verb * n_verbs /
+                            # batch_size), so it scales with population size
+                            # instead of being one constant across the whole
+                            # grid. Why this matters: with a fixed n_steps=8000
+                            # and verb_idx sampled uniformly across all verbs
+                            # each step, every verb's total training exposure
+                            # is n_steps*batch_size/n_verbs -- which fell from
+                            # ~8,500 at n_total_classes=2 to just ~34 at
+                            # n_total_classes=500 (a 250x range), confounding
+                            # "more crowding" with "much less training" for
+                            # the very verbs being measured (the focal pair).
+                            # final_loss for all three models correlated far
+                            # more strongly with log(exposure) (r=-0.82) than
+                            # with raw n_total_classes (r=0.68) in the sweep
+                            # that surfaced this, and Model A's ratio pattern
+                            # -- which looked like it peaked around 60 classes
+                            # and regressed back toward chance by 500 -- mostly
+                            # dissolved into a much flatter trend once grouped
+                            # by exposure instead of class count; the "500
+                            # classes" cells most likely just hadn't trained
+                            # enough to develop much structure at all, rather
+                            # than genuinely regressing.
+                            #
+                            # 853 matches n_total_classes=20's exposure under
+                            # the OLD fixed n_steps=8000 (8000*64/600 = 853.3),
+                            # a level check_convergence.py validated converges
+                            # cleanly under lr=0.01. Applying it across the
+                            # whole grid means n_total_classes=2 needs only
+                            # ~800 steps (cheaper than before) while
+                            # n_total_classes=500 needs ~200,000 (dominates
+                            # total compute -- roughly 4x the previous
+                            # sweep's total, almost entirely from that one
+                            # value). The actual per-cell n_steps is recorded
+                            # in the output CSV (see the "n_steps" column)
+                            # since it's no longer a single constant worth
+                            # stating once.
     lr=0.01,                # was 0.05, which check_convergence.py showed causes
                             # Adam to overshoot at large d/n_total_classes (e.g.
                             # d=128, n_total_classes=20: loss spiked to ~11.1 by
@@ -950,6 +980,18 @@ def _run_sweep_cell(n_total_classes, d, seed, sweep_cfg):
     """
     torch.set_num_threads(1)
 
+    # n_steps is derived from population size, not a fixed constant -- see
+    # SWEEP_CONFIG's exposures_per_verb comment for why (holding per-verb
+    # training exposure constant across n_total_classes, rather than
+    # letting it fall as 1/n_verbs, was the fix for a real confound found
+    # in an earlier version of this sweep: the focal pair got ~250x less
+    # training at n_total_classes=500 than at n_total_classes=2 under a
+    # fixed n_steps, muddying "more crowding" with "much less training").
+    n_verbs = sweep_cfg["verbs_per_class"] * n_total_classes
+    n_steps = math.ceil(
+        sweep_cfg["exposures_per_verb"] * n_verbs / sweep_cfg["batch_size"]
+    )
+
     cfg = dict(
         n_classes=n_total_classes,
         n_verbs_per_class=[sweep_cfg["verbs_per_class"]] * n_total_classes,
@@ -960,8 +1002,8 @@ def _run_sweep_cell(n_total_classes, d, seed, sweep_cfg):
         mu=sweep_cfg["mu"],
         sigma=sweep_cfg["sigma"],
         d=d,
-        n_steps=sweep_cfg["n_steps"],
-        checkpoints=[sweep_cfg["n_steps"]],  # only need the final checkpoint
+        n_steps=n_steps,
+        checkpoints=[n_steps],  # only need the final checkpoint
         lr=sweep_cfg["lr"],
         batch_size=sweep_cfg["batch_size"],
         seed=seed,
@@ -970,8 +1012,8 @@ def _run_sweep_cell(n_total_classes, d, seed, sweep_cfg):
     rng = np.random.default_rng(seed)
     torch.manual_seed(seed)
     P, class_of = build_verb_distributions(cfg, rng)
-    n_verbs = P.shape[0]
-    final_step = sweep_cfg["n_steps"]
+    assert P.shape[0] == n_verbs  # sanity: matches the n_steps derivation above
+    final_step = n_steps
 
     rows = []
     for model_name in ("A", "B", "C"):
@@ -997,6 +1039,7 @@ def _run_sweep_cell(n_total_classes, d, seed, sweep_cfg):
         rows.append(dict(
             d=d, n_total_classes=n_total_classes,
             verbs_per_class=sweep_cfg["verbs_per_class"],
+            n_steps=n_steps,
             seed=seed, model=model_name,
             final_loss=final_loss,
             alignment_ratio=ratio if ratio is not None else "",
@@ -1024,22 +1067,19 @@ def run_sweep(sweep_cfg):
     across processes.
 
     NOTE ON COST: this trains 3 models x len(d_values) x
-    len(n_total_classes_values) x n_seeds times. With the defaults above
-    that's 3 x 6 x 9 x 5 = 810 training runs, distributed across
-    n_workers processes -- and vocab_size=16000 (needed for the largest
-    n_total_classes value, 500) applies to every cell, not just the large
-    ones, so per-step cost is also up ~2.67x from the original 6-class-
-    count/vocab_size=6000 grid: roughly 4x the total compute of that
-    version. Model C is somewhat cheaper per-run than A or B (barely any
-    parameters beyond the class embeddings), so the increase isn't
-    exactly linear in run count, but budget accordingly -- reduce
-    n_seeds or the grid size for a first pass, then expand once the
-    pipeline is confirmed working.
+    len(n_total_classes_values) x n_seeds times, and n_steps is now
+    DERIVED per cell from sweep_cfg["exposures_per_verb"] (see
+    SWEEP_CONFIG's comment) rather than fixed, so total compute can't be
+    read off as "N runs x M steps" the way it used to be -- run_sweep
+    prints the actual per-cell n_steps range and the total step-count
+    (summed across every training run) before starting, which is a much
+    more honest cost estimate than a docstring number that goes stale
+    the moment the grid or exposures_per_verb changes.
     """
     import csv
 
-    fieldnames = ["d", "n_total_classes", "verbs_per_class", "seed", "model",
-                  "final_loss", "alignment_ratio"]
+    fieldnames = ["d", "n_total_classes", "verbs_per_class", "n_steps",
+                  "seed", "model", "final_loss", "alignment_ratio"]
 
     cells = [
         (n_total_classes, d, seed)
@@ -1049,12 +1089,35 @@ def run_sweep(sweep_cfg):
     ]
     n_workers = sweep_cfg.get("n_workers") or min(15, os.cpu_count() or 1)
 
+    # n_steps only depends on (n_total_classes, exposures_per_verb, batch_size)
+    # -- same formula _run_sweep_cell uses -- so it can be computed here up
+    # front purely for an honest, pre-run cost estimate, without touching
+    # any per-cell training state.
+    steps_by_n_total_classes = {
+        n: math.ceil(sweep_cfg["exposures_per_verb"] * sweep_cfg["verbs_per_class"] * n
+                      / sweep_cfg["batch_size"])
+        for n in sweep_cfg["n_total_classes_values"]
+    }
+    total_steps = sum(
+        steps_by_n_total_classes[n_total_classes] * len(sweep_cfg["d_values"]) * sweep_cfg["n_seeds"] * 3
+        for n_total_classes in sweep_cfg["n_total_classes_values"]
+    )
+    min_steps = min(steps_by_n_total_classes.values())
+    max_steps = max(steps_by_n_total_classes.values())
+
     print(f"Running {len(cells)} sweep cells "
           f"({len(sweep_cfg['d_values'])} d values x "
           f"{len(sweep_cfg['n_total_classes_values'])} class counts x "
           f"{sweep_cfg['n_seeds']} seeds), each training Models A + B + C "
           f"({len(cells) * 3} total training runs), across {n_workers} "
           f"worker processes.")
+    print(f"n_steps per cell ranges from {min_steps} (n_total_classes="
+          f"{min(steps_by_n_total_classes, key=steps_by_n_total_classes.get)}) "
+          f"to {max_steps} (n_total_classes="
+          f"{max(steps_by_n_total_classes, key=steps_by_n_total_classes.get)}), "
+          f"derived from exposures_per_verb={sweep_cfg['exposures_per_verb']}. "
+          f"Total training steps across the whole sweep: {total_steps:,} "
+          f"(the largest n_total_classes value typically dominates this sum).")
 
     Path(sweep_cfg["out_csv"]).parent.mkdir(parents=True, exist_ok=True)
     with open(sweep_cfg["out_csv"], "w", newline="") as f:

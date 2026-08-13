@@ -1,6 +1,10 @@
 """
-Convergence check: does training actually finish improving by
-SWEEP_CONFIG's n_steps=8000, or is loss still dropping at that point?
+Convergence check: does training actually finish improving by the
+sweep's per-cell step budget, or is loss still dropping at that point?
+(SWEEP_CONFIG's n_steps was a fixed 8000 when this script was first
+written; it's since become a per-n_total_classes value derived from
+exposures_per_verb -- see sweep_n_steps_for() below, which recomputes it
+rather than reading a constant that no longer exists.)
 
 sweep_results.csv showed final_loss rising with d for all three models,
 and Model C (the most capacity-starved by design) landing LOWEST -- the
@@ -25,7 +29,7 @@ Trains a small, TARGETED subset of the sweep grid, not the whole thing --
 d=128 (where the pattern looked most suspicious) and d=4 (baseline),
 crossed with n_total_classes=2 and 20 (the sweep's extremes), 2 seeds
 each. That's 4 (d, n_total_classes) combos x 2 seeds x 3 models = 24
-training runs -- cheap next to the ~540-run full sweep, but still run
+training runs -- cheap next to the full sweep's hundreds of runs, but still run
 across a CPU process pool (CHECK_CONFIG["n_workers"]), split at the level
 of individual (d, n_total_classes, seed, model) runs rather than per
 combo, so all 24 tasks can actually spread across the available cores
@@ -44,6 +48,7 @@ USAGE
 """
 
 import csv
+import math
 import os
 import sys
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -192,6 +197,19 @@ def _run_convergence_task(n_total_classes, d, seed, model_name, cfg):
     ]
 
 
+def sweep_n_steps_for(n_total_classes):
+    """
+    What n_steps would the real sweep use for this n_total_classes value?
+    SWEEP_CONFIG no longer has a single n_steps -- it's derived per cell
+    from exposures_per_verb (see SWEEP_CONFIG's comment), so this
+    recomputes that same formula rather than reading a constant that no
+    longer exists. Used only for the "compare against the sweep's actual
+    budget" context in the printed output below.
+    """
+    n_verbs = SWEEP_CONFIG["verbs_per_class"] * n_total_classes
+    return math.ceil(SWEEP_CONFIG["exposures_per_verb"] * n_verbs / SWEEP_CONFIG["batch_size"])
+
+
 def run_convergence_check(cfg):
     fieldnames = ["d", "n_total_classes", "seed", "model", "step", "expected_loss"]
 
@@ -204,12 +222,15 @@ def run_convergence_check(cfg):
     ]
     n_workers = cfg.get("n_workers") or min(16, os.cpu_count() or 1)
 
+    sweep_steps_repr = ", ".join(
+        f"{n}={sweep_n_steps_for(n)}" for n in cfg["n_total_classes_values"]
+    )
     print(f"Convergence check: {len(cfg['d_values'])} d values x "
           f"{len(cfg['n_total_classes_values'])} class counts x "
           f"{cfg['n_seeds']} seeds x 3 models = {len(tasks)} training runs, "
           f"{len(cfg['checkpoints'])} checkpoints each, extended to "
-          f"{cfg['n_steps']} steps (vs. the sweep's {SWEEP_CONFIG['n_steps']}), "
-          f"across {n_workers} worker processes.")
+          f"{cfg['n_steps']} steps (vs. the sweep's per-n_total_classes "
+          f"budget: {sweep_steps_repr}), across {n_workers} worker processes.")
 
     Path(cfg["out_csv"]).parent.mkdir(parents=True, exist_ok=True)
     all_rows = []
@@ -270,12 +291,18 @@ def print_summary(rows, cfg):
                     f"{means[s]:7.3f}" for s in cfg["checkpoints"]
                 )
                 print(line)
-            sweep_n_steps = SWEEP_CONFIG["n_steps"]
-            if sweep_n_steps in cfg["checkpoints"] and cfg["checkpoints"][-1] > sweep_n_steps:
-                print(f"  (compare the {sweep_n_steps}-step column, the sweep's actual "
-                      f"budget, against the final {cfg['checkpoints'][-1]}-step column -- "
-                      f"a large gap means the sweep's cells for this (d, n_total_classes) "
-                      f"weren't converged)")
+            # Sweep n_steps is now derived per n_total_classes (exposures_per_verb),
+            # not a single constant -- recompute it for THIS n_total_classes rather
+            # than comparing against a bare checkpoint value that might not even
+            # be in cfg["checkpoints"] (it usually won't land on one exactly).
+            sweep_n_steps = sweep_n_steps_for(n_total_classes)
+            nearest_ckpt = min(cfg["checkpoints"], key=lambda s: abs(s - sweep_n_steps))
+            if cfg["checkpoints"][-1] > sweep_n_steps:
+                print(f"  (the sweep's actual budget for n_total_classes="
+                      f"{n_total_classes} is ~{sweep_n_steps} steps -- closest "
+                      f"column here is {nearest_ckpt}; compare that against the "
+                      f"final {cfg['checkpoints'][-1]}-step column -- a large gap "
+                      f"means this cell wasn't converged)")
 
 
 if __name__ == "__main__":
