@@ -6,9 +6,11 @@ That paper showed that pure per-verb memorizers with no shared parameters can re
 
 ## Status
 
-First full sweep (~540 runs) has been run — `data/sweep_results.csv` has real results. Headline findings so far: Model C tracks its theoretical entanglement ceiling almost exactly (~96–97% at every `d`), validating the measurement pipeline at the entangled end; Model B (the separable floor) is unreliable at `d=4`/`d=8` (its acknowledged gap — see Models section — biting hardest where `r` has the least room) but behaves as designed from `d=16` up; Model A sits close to chance overall, with a modest but consistent "crowding" trend (mean ratio ~0.93 at 2 classes rising to ~1.03–1.06 at 12–20 classes) — too small a swing relative to within-group spread to be confident it's real. Investigating: (1) an optimization artifact (Adam overshooting early at large `d`/`n_total_classes`) — warmup was tried and ruled out (see Known open items), a lower learning rate is next; (2) whether the crowding trend is genuine or noise, via `scripts/run_crowding_extension.py`, which pushes `n_total_classes` to 60/100/500.
+First full sweep (540 runs, `n_total_classes` up to 20) has been run and analyzed — see `data/sweep_results.csv`. Headline findings: Model C tracks its theoretical entanglement ceiling almost exactly (~96–97% at every `d`), validating the measurement pipeline at the entangled end; Model B (the separable floor) is unreliable at `d=4`/`d=8` (its acknowledged gap — see Models section — biting hardest where `r` has the least room) but behaves as designed from `d=16` up; Model A sits close to chance overall, with a modest "crowding" trend (mean ratio ~0.93 at 2 classes rising to ~1.03–1.06 at 12–20 classes) too small relative to within-group spread to be confident it's real on its own.
 
-**Note:** `build_verb_distributions()`'s idiosyncratic-token cap was removed after `sweep_results.csv` was generated (see Known open items) — that CSV reflects the capped version. The change is expected to be inert for the ratio metric (see the item below for why), but hasn't been re-verified by rerunning the main sweep.
+`SWEEP_CONFIG` has since been extended — `n_total_classes` now goes up to 500 (`vocab_size` raised to 16,000 to support it) — to test whether that crowding trend is genuine or noise, folding in what was originally a separate targeted script. **This is a substantially bigger run: ~810 training runs at ~4x the original sweep's total compute** (see `run_sweep`'s docstring for the breakdown). `data/sweep_results.csv` predates both this extension and the separate removal of the idiosyncratic-token cap (see Known open items) — it reflects the old grid and the old (capped) token logic, not the current code.
+
+**Before running the extended sweep:** `check_convergence.py` found `lr=0.05` produces a noisy, not-cleanly-converged plateau at large `d`/`n_total_classes` (warmup was tried and ruled out as a fix). A `--lr` override was added to test a lower learning rate, but that test hasn't been run yet — worth doing first (~10 min) rather than committing ~810 runs to a learning rate already suspected of being unstable at exactly the new, more extreme cells this extension adds.
 
 ## Repository structure
 
@@ -16,13 +18,11 @@ First full sweep (~540 runs) has been run — `data/sweep_results.csv` has real 
 representation-separability/
 ├── scripts/
 │   ├── separability_experiment.py   # Models A vs B vs C, single-run + sweep modes
-│   ├── check_convergence.py         # targeted diagnostic: loss trajectories past the sweep's step budget
-│   └── run_crowding_extension.py    # targeted diagnostic: does the crowding trend hold at n_total_classes >> 20?
+│   └── check_convergence.py         # targeted diagnostic: loss trajectories past the sweep's step budget
 └── data/
-    ├── sweep_results.csv                  # full sweep output (capped idio-tokens, vocab_size=6000)
+    ├── sweep_results.csv                  # sweep output (old grid: n_total_classes<=20, vocab_size=6000, capped idio-tokens)
     ├── convergence_check.csv              # check_convergence.py output, default lr
-    ├── convergence_check_lr<value>.csv    # check_convergence.py output, --lr override
-    └── crowding_extension_results.csv     # run_crowding_extension.py output (vocab_size=16000)
+    └── convergence_check_lr<value>.csv    # check_convergence.py output, --lr override
 ```
 
 ## Quick start
@@ -36,9 +36,13 @@ pip install numpy torch scikit-learn tqdm
 # 3 models, CPU, single-threaded.
 python scripts/separability_experiment.py --mode single
 
+# Recommended before the full sweep: confirm the learning rate (see Status)
+python scripts/check_convergence.py --lr 0.01
+
 # Full experiment: the d x n_total_classes x seed grid (SWEEP_CONFIG),
-# ~540 training runs distributed across SWEEP_CONFIG["n_workers"] (default 15)
-# CPU worker processes. This is also what runs with no --mode flag at all.
+# ~810 training runs (~4x the original sweep's compute -- see run_sweep's
+# docstring) distributed across SWEEP_CONFIG["n_workers"] (default 15) CPU
+# worker processes. This is also what runs with no --mode flag at all.
 # Writes data/sweep_results.csv, streamed incrementally as cells complete.
 python scripts/separability_experiment.py
 ```

@@ -808,7 +808,24 @@ def theoretical_entanglement_ceiling(d, n_classes):
 
 SWEEP_CONFIG = dict(
     d_values=[4, 8, 16, 32, 64, 128],       # must all be even (Model B split)
-    n_total_classes_values=[2, 4, 8, 12, 16, 20],
+    n_total_classes_values=[2, 4, 8, 12, 16, 20, 60, 100, 500],
+                                              # 60/100/500 added to test whether
+                                              # the crowding trend seen at 2-20
+                                              # classes (Model A's mean ratio
+                                              # climbing ~0.93 -> ~1.03-1.06) is
+                                              # a real, continuing effect or
+                                              # within noise -- see the
+                                              # (now-folded-in) crowding
+                                              # extension discussion. Interpret
+                                              # cells with LARGE n_total_classes
+                                              # AND small d (4, 8) cautiously:
+                                              # Model B's floor was already
+                                              # shown unreliable there even at
+                                              # the original class counts (2/3
+                                              # of d=4 seeds had ratio > 1), so
+                                              # extreme crowding on top of that
+                                              # compounds two effects rather
+                                              # than isolating crowding alone.
     verbs_per_class=30,                      # FIXED as n_total_classes grows
                                               # (per discussion: real "growing
                                               # environment" scaling, not
@@ -831,22 +848,29 @@ SWEEP_CONFIG = dict(
                                               # stability and staying close to
                                               # the main paper's realistic
                                               # per-class verb counts (35/36).
-    vocab_size=6000,                         # raised from the single-run
-                                              # default (1000): at
-                                              # n_total_classes=20 x
-                                              # verbs_per_class=30 (600 verbs
-                                              # x 15 idiosyncratic tokens each,
-                                              # capped at 2 verbs/token) the
-                                              # idiosyncratic-token pool needs
-                                              # roughly 4500+ leftover tokens
-                                              # to avoid falling back to
-                                              # full-vocab resampling (see
-                                              # build_verb_distributions'
-                                              # fallback warning). Not a
-                                              # crash risk either way, but
-                                              # worth the larger vocab for
-                                              # cleaner idiosyncratic-token
-                                              # signal at high class counts.
+    vocab_size=16000,                        # raised from 6000: each class
+                                              # needs its own dedicated
+                                              # within-class token pool of 25
+                                              # tokens (a hard structural
+                                              # requirement, not related to
+                                              # the idiosyncratic-token cap
+                                              # that was separately removed
+                                              # from build_verb_distributions),
+                                              # so the largest n_total_classes
+                                              # in this grid (500) needs at
+                                              # least 10 + 25*500 = 12,510
+                                              # tokens; 16,000 leaves headroom.
+                                              # This raises W's (d x vocab_size)
+                                              # cost for EVERY cell, not just
+                                              # the large-class-count ones,
+                                              # since vocab_size is shared
+                                              # across the whole grid -- overall
+                                              # sweep cost is roughly 4x the
+                                              # original 540-run sweep (~1.5x
+                                              # more training runs from the 3
+                                              # added n_total_classes values,
+                                              # ~2.67x per-step cost from the
+                                              # bigger vocab_size).
     n_pref=50,
     class_overlap=0.2,
     item_overlap=0.7,
@@ -854,10 +878,18 @@ SWEEP_CONFIG = dict(
     sigma=1.0,
     n_steps=8000,          # reduced from the single-run default (20000) so
                             # the full grid completes in reasonable time --
-                            # verified below to still reach stable loss;
-                            # increase if convergence checks fail on your
-                            # hardware/config.
-    lr=0.05,
+                            # verified via check_convergence.py to reach a
+                            # stable (if noisy at large d/n_total_classes)
+                            # plateau well before this budget; increase if
+                            # convergence checks fail on your hardware/config.
+    lr=0.05,                # check_convergence.py found this produces a noisy,
+                            # non-smooth plateau (not still-improving, but not
+                            # cleanly converged either) at large d and
+                            # n_total_classes -- warmup was tried and ruled
+                            # out as a fix (see check_convergence.py). A lower
+                            # lr is the next thing to test there
+                            # (--lr override) before trusting this value at
+                            # the new, more extreme cells in this grid.
     batch_size=64,
     n_seeds=5,
     focal_classes=(0, 1),  # arbitrary by design -- see
@@ -983,12 +1015,16 @@ def run_sweep(sweep_cfg):
 
     NOTE ON COST: this trains 3 models x len(d_values) x
     len(n_total_classes_values) x n_seeds times. With the defaults above
-    that's 3 x 6 x 6 x 5 = 540 training runs, distributed across
-    n_workers processes. Model C is much cheaper per-run than A or B
-    (barely any parameters beyond the class embeddings), so this isn't
-    quite a full 50% increase in wall-clock time, but budget accordingly
-    -- reduce n_seeds or the grid size for a first pass, then expand
-    once the pipeline is confirmed working.
+    that's 3 x 6 x 9 x 5 = 810 training runs, distributed across
+    n_workers processes -- and vocab_size=16000 (needed for the largest
+    n_total_classes value, 500) applies to every cell, not just the large
+    ones, so per-step cost is also up ~2.67x from the original 6-class-
+    count/vocab_size=6000 grid: roughly 4x the total compute of that
+    version. Model C is somewhat cheaper per-run than A or B (barely any
+    parameters beyond the class embeddings), so the increase isn't
+    exactly linear in run count, but budget accordingly -- reduce
+    n_seeds or the grid size for a first pass, then expand once the
+    pipeline is confirmed working.
     """
     import csv
 
