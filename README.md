@@ -6,14 +6,14 @@ That paper showed that pure per-verb memorizers with no shared parameters can re
 
 ## Status
 
-Early stage — `scripts/separability_experiment.py` is a first draft (Model A: free shared embedding; Model B: architecturally-separable c+r control; variance-alignment-ratio separability metric with a permutation null). Not yet run.
+Early stage — `scripts/separability_experiment.py` is a first draft (Model A: free shared embedding, the open empirical question; Model B: architecturally-separable c+r control; Model C: architecturally-entangled collapsed control; variance-alignment-ratio separability metric with a permutation null). Not yet run.
 
 ## Repository structure
 
 ```
 representation-separability/
 ├── scripts/
-│   └── separability_experiment.py   # Model A vs Model B, single-run + sweep modes
+│   └── separability_experiment.py   # Models A vs B vs C, single-run + sweep modes
 └── data/                            # sweep output lands here by default (sweep_results.csv)
 ```
 
@@ -23,12 +23,13 @@ representation-separability/
 pip install numpy torch scikit-learn tqdm
 
 # Smoke test: one config (d=16, 2 classes), full diagnostics -- confirms the
-# measurement pipeline is trustworthy (ground-truth validation angles near 0)
-# before committing to the full sweep. ~20k steps x 2 models, CPU, single-threaded.
+# measurement pipeline is trustworthy (ground-truth validation checks near
+# their expected values) before committing to the full sweep. ~20k steps x
+# 3 models, CPU, single-threaded.
 python scripts/separability_experiment.py --mode single
 
 # Full experiment: the d x n_total_classes x seed grid (SWEEP_CONFIG),
-# ~360 training runs distributed across SWEEP_CONFIG["n_workers"] (default 20)
+# ~540 training runs distributed across SWEEP_CONFIG["n_workers"] (default 20)
 # CPU worker processes. This is also what runs with no --mode flag at all.
 # Writes data/sweep_results.csv, streamed incrementally as cells complete.
 python scripts/separability_experiment.py
@@ -42,12 +43,19 @@ Run from the repo root (as above) or from anywhere else — `data/sweep_results.
 
 ## Compute notes
 
-These models are tiny (embedding tables of at most a few hundred to a few thousand rows × `d` ≤ 128; readout at most `vocab_size` × `d`), so there's no GPU device handling in the script. For tensors this small, GPU kernel-launch/transfer overhead tends to exceed whatever compute it would save, and the real bottleneck is the Python-level training loop. `--mode sweep` instead parallelizes across its ~360 independent `(d, n_total_classes, seed)` training runs via CPU multiprocessing (`SWEEP_CONFIG["n_workers"]`, default 20) — that's where this workload's actual parallelism lives, consistent with how [exemplar-abstraction-sims](../exemplar-abstraction-sims) runs across many CPU cores rather than a GPU.
+These models are tiny (embedding tables of at most a few hundred to a few thousand rows × `d` ≤ 128; readout at most `vocab_size` × `d`), so there's no GPU device handling in the script. For tensors this small, GPU kernel-launch/transfer overhead tends to exceed whatever compute it would save, and the real bottleneck is the Python-level training loop. `--mode sweep` instead parallelizes across its ~540 independent `(d, n_total_classes, seed, model)` training runs via CPU multiprocessing (`SWEEP_CONFIG["n_workers"]`, default 20) — that's where this workload's actual parallelism lives, consistent with how [exemplar-abstraction-sims](../exemplar-abstraction-sims) runs across many CPU cores rather than a GPU.
+
+## Models
+
+- **A (undifferentiated)** — one free `d`-dimensional embedding per verb. The actual open question: does sharing parameters through the readout force class and item information to entangle?
+- **B (factorized, separable control)** — `e_v = c_class(v) + r_v` in disjoint zero-padded halves of `d`. Guarantees separability, with one acknowledged gap: nothing prevents `r`'s own class-conditional mean from drifting during training, so this is validated empirically (`validate_against_ground_truth`), not just assumed.
+- **C (collapsed, entangled control)** — `e_v = c_class(v) + t_v · (c_class[1] − c_class[0])`, where `c_class(v)` is a free, full-`d` class embedding and `t_v` is a single scalar per verb. No gap here: with one scalar of freedom, every verb's residual is algebraically forced to be a multiple of the class direction, so this is validated against a closed-form target (`theoretical_entanglement_ceiling`, `ratio → d / (n_classes − 1)`) rather than just an expectation.
 
 ## Known open items (from initial design review)
 
 - [x] `build_verb_distributions()`'s idiosyncratic-token draws now cap reuse at 2 verbs per token (matching the main paper's construction), with a printed warning if the pool exhausts and falls back to full-vocab resampling.
 - [x] `residual_covariance()` now uses Ledoit-Wolf shrinkage instead of the raw sample covariance, so the alignment ratio stays well-conditioned at large `d` relative to focal-pair verb count. Paired with raising `SWEEP_CONFIG`'s `verbs_per_class` 10→30 and `vocab_size` 3000→6000 (to keep the idiosyncratic-token pool from depleting at the larger verb counts).
-- [x] `--mode single` now shows a live tqdm progress bar with running loss for each model's training loop. `--mode sweep` now runs its ~360 independent training runs across a CPU process pool (`SWEEP_CONFIG["n_workers"]`) instead of sequentially, with an overall tqdm bar over completed cells; results still stream to CSV incrementally as each cell finishes.
-- [x] `--mode sweep` (the full grid) is now the default when no `--mode` flag is given — running `python scripts/separability_experiment.py` with no arguments launches the full ~360-run sweep, not just the single-config smoke test. `SWEEP_CONFIG["out_csv"]` is now resolved relative to the script's own location (`data/sweep_results.csv`) rather than a bare relative filename, so output lands in the same place regardless of which directory you invoke the script from.
+- [x] `--mode single` now shows a live tqdm progress bar with running loss for each model's training loop. `--mode sweep` now runs its independent training runs across a CPU process pool (`SWEEP_CONFIG["n_workers"]`) instead of sequentially, with an overall tqdm bar over completed cells; results still stream to CSV incrementally as each cell finishes.
+- [x] `--mode sweep` (the full grid) is now the default when no `--mode` flag is given. `SWEEP_CONFIG["out_csv"]` is resolved relative to the script's own location (`data/sweep_results.csv`) rather than a bare relative filename, so output lands in the same place regardless of which directory you invoke the script from.
+- [x] Added Model C (see Models section above) as the entangled-end counterpart to Model B, plus `theoretical_entanglement_ceiling()` as its closed-form validation target. Sweep grew from ~360 to ~540 training runs accordingly.
 - [ ] `SWEEP_CONFIG`'s reduced `n_steps=8000` is asserted but not actually checked for convergence — `final_loss` is written to the CSV but nothing gates on it yet.

@@ -14,7 +14,7 @@ cleanly separated from item-level information ("what makes 'give' behave
 like 'give' specifically")? Or does sharing parameters force the two to
 become geometrically entangled?
 
-Two models are trained on identical synthetic verb-distribution data
+Three models are trained on identical synthetic verb-distribution data
 (same cross-token / within-class-token / idiosyncratic-token generative
 structure as the main paper's P_v construction):
 
@@ -23,27 +23,49 @@ structure as the main paper's P_v construction):
       architecture forces class and item information into separate parts
       of e_v. Whether they end up separable is an open empirical question.
 
-  Model B (factorized / ground-truth-separable control):
+  Model B (factorized / ground-truth-SEPARABLE control):
       e_v = c_{class(v)} + r_v, where c_class is a vector SHARED by all
       verbs in a class (updated by every verb in that class every step)
       and r_v is a vector PRIVATE to verb v (updated only by that verb's
       own examples). c and r live in disjoint coordinate blocks of R^d
       (zero-padded), so they are orthogonal by construction and the
       output logits decompose additively into a class part + an item
-      part. This model's separability is guaranteed by architecture, and
-      serves as the validation target / positive control for the
-      separability-measurement pipeline itself.
+      part. Note: this guarantee has one acknowledged gap -- nothing
+      architecturally prevents r's own CLASS-CONDITIONAL MEAN from
+      drifting away from zero during training (r is fit to each verb's
+      own P_v, which does carry class-correlated structure), so B's
+      separability is a strong, well-motivated expectation rather than
+      an absolute one. That's exactly why it's validated empirically
+      (validate_against_ground_truth) rather than assumed.
 
-  Both models share the same linear readout structure:
+  Model C (collapsed / ground-truth-ENTANGLED control):
+      e_v = c_class(v) + t_v * (c_class[1] - c_class[0]), where c_class(v)
+      is a free, full-d-dimensional embedding per class (as rich and
+      distributed as A's or B's class-level structure -- nothing pins it
+      to a fixed axis) and t_v is a SINGLE free scalar per verb: the
+      entire item-specific degree of freedom, forced to ride along
+      whatever direction the class embeddings happen to differ by. Unlike
+      B, this guarantee has no gap: with only one scalar of freedom,
+      every verb's deviation from its own class mean is algebraically a
+      scalar multiple of the class direction, regardless of what values
+      training finds for c_class or t. Cutting out the class direction
+      here doesn't just cost you some item information, it costs you all
+      of it, every time -- the literal ceiling case (ratio -> d/(n_classes-1)),
+      making this the entangled-end mirror of Model B. The class
+      direction is always taken from classes 0 and 1 specifically (the
+      sweep's focal pair, see SWEEP_CONFIG), regardless of a given verb's
+      own class, since only that pair is ever analyzed.
+
+  All three models share the same linear readout structure:
       logits_v = W @ e_v         (no nonlinearity -- see paper discussion
                                    of why linearity is required for B's
-                                   guarantee to hold, and for isolating
-                                   parameter-sharing as the sole cause of
-                                   any entanglement found in A)
+                                   and C's guarantees to hold, and for
+                                   isolating parameter-sharing as the sole
+                                   cause of any entanglement found in A)
 
-SEPARABILITY MEASUREMENT (applied IDENTICALLY to A and B, using only the
-combined e_v -- ground-truth c/r for B is used only to VALIDATE the
-measurement, never as a shortcut in the main comparison):
+SEPARABILITY MEASUREMENT (applied IDENTICALLY to A, B, and C, using only
+the combined e_v -- ground-truth structure for B and C is used only to
+VALIDATE the measurement, never as a shortcut in the main comparison):
 
   1. Class subspace: direction connecting the two class-mean embeddings.
   2. Item subspace: top principal components of each verb's residual from
@@ -52,10 +74,14 @@ measurement, never as a shortcut in the main comparison):
      small angle = entangled (class-typical and item-idiosyncratic
      directions overlap).
 
-  Validation (Model B only): confirm the inferred class/item directions
-  from steps 1-2 align with the TRUE c and r subspaces. If they don't,
-  the measurement pipeline itself is untrustworthy and needs fixing
-  before drawing any conclusion about Model A.
+  Validation:
+    - Model B: confirm the inferred class/item directions from steps 1-2
+      align with the TRUE c and r subspaces.
+    - Model C: confirm the measured alignment ratio tracks the
+      training-independent theoretical ceiling d/(n_classes-1)
+      (theoretical_entanglement_ceiling).
+  If either check fails, the measurement pipeline itself is untrustworthy
+  and needs fixing before drawing any conclusion about Model A.
 
 USAGE
 -----
@@ -300,6 +326,74 @@ class ModelB(nn.Module):
         return c_by_class, r_by_verb
 
 
+class ModelC(nn.Module):
+    """
+    Collapsed: e_v = c_class(v) + t_v * (c_class[1] - c_class[0]).
+
+    c_class(v) in R^d is a free, full-dimensional embedding per class --
+    exactly as rich and distributed as Model A's or Model B's class-level
+    structure, nothing pins it to a fixed axis. t_v is a single free
+    scalar per verb: the ENTIRE item-specific degree of freedom, with
+    nowhere to go except along whatever direction the class embeddings
+    happen to differ by.
+
+    Unlike Model B's guarantee (which has one acknowledged gap -- r's own
+    class-conditional mean isn't architecturally prevented from drifting,
+    see ModelB's docstring), this one has none: with a single scalar of
+    freedom, every verb's deviation from its own class mean is
+    ALGEBRAICALLY forced to be a scalar multiple of the class direction,
+    regardless of what values training finds for c_class or t. Cutting
+    the class direction back out of e_v removes t_v's entire contribution
+    exactly, for every verb, every time -- not approximately, not
+    "usually," but as a consequence of the arithmetic:
+
+        e_v - (e_v . u)u = c_class(v) - (c_class(v) . u)u
+
+    (u = the unit class direction) has no t_v term left in it at all. So
+    this is the literal ceiling case for the alignment ratio, not just a
+    plausible extreme -- see theoretical_entanglement_ceiling() for the
+    training-independent target this should track.
+
+    The class direction is always computed from classes 0 and 1
+    specifically (the sweep's focal pair), not from whichever class a
+    given verb actually belongs to. Verbs outside the focal pair still
+    get their own private t_v riding on that same 0-vs-1 axis, but since
+    the analysis (measure_focal_pair_separability) never looks at
+    anything but the focal pair, that's sufficient -- there's no need to
+    solve "entanglement" for every possible class pairing when only one
+    pairing is ever measured.
+    """
+
+    def __init__(self, n_verbs, class_of, n_classes, vocab_size, d):
+        super().__init__()
+        assert n_classes >= 2, "need at least classes 0 and 1 to define a class direction"
+        self.class_of = torch.tensor(class_of, dtype=torch.long)
+
+        self.c = nn.Embedding(n_classes, d)
+        self.t = nn.Embedding(n_verbs, 1)
+        nn.init.normal_(self.c.weight, std=0.1)
+        nn.init.normal_(self.t.weight, std=0.1)
+
+        self.W = nn.Linear(d, vocab_size, bias=False)
+
+    def _combined_embedding(self, verb_idx):
+        classes = self.class_of[verb_idx]
+        c_vec = self.c(classes)                             # (batch, d)
+        t_vec = self.t(verb_idx)                             # (batch, 1)
+        class_dir = self.c.weight[1] - self.c.weight[0]       # (d,) -- focal pair 0 vs 1
+        return c_vec + t_vec * class_dir                      # (batch, d)
+
+    def forward(self, verb_idx):
+        e = self._combined_embedding(verb_idx)
+        return self.W(e)
+
+    def get_all_embeddings(self, n_verbs):
+        idx = torch.arange(n_verbs)
+        with torch.no_grad():
+            e = self._combined_embedding(idx)
+        return e.cpu().numpy()
+
+
 # ----------------------------------------------------------------------
 # 3. TRAINING
 # ----------------------------------------------------------------------
@@ -345,7 +439,7 @@ def train_model(model, P, cfg, rng_torch, show_progress=False, desc="training"):
             step_iter.set_postfix(loss=f"{loss.item():.4f}")
 
         if step in checkpoints:
-            if isinstance(model, ModelB):
+            if isinstance(model, (ModelB, ModelC)):
                 emb = model.get_all_embeddings(n_verbs)
             else:
                 emb = model.get_all_embeddings()
@@ -652,6 +746,37 @@ def validate_against_ground_truth(embeddings, class_of, n_classes,
     return angle_c, angle_r
 
 
+def theoretical_entanglement_ceiling(d, n_classes):
+    """
+    Model-C-only sanity target: the training-independent value the
+    alignment ratio should approach for Model C, derived (not fitted)
+    from its architecture.
+
+    With Model C's item-specific component collapsed to a single scalar
+    t_v riding the class direction, every verb's residual is exactly
+    (t_v - mean_t_for_its_class) * class_dir -- a scalar multiple of one
+    direction, for every verb, regardless of what training finds. So the
+    residual covariance is rank <= 1, aligned with the class direction,
+    and the ratio's own formula (projected_var / ((m/d) * total_var))
+    reduces to exactly d / m:
+
+        projected_var = trace(C @ Sigma_r @ C.T) = total_var
+                         (ALL residual variance lies along the class
+                          direction, by construction)
+        ratio = total_var / ((m/d) * total_var) = d / m
+
+    where m = n_classes - 1. Unlike measure_separability's ratio on real
+    trained data, this doesn't depend on Ledoit-Wolf shrinkage or sample
+    size -- it's the exact algebraic limit. The empirical ratio measured
+    on Model C's actual trained embeddings should track this closely; if
+    it doesn't, that's a sign the measurement pipeline (not Model C's
+    guarantee, which has no gap -- see ModelC's docstring) needs a
+    second look.
+    """
+    m = n_classes - 1
+    return d / m
+
+
 # ----------------------------------------------------------------------
 # 5. SWEEP: d x n_total_classes, focal-pair separability
 # ----------------------------------------------------------------------
@@ -744,8 +869,8 @@ def expected_cross_entropy(model, P):
 def _run_sweep_cell(n_total_classes, d, seed, sweep_cfg):
     """
     Worker for one (n_total_classes, d, seed) sweep cell: builds that
-    cell's verb-distribution data, trains Model A and Model B on it, and
-    returns their two result rows. Runs inside its own process (see
+    cell's verb-distribution data, trains Models A, B, and C on it, and
+    returns their three result rows. Runs inside its own process (see
     run_sweep) -- this is the unit of CPU parallelism for the sweep.
 
     torch.set_num_threads(1): by default each process would try to use
@@ -782,13 +907,16 @@ def _run_sweep_cell(n_total_classes, d, seed, sweep_cfg):
     final_step = sweep_cfg["n_steps"]
 
     rows = []
-    for model_name in ("A", "B"):
-        torch.manual_seed(seed)  # re-seed so A and B start from
+    for model_name in ("A", "B", "C"):
+        torch.manual_seed(seed)  # re-seed so A, B, and C start from
                                   # comparable init noise
         if model_name == "A":
             model = ModelA(n_verbs, cfg["vocab_size"], d)
-        else:
+        elif model_name == "B":
             model = ModelB(n_verbs, class_of, n_total_classes,
+                            cfg["vocab_size"], d)
+        else:
+            model = ModelC(n_verbs, class_of, n_total_classes,
                             cfg["vocab_size"], d)
 
         ckpts = train_model(model, P, cfg, torch, show_progress=False)
@@ -812,7 +940,7 @@ def _run_sweep_cell(n_total_classes, d, seed, sweep_cfg):
 
 def run_sweep(sweep_cfg):
     """
-    Runs the d x n_total_classes x seed grid, training Model A and Model B
+    Runs the d x n_total_classes x seed grid, training Models A, B, and C
     for each cell and measuring focal-pair (classes 0 vs 1) separability
     at the end of training. Each cell is independent (its own data, its
     own models, its own seed), so cells are distributed across a CPU
@@ -828,12 +956,14 @@ def run_sweep(sweep_cfg):
     lost if the run is interrupted -- without needing any file locking
     across processes.
 
-    NOTE ON COST: this trains 2 models x len(d_values) x
+    NOTE ON COST: this trains 3 models x len(d_values) x
     len(n_total_classes_values) x n_seeds times. With the defaults above
-    that's 2 x 6 x 6 x 5 = 360 training runs, distributed across
-    n_workers processes. Budget accordingly -- reduce n_seeds or the
-    grid size for a first pass, then expand once the pipeline is
-    confirmed working.
+    that's 3 x 6 x 6 x 5 = 540 training runs, distributed across
+    n_workers processes. Model C is much cheaper per-run than A or B
+    (barely any parameters beyond the class embeddings), so this isn't
+    quite a full 50% increase in wall-clock time, but budget accordingly
+    -- reduce n_seeds or the grid size for a first pass, then expand
+    once the pipeline is confirmed working.
     """
     import csv
 
@@ -851,8 +981,8 @@ def run_sweep(sweep_cfg):
     print(f"Running {len(cells)} sweep cells "
           f"({len(sweep_cfg['d_values'])} d values x "
           f"{len(sweep_cfg['n_total_classes_values'])} class counts x "
-          f"{sweep_cfg['n_seeds']} seeds), each training Model A + Model B "
-          f"({len(cells) * 2} total training runs), across {n_workers} "
+          f"{sweep_cfg['n_seeds']} seeds), each training Models A + B + C "
+          f"({len(cells) * 3} total training runs), across {n_workers} "
           f"worker processes.")
 
     Path(sweep_cfg["out_csv"]).parent.mkdir(parents=True, exist_ok=True)
@@ -889,7 +1019,7 @@ def run_sweep(sweep_cfg):
 
     print(f"\nSweep complete. Results written to {sweep_cfg['out_csv']}")
     print("Load with e.g. pandas.read_csv() and group by (d, n_total_classes) "
-          "to plot mean angle +/- CI across seeds, for Model A vs Model B.")
+          "to plot mean alignment_ratio +/- CI across seeds, for Models A, B, and C.")
 
 
 def main():
@@ -915,6 +1045,11 @@ def main():
     ckpts_b = train_model(model_b, P, cfg, torch, show_progress=True, desc="Model B")
     true_c, true_r = model_b.get_true_c_and_r(n_verbs, n_classes)
 
+    # --- Train Model C ---
+    print("Training Model C (collapsed, ground-truth-entangled control)...")
+    model_c = ModelC(n_verbs, class_of, n_classes, cfg["vocab_size"], cfg["d"])
+    ckpts_c = train_model(model_c, P, cfg, torch, show_progress=True, desc="Model C")
+
     # --- Sanity checks (Step 2), now using a proper permutation null ---
     print("\n--- Sanity checks (vs. permutation null) ---")
     first_ckpt = min(cfg["checkpoints"])
@@ -922,7 +1057,7 @@ def main():
     perm_rng = np.random.default_rng(cfg["seed"] + 1)
     n_perm = cfg.get("n_perm", 200)
 
-    for name, ckpts in [("Model A", ckpts_a), ("Model B", ckpts_b)]:
+    for name, ckpts in [("Model A", ckpts_a), ("Model B", ckpts_b), ("Model C", ckpts_c)]:
         for label, step in [("init", first_ckpt), ("final", last_ckpt)]:
             ratio = measure_separability(ckpts[step], class_of, n_classes)
             null = permutation_null_ratios(
@@ -935,11 +1070,12 @@ def main():
                   f"P(null ratio >= observed) = {pct:.2f}")
     print("(ratio ~1 = chance; >1 = entangled; <1 = separable. LOW P means "
           "the observed ratio is unusually HIGH vs. chance -- i.e. "
-          "significant entanglement. HIGH P (near 1) means the observed "
-          "ratio is unusually LOW vs. chance -- i.e. significant "
+          "significant entanglement, which is what Model C should show "
+          "throughout, including at init, since its entanglement is "
+          "architectural rather than learned. HIGH P (near 1) means the "
+          "observed ratio is unusually LOW vs. chance -- i.e. significant "
           "separability, which is what Model B should show throughout, "
-          "including at init, since its separability is architectural "
-          "rather than learned.)")
+          "for the same reason.)")
 
     # --- Validation of the pipeline against Model B's known ground truth ---
     print("\n--- Validation: does the blind pipeline recover B's true c/r? ---")
@@ -951,22 +1087,32 @@ def main():
     print(f"Inferred residual subspace vs. true r-subspace: {angle_r:.1f} deg "
           f"(expect near 0)")
 
+    # --- Validation of the pipeline against Model C's theoretical ceiling ---
+    print("\n--- Validation: does Model C's measured ratio track its theoretical ceiling? ---")
+    ceiling = theoretical_entanglement_ceiling(cfg["d"], n_classes)
+    c_ratio_final = measure_separability(ckpts_c[last_ckpt], class_of, n_classes)
+    print(f"Theoretical ceiling (d / (n_classes-1)): {ceiling:.2f}")
+    print(f"Measured Model C ratio at final checkpoint: {c_ratio_final:.2f} "
+          f"(expect close to the ceiling)")
+
     # --- Main comparison across checkpoints ---
     print("\n--- Separability over training (ratio: ~1=chance, >1=entangled, <1=separable) ---")
-    print(f"{'step':>8} | {'Model A':>10} | {'Model B':>10}")
+    print(f"{'step':>8} | {'Model A':>10} | {'Model B':>10} | {'Model C':>10}")
     for step in sorted(cfg["checkpoints"]):
         a_ratio = measure_separability(ckpts_a[step], class_of, n_classes)
         b_ratio = measure_separability(ckpts_b[step], class_of, n_classes)
+        c_ratio = measure_separability(ckpts_c[step], class_of, n_classes)
         a_str = f"{a_ratio:10.2f}" if a_ratio is not None else f"{'NA':>10}"
         b_str = f"{b_ratio:10.2f}" if b_ratio is not None else f"{'NA':>10}"
-        print(f"{step:8d} | {a_str} | {b_str}")
+        c_str = f"{c_ratio:10.2f}" if c_ratio is not None else f"{'NA':>10}"
+        print(f"{step:8d} | {a_str} | {b_str} | {c_str}")
 
 
 if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="Model A vs Model B separability experiment."
+        description="Model A vs Model B vs Model C separability experiment."
     )
     parser.add_argument(
         "--mode", choices=["single", "sweep"], default="sweep",
