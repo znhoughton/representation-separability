@@ -29,7 +29,7 @@ pip install numpy torch scikit-learn tqdm
 python scripts/separability_experiment.py --mode single
 
 # Full experiment: the d x n_total_classes x seed grid (SWEEP_CONFIG),
-# ~540 training runs distributed across SWEEP_CONFIG["n_workers"] (default 20)
+# ~540 training runs distributed across SWEEP_CONFIG["n_workers"] (default 15)
 # CPU worker processes. This is also what runs with no --mode flag at all.
 # Writes data/sweep_results.csv, streamed incrementally as cells complete.
 python scripts/separability_experiment.py
@@ -58,4 +58,6 @@ These models are tiny (embedding tables of at most a few hundred to a few thousa
 - [x] `--mode single` now shows a live tqdm progress bar with running loss for each model's training loop. `--mode sweep` now runs its independent training runs across a CPU process pool (`SWEEP_CONFIG["n_workers"]`) instead of sequentially, with an overall tqdm bar over completed cells; results still stream to CSV incrementally as each cell finishes.
 - [x] `--mode sweep` (the full grid) is now the default when no `--mode` flag is given. `SWEEP_CONFIG["out_csv"]` is resolved relative to the script's own location (`data/sweep_results.csv`) rather than a bare relative filename, so output lands in the same place regardless of which directory you invoke the script from.
 - [x] Added Model C (see Models section above) as the entangled-end counterpart to Model B, plus `theoretical_entanglement_ceiling()` as its closed-form validation target. Sweep grew from ~360 to ~540 training runs accordingly.
+- [x] `train_model()`'s `rng_torch` parameter was accepted but never used (randomness came from torch's global RNG regardless) — removed as dead code.
+- [x] `main()`'s diagnostic prints now go through a shared `_fmt_ratio()` helper instead of raw `{x:.2f}` formatting, so a `None`/NaN ratio (a degenerate checkpoint, e.g. collapsed class means) prints as `NA` instead of crashing the whole diagnostic run.
 - [ ] `SWEEP_CONFIG`'s reduced `n_steps=8000` is asserted but not actually checked for convergence — `final_loss` is written to the CSV but nothing gates on it yet.

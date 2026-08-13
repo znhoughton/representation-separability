@@ -398,11 +398,15 @@ class ModelC(nn.Module):
 # 3. TRAINING
 # ----------------------------------------------------------------------
 
-def train_model(model, P, cfg, rng_torch, show_progress=False, desc="training"):
+def train_model(model, P, cfg, show_progress=False, desc="training"):
     """
     Trains `model` by sampling a token for a random verb at each step,
     from that verb's true distribution P_v, and taking a cross-entropy
     gradient step. Returns a dict {checkpoint_step: embeddings_array}.
+
+    Randomness comes from torch's global RNG (seeded via torch.manual_seed
+    by the caller before this is called) -- there's no separate generator
+    object threaded through here.
 
     show_progress: display a live tqdm bar with the current loss. Left
     False inside sweep workers (many processes writing progress bars to
@@ -838,12 +842,12 @@ SWEEP_CONFIG = dict(
     focal_classes=(0, 1),  # arbitrary by design -- see
                             # measure_focal_pair_separability docstring
     out_csv=str(REPO_ROOT / "data" / "sweep_results.csv"),
-    n_workers=20,           # sweep cells are fully independent (separate
+    n_workers=15,           # sweep cells are fully independent (separate
                             # data, models, seeds), so this is run as a
                             # CPU multiprocessing pool rather than
                             # sequentially -- set to your machine's core
                             # count (or a bit under, to leave headroom for
-                            # the main process). None -> min(20, os.cpu_count()).
+                            # the main process). None -> min(15, os.cpu_count()).
 )
 
 
@@ -919,7 +923,7 @@ def _run_sweep_cell(n_total_classes, d, seed, sweep_cfg):
             model = ModelC(n_verbs, class_of, n_total_classes,
                             cfg["vocab_size"], d)
 
-        ckpts = train_model(model, P, cfg, torch, show_progress=False)
+        ckpts = train_model(model, P, cfg, show_progress=False)
         final_emb = ckpts[final_step]
         final_loss = expected_cross_entropy(model, P)
 
@@ -976,7 +980,7 @@ def run_sweep(sweep_cfg):
         for d in sweep_cfg["d_values"]
         for seed in range(sweep_cfg["n_seeds"])
     ]
-    n_workers = sweep_cfg.get("n_workers") or min(20, os.cpu_count() or 1)
+    n_workers = sweep_cfg.get("n_workers") or min(15, os.cpu_count() or 1)
 
     print(f"Running {len(cells)} sweep cells "
           f"({len(sweep_cfg['d_values'])} d values x "
@@ -1022,6 +1026,22 @@ def run_sweep(sweep_cfg):
           "to plot mean alignment_ratio +/- CI across seeds, for Models A, B, and C.")
 
 
+def _fmt_ratio(x, width=0):
+    """
+    Formats a ratio value for printing, without crashing if it's None or
+    NaN (measure_separability returns None for a degenerate checkpoint --
+    e.g. collapsed class means or zero residual variance -- and NaN can
+    reach here via percentile_vs_null on an empty null distribution).
+    {x:.2f} raises TypeError on None, so this is the single place that
+    guards every diagnostic print in main() against that.
+    """
+    if x is None or (isinstance(x, float) and np.isnan(x)):
+        s = "NA"
+    else:
+        s = f"{x:.2f}"
+    return f"{s:>{width}}" if width else s
+
+
 def main():
     cfg = CONFIG
     rng = np.random.default_rng(cfg["seed"])
@@ -1037,18 +1057,18 @@ def main():
     # --- Train Model A ---
     print("\nTraining Model A (undifferentiated embedding)...")
     model_a = ModelA(n_verbs, cfg["vocab_size"], cfg["d"])
-    ckpts_a = train_model(model_a, P, cfg, torch, show_progress=True, desc="Model A")
+    ckpts_a = train_model(model_a, P, cfg, show_progress=True, desc="Model A")
 
     # --- Train Model B ---
     print("Training Model B (factorized c + r control)...")
     model_b = ModelB(n_verbs, class_of, n_classes, cfg["vocab_size"], cfg["d"])
-    ckpts_b = train_model(model_b, P, cfg, torch, show_progress=True, desc="Model B")
+    ckpts_b = train_model(model_b, P, cfg, show_progress=True, desc="Model B")
     true_c, true_r = model_b.get_true_c_and_r(n_verbs, n_classes)
 
     # --- Train Model C ---
     print("Training Model C (collapsed, ground-truth-entangled control)...")
     model_c = ModelC(n_verbs, class_of, n_classes, cfg["vocab_size"], cfg["d"])
-    ckpts_c = train_model(model_c, P, cfg, torch, show_progress=True, desc="Model C")
+    ckpts_c = train_model(model_c, P, cfg, show_progress=True, desc="Model C")
 
     # --- Sanity checks (Step 2), now using a proper permutation null ---
     print("\n--- Sanity checks (vs. permutation null) ---")
@@ -1065,9 +1085,11 @@ def main():
                 n_perm=n_perm, rng=perm_rng
             )
             pct = percentile_vs_null(ratio, null)
-            print(f"{name} [{label}, step {step}]: observed ratio = {ratio:.2f} | "
-                  f"null mean = {null.mean():.2f} (std {null.std():.2f}) | "
-                  f"P(null ratio >= observed) = {pct:.2f}")
+            null_mean = null.mean() if len(null) else None
+            null_std = null.std() if len(null) else None
+            print(f"{name} [{label}, step {step}]: observed ratio = {_fmt_ratio(ratio)} | "
+                  f"null mean = {_fmt_ratio(null_mean)} (std {_fmt_ratio(null_std)}) | "
+                  f"P(null ratio >= observed) = {_fmt_ratio(pct)}")
     print("(ratio ~1 = chance; >1 = entangled; <1 = separable. LOW P means "
           "the observed ratio is unusually HIGH vs. chance -- i.e. "
           "significant entanglement, which is what Model C should show "
@@ -1092,7 +1114,7 @@ def main():
     ceiling = theoretical_entanglement_ceiling(cfg["d"], n_classes)
     c_ratio_final = measure_separability(ckpts_c[last_ckpt], class_of, n_classes)
     print(f"Theoretical ceiling (d / (n_classes-1)): {ceiling:.2f}")
-    print(f"Measured Model C ratio at final checkpoint: {c_ratio_final:.2f} "
+    print(f"Measured Model C ratio at final checkpoint: {_fmt_ratio(c_ratio_final)} "
           f"(expect close to the ceiling)")
 
     # --- Main comparison across checkpoints ---
@@ -1102,10 +1124,8 @@ def main():
         a_ratio = measure_separability(ckpts_a[step], class_of, n_classes)
         b_ratio = measure_separability(ckpts_b[step], class_of, n_classes)
         c_ratio = measure_separability(ckpts_c[step], class_of, n_classes)
-        a_str = f"{a_ratio:10.2f}" if a_ratio is not None else f"{'NA':>10}"
-        b_str = f"{b_ratio:10.2f}" if b_ratio is not None else f"{'NA':>10}"
-        c_str = f"{c_ratio:10.2f}" if c_ratio is not None else f"{'NA':>10}"
-        print(f"{step:8d} | {a_str} | {b_str} | {c_str}")
+        print(f"{step:8d} | {_fmt_ratio(a_ratio, 10)} | {_fmt_ratio(b_ratio, 10)} | "
+              f"{_fmt_ratio(c_ratio, 10)}")
 
 
 if __name__ == "__main__":
