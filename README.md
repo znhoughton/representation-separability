@@ -6,15 +6,18 @@ That paper showed that pure per-verb memorizers with no shared parameters can re
 
 ## Status
 
-Early stage — `scripts/separability_experiment.py` is a first draft (Model A: free shared embedding, the open empirical question; Model B: architecturally-separable c+r control; Model C: architecturally-entangled collapsed control; variance-alignment-ratio separability metric with a permutation null). Not yet run.
+First full sweep (~540 runs) has been run — `data/sweep_results.csv` has real results. Headline findings so far: Model C tracks its theoretical entanglement ceiling almost exactly (~96–97% at every `d`), validating the measurement pipeline at the entangled end; Model B (the separable floor) is unreliable at `d=4`/`d=8` (its acknowledged gap — see Models section — biting hardest where `r` has the least room) but behaves as designed from `d=16` up; Model A sits close to chance overall, with a modest but consistent "crowding" trend (mean ratio ~0.93 at 2 classes rising to ~1.03–1.06 at 12–20 classes). Currently investigating an optimization artifact (Adam overshooting early at large `d`/`n_total_classes`) via `scripts/check_convergence.py` — see Known open items.
 
 ## Repository structure
 
 ```
 representation-separability/
 ├── scripts/
-│   └── separability_experiment.py   # Models A vs B vs C, single-run + sweep modes
-└── data/                            # sweep output lands here by default (sweep_results.csv)
+│   ├── separability_experiment.py   # Models A vs B vs C, single-run + sweep modes
+│   └── check_convergence.py         # targeted diagnostic: loss trajectories past the sweep's step budget
+└── data/
+    ├── sweep_results.csv            # full sweep output
+    └── convergence_check.csv        # check_convergence.py output
 ```
 
 ## Quick start
@@ -43,7 +46,7 @@ Run from the repo root (as above) or from anywhere else — `data/sweep_results.
 
 ## Compute notes
 
-These models are tiny (embedding tables of at most a few hundred to a few thousand rows × `d` ≤ 128; readout at most `vocab_size` × `d`), so there's no GPU device handling in the script. For tensors this small, GPU kernel-launch/transfer overhead tends to exceed whatever compute it would save, and the real bottleneck is the Python-level training loop. `--mode sweep` instead parallelizes across its ~540 independent `(d, n_total_classes, seed, model)` training runs via CPU multiprocessing (`SWEEP_CONFIG["n_workers"]`, default 20) — that's where this workload's actual parallelism lives, consistent with how [exemplar-abstraction-sims](../exemplar-abstraction-sims) runs across many CPU cores rather than a GPU.
+These models are tiny (embedding tables of at most a few hundred to a few thousand rows × `d` ≤ 128; readout at most `vocab_size` × `d`), so there's no GPU device handling in the script. For tensors this small, GPU kernel-launch/transfer overhead tends to exceed whatever compute it would save, and the real bottleneck is the Python-level training loop. `--mode sweep` instead parallelizes across its ~540 independent `(d, n_total_classes, seed, model)` training runs via CPU multiprocessing (`SWEEP_CONFIG["n_workers"]`, default 15) — that's where this workload's actual parallelism lives, consistent with how [exemplar-abstraction-sims](../exemplar-abstraction-sims) runs across many CPU cores rather than a GPU. `check_convergence.py` uses the same pattern at a smaller scale (`CHECK_CONFIG["n_workers"]`, default 16).
 
 ## Models
 
@@ -60,4 +63,5 @@ These models are tiny (embedding tables of at most a few hundred to a few thousa
 - [x] Added Model C (see Models section above) as the entangled-end counterpart to Model B, plus `theoretical_entanglement_ceiling()` as its closed-form validation target. Sweep grew from ~360 to ~540 training runs accordingly.
 - [x] `train_model()`'s `rng_torch` parameter was accepted but never used (randomness came from torch's global RNG regardless) — removed as dead code.
 - [x] `main()`'s diagnostic prints now go through a shared `_fmt_ratio()` helper instead of raw `{x:.2f}` formatting, so a `None`/NaN ratio (a degenerate checkpoint, e.g. collapsed class means) prints as `NA` instead of crashing the whole diagnostic run.
-- [ ] `SWEEP_CONFIG`'s reduced `n_steps=8000` is asserted but not actually checked for convergence — `final_loss` is written to the CSV but nothing gates on it yet.
+- [x] Added `scripts/check_convergence.py` to actually check `SWEEP_CONFIG`'s `n_steps=8000` instead of leaving it asserted. First run (no warmup) ruled out undertraining — loss was flat between step 8000 and 20000 in every combination checked — but surfaced something more specific: Adam overshooting early at large `d`/`n_total_classes` (e.g. `d=128, n_total_classes=20`: Model A's loss jumped from ~8.7 at step 1 to ~11.25 by step 500 before settling into a noisy plateau), a plausible explanation for why Model C ends up with *lower* final loss than A or B despite having the least capacity by design.
+- [ ] Added `train_model()`'s optional `warmup_steps` (linear LR ramp, opt-in, defaults to off) to address the overshoot above. `check_convergence.py`'s `CHECK_CONFIG` now sets `warmup_steps=200` to test it on the same grid as the first run; not yet confirmed whether it fixes the overshoot, and `SWEEP_CONFIG` itself hasn't been touched pending that result.

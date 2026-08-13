@@ -414,10 +414,23 @@ def train_model(model, P, cfg, show_progress=False, desc="training"):
     the single-run --mode single path in main(), where there's only one
     training loop to watch and no other process contending for the
     terminal.
+
+    cfg["warmup_steps"] (optional, default 0): linearly ramps the
+    learning rate from 0 up to cfg["lr"] over this many steps, then holds
+    it constant. Added after check_convergence.py showed Adam overshooting
+    at the start of training for larger/more complex configurations (e.g.
+    d=128, n_total_classes=20: loss jumped from ~8.7 at step 1 to ~11.25
+    by step 500 before settling into a noisy plateau) -- a fixed lr=0.05
+    applied to raw, uninformative early gradients pushes the parameters
+    too far before they've found a reasonable direction. Opt-in and
+    defaults to off (0) so existing CONFIG/SWEEP_CONFIG runs are
+    unaffected unless warmup_steps is explicitly added to them.
     """
     n_verbs, V = P.shape
     P_t = torch.tensor(P, dtype=torch.float32)
-    optimizer = torch.optim.Adam(model.parameters(), lr=cfg["lr"])
+    base_lr = cfg["lr"]
+    warmup_steps = cfg.get("warmup_steps", 0)
+    optimizer = torch.optim.Adam(model.parameters(), lr=base_lr)
 
     checkpoints = set(cfg["checkpoints"])
     saved = {}
@@ -427,6 +440,11 @@ def train_model(model, P, cfg, show_progress=False, desc="training"):
     postfix_every = max(1, cfg["n_steps"] // 200)  # ~200 postfix updates total
 
     for step in step_iter:
+        if warmup_steps > 0:
+            lr_scale = min(1.0, step / warmup_steps)
+            for group in optimizer.param_groups:
+                group["lr"] = base_lr * lr_scale
+
         verb_idx = torch.randint(0, n_verbs, (cfg["batch_size"],))
         # sample one token per selected verb from its true distribution
         probs = P_t[verb_idx]                        # (batch, V)

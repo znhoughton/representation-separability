@@ -4,12 +4,22 @@ SWEEP_CONFIG's n_steps=8000, or is loss still dropping at that point?
 
 sweep_results.csv showed final_loss rising with d for all three models,
 and Model C (the most capacity-starved by design) landing LOWEST -- the
-opposite of what raw capacity would predict. The likely explanation is
-that A and B have far more free parameters to coordinate through the
-same fixed step budget, and simply aren't fully converged by step 8000,
-especially at large d, while C's much simpler optimization landscape
-gets further along its (lower) asymptote in the same budget. This script
-checks that directly rather than guessing from the final-step number.
+opposite of what raw capacity would predict. The first run of this
+script (no warmup) ruled out undertraining as the cause: loss was flat
+between step 8000 and step 20000 in every combination checked, so more
+steps alone wouldn't have helped. What it found instead: Adam
+overshooting early on for the larger/more complex settings -- e.g. at
+d=128, n_total_classes=20, Model A's loss jumped from ~8.7 at step 1 to
+~11.25 by step 500 before settling into a noisy plateau, rather than
+smoothly descending. Model C, with far fewer effective coordinated
+parameters, barely overshot and settled lower and cleaner -- a plausible
+explanation for the original loss ordering being about optimization
+stability under a fixed learning rate, not representational capacity.
+
+This run adds train_model's optional warmup_steps (see its docstring) to
+test whether ramping the learning rate up over the first 200 steps
+avoids that overshoot, using the same grid and step count as the first
+run so the two printed tables are directly comparable.
 
 Trains a small, TARGETED subset of the sweep grid, not the whole thing --
 d=128 (where the pattern looked most suspicious) and d=4 (baseline),
@@ -64,6 +74,12 @@ CHECK_CONFIG.update(
     checkpoints=[1, 500, 1000, 2000, 4000, 6000, 8000, 10000, 12000, 16000, 20000],
     n_seeds=2,
     n_workers=16,
+    warmup_steps=200,      # first run showed Adam overshooting early at large
+                            # d/n_total_classes (e.g. d=128, n_total_classes=20:
+                            # loss jumped from ~8.7 at step 1 to ~11.25 by step
+                            # 500 before settling into a noisy plateau) -- same
+                            # grid, same steps as the first run, warmup added,
+                            # so the two printed tables are directly comparable.
     out_csv=str(REPO_ROOT / "data" / "convergence_check.csv"),
 )
 
@@ -79,15 +95,24 @@ def train_with_loss_trajectory(model, P, run_cfg):
     embeddings (get_all_embeddings()), but expected_cross_entropy needs
     the whole model (embeddings + W) at that point in training, so the
     training loop and the checkpoint payload both have to change. The
-    loop body below is otherwise identical to train_model's.
+    loop body below is otherwise identical to train_model's, including
+    the same optional warmup_steps linear ramp (see train_model's
+    docstring for why it was added).
     """
     n_verbs, V = P.shape
     P_t = torch.tensor(P, dtype=torch.float32)
-    optimizer = torch.optim.Adam(model.parameters(), lr=run_cfg["lr"])
+    base_lr = run_cfg["lr"]
+    warmup_steps = run_cfg.get("warmup_steps", 0)
+    optimizer = torch.optim.Adam(model.parameters(), lr=base_lr)
     checkpoints = set(run_cfg["checkpoints"])
     trajectory = {}
 
     for step in range(1, run_cfg["n_steps"] + 1):
+        if warmup_steps > 0:
+            lr_scale = min(1.0, step / warmup_steps)
+            for group in optimizer.param_groups:
+                group["lr"] = base_lr * lr_scale
+
         verb_idx = torch.randint(0, n_verbs, (run_cfg["batch_size"],))
         probs = P_t[verb_idx]
         tokens = torch.multinomial(probs, 1).squeeze(-1)
@@ -138,6 +163,7 @@ def _run_convergence_task(n_total_classes, d, seed, model_name, cfg):
         n_steps=cfg["n_steps"],
         checkpoints=cfg["checkpoints"],
         lr=cfg["lr"],
+        warmup_steps=cfg.get("warmup_steps", 0),
         batch_size=cfg["batch_size"],
         seed=seed,
     )
