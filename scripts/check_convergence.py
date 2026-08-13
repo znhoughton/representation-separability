@@ -15,10 +15,13 @@ Trains a small, TARGETED subset of the sweep grid, not the whole thing --
 d=128 (where the pattern looked most suspicious) and d=4 (baseline),
 crossed with n_total_classes=2 and 20 (the sweep's extremes), 2 seeds
 each. That's 4 (d, n_total_classes) combos x 2 seeds x 3 models = 24
-training runs, run sequentially (small enough that multiprocessing isn't
-worth the complexity here) -- cheap next to the ~540-run full sweep.
-Training is extended well past 8000 steps (to 20,000) so the trajectory
-shows whether more steps would actually have helped.
+training runs -- cheap next to the ~540-run full sweep, but still run
+across a CPU process pool (CHECK_CONFIG["n_workers"]), split at the level
+of individual (d, n_total_classes, seed, model) runs rather than per
+combo, so all 24 tasks can actually spread across the available cores
+instead of capping out at 8 concurrent combos. Training is extended well
+past 8000 steps (to 20,000) so the trajectory shows whether more steps
+would actually have helped.
 
 This is a read-only diagnostic: it doesn't touch sweep_results.csv or
 change anything about how the real sweep was run. Writes
@@ -31,7 +34,9 @@ USAGE
 """
 
 import csv
+import os
 import sys
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -58,6 +63,7 @@ CHECK_CONFIG.update(
     n_steps=20000,
     checkpoints=[1, 500, 1000, 2000, 4000, 6000, 8000, 10000, 12000, 16000, 20000],
     n_seeds=2,
+    n_workers=16,
     out_csv=str(REPO_ROOT / "data" / "convergence_check.csv"),
 )
 
@@ -99,21 +105,82 @@ def train_with_loss_trajectory(model, P, run_cfg):
     return trajectory
 
 
+def _run_convergence_task(n_total_classes, d, seed, model_name, cfg):
+    """
+    Worker for one (n_total_classes, d, seed, model) training run -- builds
+    that run's data, trains the one model, and returns its full loss
+    trajectory as a list of rows. Runs in its own process (see
+    run_convergence_check); torch.set_num_threads(1) for the same
+    oversubscription reasons as _run_sweep_cell in the main script (many
+    worker processes each spawning their own BLAS threads would fight
+    over the machine's cores rather than speeding anything up).
+
+    Data generation is redundantly repeated once per model (rather than
+    once per combo, shared across A/B/C) since each task is now an
+    independent unit of parallelism -- build_verb_distributions is
+    deterministic given the same seed, so this costs a little redundant
+    (cheap) computation in exchange for letting all 24 runs spread across
+    however many workers are available, not just capping out at 8
+    concurrent (n_total_classes, d, seed) combos.
+    """
+    torch.set_num_threads(1)
+
+    run_cfg = dict(
+        n_classes=n_total_classes,
+        n_verbs_per_class=[cfg["verbs_per_class"]] * n_total_classes,
+        vocab_size=cfg["vocab_size"],
+        n_pref=cfg["n_pref"],
+        class_overlap=cfg["class_overlap"],
+        item_overlap=cfg["item_overlap"],
+        mu=cfg["mu"],
+        sigma=cfg["sigma"],
+        d=d,
+        n_steps=cfg["n_steps"],
+        checkpoints=cfg["checkpoints"],
+        lr=cfg["lr"],
+        batch_size=cfg["batch_size"],
+        seed=seed,
+    )
+
+    rng = np.random.default_rng(seed)
+    P, class_of = build_verb_distributions(run_cfg, rng)
+    n_verbs = P.shape[0]
+
+    torch.manual_seed(seed)
+    if model_name == "A":
+        model = ModelA(n_verbs, run_cfg["vocab_size"], d)
+    elif model_name == "B":
+        model = ModelB(n_verbs, class_of, n_total_classes, run_cfg["vocab_size"], d)
+    else:
+        model = ModelC(n_verbs, class_of, n_total_classes, run_cfg["vocab_size"], d)
+
+    trajectory = train_with_loss_trajectory(model, P, run_cfg)
+
+    return [
+        dict(d=d, n_total_classes=n_total_classes, seed=seed, model=model_name,
+             step=step, expected_loss=loss)
+        for step, loss in sorted(trajectory.items())
+    ]
+
+
 def run_convergence_check(cfg):
     fieldnames = ["d", "n_total_classes", "seed", "model", "step", "expected_loss"]
 
-    combos = [
-        (n_total_classes, d, seed)
+    tasks = [
+        (n_total_classes, d, seed, model_name)
         for n_total_classes in cfg["n_total_classes_values"]
         for d in cfg["d_values"]
         for seed in range(cfg["n_seeds"])
+        for model_name in ("A", "B", "C")
     ]
-    total_runs = len(combos) * 3
+    n_workers = cfg.get("n_workers") or min(16, os.cpu_count() or 1)
+
     print(f"Convergence check: {len(cfg['d_values'])} d values x "
           f"{len(cfg['n_total_classes_values'])} class counts x "
-          f"{cfg['n_seeds']} seeds x 3 models = {total_runs} training runs, "
+          f"{cfg['n_seeds']} seeds x 3 models = {len(tasks)} training runs, "
           f"{len(cfg['checkpoints'])} checkpoints each, extended to "
-          f"{cfg['n_steps']} steps (vs. the sweep's {SWEEP_CONFIG['n_steps']}).")
+          f"{cfg['n_steps']} steps (vs. the sweep's {SWEEP_CONFIG['n_steps']}), "
+          f"across {n_workers} worker processes.")
 
     Path(cfg["out_csv"]).parent.mkdir(parents=True, exist_ok=True)
     all_rows = []
@@ -122,47 +189,27 @@ def run_convergence_check(cfg):
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
 
-        with tqdm(total=total_runs, desc="convergence check", unit="run") as pbar:
-            for n_total_classes, d, seed in combos:
-                run_cfg = dict(
-                    n_classes=n_total_classes,
-                    n_verbs_per_class=[cfg["verbs_per_class"]] * n_total_classes,
-                    vocab_size=cfg["vocab_size"],
-                    n_pref=cfg["n_pref"],
-                    class_overlap=cfg["class_overlap"],
-                    item_overlap=cfg["item_overlap"],
-                    mu=cfg["mu"],
-                    sigma=cfg["sigma"],
-                    d=d,
-                    n_steps=cfg["n_steps"],
-                    checkpoints=cfg["checkpoints"],
-                    lr=cfg["lr"],
-                    batch_size=cfg["batch_size"],
-                    seed=seed,
-                )
+        with ProcessPoolExecutor(max_workers=n_workers) as executor:
+            futures = {
+                executor.submit(_run_convergence_task, n_total_classes, d, seed, model_name, cfg):
+                    (n_total_classes, d, seed, model_name)
+                for (n_total_classes, d, seed, model_name) in tasks
+            }
 
-                rng = np.random.default_rng(seed)
-                P, class_of = build_verb_distributions(run_cfg, rng)
-                n_verbs = P.shape[0]
+            with tqdm(total=len(futures), desc="convergence check", unit="run") as pbar:
+                for future in as_completed(futures):
+                    n_total_classes, d, seed, model_name = futures[future]
+                    try:
+                        rows = future.result()
+                    except Exception as exc:
+                        print(f"\n[FAILED] n_total_classes={n_total_classes}, d={d}, "
+                              f"seed={seed}, model={model_name}: {exc!r}")
+                        pbar.update(1)
+                        continue
 
-                for model_name in ("A", "B", "C"):
-                    torch.manual_seed(seed)
-                    if model_name == "A":
-                        model = ModelA(n_verbs, run_cfg["vocab_size"], d)
-                    elif model_name == "B":
-                        model = ModelB(n_verbs, class_of, n_total_classes,
-                                        run_cfg["vocab_size"], d)
-                    else:
-                        model = ModelC(n_verbs, class_of, n_total_classes,
-                                        run_cfg["vocab_size"], d)
-
-                    trajectory = train_with_loss_trajectory(model, P, run_cfg)
-
-                    for step, loss in sorted(trajectory.items()):
-                        row = dict(d=d, n_total_classes=n_total_classes, seed=seed,
-                                   model=model_name, step=step, expected_loss=loss)
+                    for row in rows:
                         writer.writerow(row)
-                        all_rows.append(row)
+                    all_rows.extend(rows)
                     f.flush()
 
                     pbar.set_postfix(d=d, n_cls=n_total_classes, model=model_name)
