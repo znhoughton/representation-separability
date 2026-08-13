@@ -74,12 +74,15 @@ CHECK_CONFIG.update(
     checkpoints=[1, 500, 1000, 2000, 4000, 6000, 8000, 10000, 12000, 16000, 20000],
     n_seeds=2,
     n_workers=16,
-    warmup_steps=200,      # first run showed Adam overshooting early at large
-                            # d/n_total_classes (e.g. d=128, n_total_classes=20:
-                            # loss jumped from ~8.7 at step 1 to ~11.25 by step
-                            # 500 before settling into a noisy plateau) -- same
-                            # grid, same steps as the first run, warmup added,
-                            # so the two printed tables are directly comparable.
+    warmup_steps=0,        # a 200-step warmup was tried and ruled out: at
+                            # d=128, n_total_classes=20 the step-8000/20000
+                            # values were essentially unchanged from the
+                            # no-warmup run, and the step-500 spike was if
+                            # anything slightly worse. The overshoot doesn't
+                            # look like an "unstable first few steps" problem
+                            # that ramping fixes -- more likely lr=0.05 itself
+                            # is too large for this scale's steady-state
+                            # dynamics. See the --lr override below.
     out_csv=str(REPO_ROOT / "data" / "convergence_check.csv"),
 )
 
@@ -276,4 +279,27 @@ def print_summary(rows, cfg):
 
 
 if __name__ == "__main__":
-    run_convergence_check(CHECK_CONFIG)
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Convergence check for separability_experiment.py's sweep."
+    )
+    parser.add_argument(
+        "--lr", type=float, default=None,
+        help="Override CHECK_CONFIG's learning rate (default: CHECK_CONFIG's "
+             "own lr, inherited from SWEEP_CONFIG -- currently 0.05). Warmup "
+             "was tried and ruled out (see CHECK_CONFIG's warmup_steps "
+             "comment); this tests the other hypothesis, that lr=0.05 itself "
+             "is too large for the largest/most crowded cells' steady-state "
+             "dynamics, not just their first few steps. Writes to a separate "
+             "convergence_check_lr<value>.csv so it doesn't overwrite the "
+             "default-lr run's results."
+    )
+    args = parser.parse_args()
+
+    cfg = dict(CHECK_CONFIG)
+    if args.lr is not None:
+        cfg["lr"] = args.lr
+        cfg["out_csv"] = str(REPO_ROOT / "data" / f"convergence_check_lr{args.lr}.csv")
+
+    run_convergence_check(cfg)
