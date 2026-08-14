@@ -250,6 +250,103 @@ def build_verb_distributions(cfg, rng):
     return P, class_of
 
 
+def build_alpha_distributions(cfg, rng):
+    """
+    Experiment-1 variant of build_verb_distributions with an explicit
+    interaction fraction cfg["alpha"] in [0, 1] controlling the DIRECTION of
+    item-specific variation relative to the class-discriminating axis, holding
+    its magnitude ~constant:
+
+        alpha = 0  ->  item variation entirely OFF-AXIS. Each verb's idiosyncrasy
+                       lives on private idio tokens, disjoint from the class-frame
+                       tokens; all verbs in a class share IDENTICAL frame weights.
+                       Item residual ends up ~orthogonal to the class direction
+                       -> the separable pole (Model-B-like data).
+        alpha = 1  ->  item variation entirely ON-AXIS. Idio tokens collapse into
+                       the background; the only item-specific signal is a per-verb
+                       prototypicality scalar t_v that scales how strongly verb v
+                       expresses its OWN class's frame tokens. That deviation lies
+                       along the class direction -> the entangled pole (Model-C-like
+                       data, ratio -> ~d for the focal pair).
+        0 < alpha < 1 -> the item-variance direction is rotated between the two,
+                       with the two components' amplitudes scaled by sqrt(alpha)
+                       and sqrt(1 - alpha) so total item variance stays ~fixed --
+                       alpha changes WHERE the item variation points, not how much
+                       there is. This is the knob Experiment 1 sweeps; the poles
+                       double as the metric-validation anchors (they should read
+                       like Models B and C respectively).
+
+    Token layout mirrors build_verb_distributions (cross / within-class-"frame" /
+    idiosyncratic pools); the difference is purely in how per-verb weights are
+    assigned so that the on-axis vs off-axis split is controlled by alpha rather
+    than both always being present.
+    """
+    alpha = cfg["alpha"]
+    n_classes = cfg["n_classes"]
+    n_per_class = cfg["n_verbs_per_class"]
+    V = cfg["vocab_size"]
+    n_pref = cfg["n_pref"]
+    class_overlap = cfg["class_overlap"]
+    item_overlap = cfg["item_overlap"]
+    mu, sigma = cfg["mu"], cfg["sigma"]
+    # amplitude of item-specific log-weight variation (on either axis); defaults
+    # to sigma so the item-variance scale matches the original construction's.
+    kappa = cfg.get("item_scale", sigma)
+
+    n_verbs = sum(n_per_class)
+    class_of = np.concatenate(
+        [np.full(n, c, dtype=int) for c, n in enumerate(n_per_class)]
+    )
+
+    n_cross = int(np.floor(class_overlap * n_pref + 1e-9))
+    n_within = int(np.floor((item_overlap - class_overlap) * n_pref + 1e-9))
+    n_idio = n_pref - n_cross - n_within
+    assert n_idio >= 0, "item_overlap - class_overlap too large for n_pref"
+
+    cross_tokens = rng.choice(V, size=n_cross, replace=False)
+    remaining = np.setdiff1d(np.arange(V), cross_tokens)
+    within_tokens_per_class = []
+    for c in range(n_classes):
+        chosen = rng.choice(remaining, size=n_within, replace=False)
+        within_tokens_per_class.append(chosen)
+        remaining = np.setdiff1d(remaining, chosen)
+
+    def draw_idio(k):
+        if len(remaining) >= k:
+            return rng.choice(remaining, size=k, replace=False)
+        return rng.choice(np.arange(V), size=k, replace=True)
+
+    ln_mu = np.log(mu) - (sigma ** 2) / 2
+    a_on = kappa * np.sqrt(alpha)          # on-axis (prototypicality) amplitude
+    a_off = np.sqrt(1.0 - alpha)           # off-axis (idio) amplitude scaler
+
+    P = np.zeros((n_verbs, V), dtype=np.float32)
+    for v in range(n_verbs):
+        c = class_of[v]
+        weights = np.ones(V)
+
+        # cross tokens: shared universal elevation, no item variation
+        weights[cross_tokens] = np.exp(ln_mu)
+
+        # class-frame tokens: shared class elevation (defines the class, present
+        # at every alpha) PLUS a per-verb ON-AXIS prototypicality term that
+        # vanishes at alpha=0. t_v is a single scalar, so it scales all of verb
+        # v's own-class frames together -> a 1-D deviation along the class axis.
+        t_v = rng.standard_normal()
+        weights[within_tokens_per_class[c]] = np.exp(ln_mu + a_on * t_v)
+
+        # idio tokens: per-verb OFF-AXIS variation on private tokens, whose
+        # elevation is scaled by sqrt(1-alpha) so it collapses into the
+        # background (weight 1) at alpha=1.
+        idio_tokens = draw_idio(n_idio)
+        u = rng.standard_normal(size=len(idio_tokens))
+        weights[idio_tokens] = np.exp(a_off * (ln_mu + kappa * u))
+
+        P[v] = weights / weights.sum()
+
+    return P, class_of
+
+
 # ----------------------------------------------------------------------
 # 2. MODELS
 # ----------------------------------------------------------------------
