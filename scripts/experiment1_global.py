@@ -56,7 +56,11 @@ EXP1G_CONFIG = dict(
                                                   # classes.
     items_per_class_values=[8, 32, 128, 512],    # n_verbs = 4 * this = 32..2048
     d_values=[16, 64, 128, 256],
-    alpha_values=[0.0, 1.0],                     # separable vs entangled poles
+    alpha_values=[0.0, 0.25, 0.5, 0.75, 1.0],    # data separability, full transfer
+                                                  # function (not just the poles).
+                                                  # May re-space toward the low end
+                                                  # later -- earlier runs showed
+                                                  # most of the action in [0, 0.5].
     vocab_size=2000,                             # ample for 4 classes x 25
                                                   # within-tokens + idio pool
     n_pref=50,
