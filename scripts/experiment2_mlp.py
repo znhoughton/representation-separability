@@ -49,7 +49,7 @@ from tqdm import tqdm
 
 from separability_experiment import (
     build_alpha_distributions, expected_cross_entropy, measure_separability,
-    REPO_ROOT,
+    measure_separability_whitened, REPO_ROOT,
 )
 
 
@@ -250,6 +250,9 @@ def _run_cell(activation, alpha, items_per_class, d, seed, cfg):
             reps[f"{name}_hid"] = hid.astype(np.float32)
         r_emb = measure_separability(emb, class_of, n_classes)
         r_hid = measure_separability(hid, class_of, n_classes)
+        # gauge-invariant metric (the one to trust; raw kept for comparison)
+        rw_emb = measure_separability_whitened(emb, class_of, n_classes)
+        rw_hid = measure_separability_whitened(hid, class_of, n_classes)
         rows.append(dict(
             activation=activation, alpha=alpha, d=d, h_dim=h_dim, n_classes=n_classes,
             items_per_class=items_per_class, n_verbs=n_verbs, n_steps=n_steps,
@@ -257,6 +260,8 @@ def _run_cell(activation, alpha, items_per_class, d, seed, cfg):
             final_loss=expected_cross_entropy(model, P),
             ratio_embedding=r_emb if r_emb is not None else "",
             ratio_hidden=r_hid if r_hid is not None else "",
+            wratio_embedding=rw_emb if rw_emb is not None else "",
+            wratio_hidden=rw_hid if rw_hid is not None else "",
         ))
 
     if cfg.get("reps_dir"):
@@ -271,7 +276,8 @@ def _run_cell(activation, alpha, items_per_class, d, seed, cfg):
 def run(cfg):
     fields = ["activation", "alpha", "d", "h_dim", "n_classes", "items_per_class",
               "n_verbs", "n_steps", "seed", "model", "final_loss",
-              "ratio_embedding", "ratio_hidden"]
+              "ratio_embedding", "ratio_hidden",
+              "wratio_embedding", "wratio_hidden"]
     cells = [(act, a, it, d, s)
              for act in cfg["activation_values"]
              for a in cfg["alpha_values"]

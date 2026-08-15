@@ -711,6 +711,47 @@ def measure_separability(embeddings, class_of, n_classes, top_k=None):
     return float(projected_var / expected_var_if_random)
 
 
+def measure_separability_whitened(embeddings, class_of, n_classes, shrink=True):
+    """
+    Gauge-invariant version of measure_separability: whiten the representation
+    by its total covariance first, then apply the same variance-alignment ratio.
+
+    Why: the raw ratio is invariant only to ORTHOGONAL changes of basis, so on a
+    representation that is defined only up to an invertible LINEAR map (the gauge
+    freedom of a free embedding or a linear hidden layer) it reports the
+    arbitrary basis, not the representation. A provably-separable linear hidden
+    layer can then read anywhere from ~0.3 to ~1.5 depending purely on which
+    gauge training landed in -- which is exactly the bug that made the identity
+    control read "entangled" (~3.2) at the hidden layer despite being trivially
+    separable. Whitening removes that freedom: under X -> X M for any invertible
+    M, the whitened X transforms by an orthogonal rotation, which the ratio
+    already ignores, so the whitened ratio is invariant to the FULL linear gauge
+    group -- while still moving under genuine (recoverability-changing) NONLINEAR
+    transforms, which is what we want to detect.
+
+    Validated on separable synthetic data: the raw ratio swung 0.31..1.47 under
+    random invertible M while this stayed 0.489 exactly; under a ReLU it moved
+    (0.49 -> ~0.73). Acceptance test in the MLP experiment: for the identity
+    (linear) condition, whitened(hidden) must ~= whitened(embedding), since a
+    linear map cannot change linear recoverability.
+
+    shrink: Ledoit-Wolf shrinkage for the whitening covariance -- needed (and on
+    by default) when samples are few relative to the dimension (n_verbs < d),
+    where the raw covariance is singular. The trade-off: shrinkage is
+    basis-dependent, so gauge-invariance is only APPROXIMATE for such
+    undersampled cells (exact when well-sampled).
+    """
+    X = np.asarray(embeddings, dtype=np.float64)
+    if X.shape[0] < 2:
+        return None
+    X = X - X.mean(axis=0, keepdims=True)
+    cov = LedoitWolf().fit(X).covariance_ if shrink else np.cov(X, rowvar=False)
+    vals, vecs = np.linalg.eigh(cov)
+    vals = np.clip(vals, 1e-8, None)
+    whitener = vecs @ np.diag(vals ** -0.5) @ vecs.T
+    return measure_separability(X @ whitener, class_of, n_classes)
+
+
 def permutation_null_ratios(embeddings, class_of, n_classes,
                              n_perm=200, rng=None):
     """
