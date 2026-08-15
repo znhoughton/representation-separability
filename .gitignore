@@ -2,3 +2,6 @@
 __pycache__/
 *.pyc
 .ipynb_checkpoints/
+
+# Saved representation arrays (large, regenerable) -- results CSVs stay tracked
+data/experiment2_reps/
