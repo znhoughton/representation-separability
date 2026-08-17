@@ -55,7 +55,7 @@ results_path <- file.path("..", "data", "experiment3_conversion_results.csv")
 num <- function(x) suppressWarnings(as.numeric(x))
 dat <- read_csv(results_path, show_col_types = FALSE) %>%
   mutate(across(c(ratio_embedding, ratio_hidden, wratio_embedding, wratio_hidden,
-                  final_loss, specialization), num),
+                  final_loss, specialization, interaction_fit), num),
          model = factor(model, levels = c("shared", "free", "C")),
          activation = factor(activation, levels = c("identity", "relu", "tanh"))) %>%
   mutate(uniform_loss = log(2000),
@@ -166,6 +166,41 @@ dat %>% filter(activation == "relu", well_sampled, converged, lr == 0.003) %>%
   geom_line(linewidth = 1) + geom_point(size = 2) +
   labs(title = "shared (forced) vs. free (dodges) vs. C (ceiling), relu, lr=0.003",
        x = "interaction_strength", y = expression(wratio[hidden]-wratio[embedding]))
+```
+
+# Does the model FIT the interaction, and does entanglement track fit?
+
+On conversion data there is no separable fit — you can only fit the non-additive
+part by binding. So the key coupling is **entanglement vs. interaction-fit**:
+models that fit the interaction should be the ones that entangle. `interaction_fit`
+is the fraction of the true form-specific-by-POS collocate mass the model
+reproduces (isolated from the additive bulk, unlike loss).
+
+## Interaction fit by activation (does the linear model fail?)
+
+```{r fit-by-act}
+dat %>% filter(model == "shared", well_sampled, converged, !is.na(interaction_fit)) %>%
+  group_by(activation, interaction_strength) %>%
+  summarise(fit = mean(interaction_fit), .groups = "drop") %>%
+  ggplot(aes(interaction_strength, fit, colour = activation)) +
+  geom_hline(yintercept = 0.5, linetype = 2, colour = "grey70") +   # ~ can't-route level
+  geom_line(linewidth = 1) + geom_point(size = 2) +
+  labs(title = "Fit of the non-additive part (shared)",
+       subtitle = "identity should sit near 0.5 (can't route by POS); relu fits; tanh may cross over from Exp 2",
+       x = "interaction_strength", y = "interaction_fit (1 - TV distance; 1 = matches truth)")
+```
+
+## The coupling — entanglement vs. fit
+
+```{r ent-vs-fit}
+dat %>% filter(model == "shared", well_sampled, converged, !is.na(interaction_fit)) %>%
+  ggplot(aes(interaction_fit, delta_w, colour = activation)) +
+  geom_hline(yintercept = 0, colour = "grey70") +
+  geom_point(alpha = 0.4, size = 1) +
+  geom_smooth(method = "lm", se = FALSE, linewidth = 0.8) +
+  labs(title = "Entanglement tracks fit of the interaction (shared)",
+       subtitle = "fitting the non-additive task requires binding class and item",
+       x = "interaction_fit", y = expression(wratio[hidden]-wratio[embedding]))
 ```
 
 # Specialization — does the model FIT the conversion?

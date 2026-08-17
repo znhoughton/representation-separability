@@ -170,6 +170,31 @@ def _specialization(m, form_of, pos_of, spec):
     return float(np.mean(vals))
 
 
+def _interaction_fit(m, P, form_of, pos_of, spec):
+    """Distributional similarity between the model's output and the TRUE
+    distribution, restricted to the non-additive part: 1 - total-variation
+    distance between true and model, renormalized over each form's POS-specific
+    collocate tokens. 1 = the model's distribution over the form-specific
+    collocates matches the truth (correctly POS-routed); lower = it fails.
+    Isolates the interaction from the additive bulk that dominates final_loss.
+    None at strength 0. (final_loss is the same idea over the WHOLE vocab.)"""
+    amb = [i for i in range(len(form_of)) if len(spec[pos_of[i]][form_of[i]]) > 0]
+    if not amb:
+        return None
+    with torch.no_grad():
+        q = F.softmax(m(torch.arange(len(form_of))), -1).numpy()
+    vals = []; eps = 1e-12
+    for lx in amb:
+        f = form_of[lx]
+        S = np.unique(np.concatenate([spec[0][f], spec[1][f]]))    # form's POS-specific tokens
+        tt = P[lx, S].astype(float); qq = q[lx, S].astype(float)
+        if tt.sum() < eps:
+            continue
+        tt = tt / tt.sum(); qq = qq / (qq.sum() + eps)
+        vals.append(1.0 - 0.5 * float(np.abs(tt - qq).sum()))       # 1 - TV distance
+    return float(np.mean(vals)) if vals else None
+
+
 def _run_cell(strength, lr, d, activation, seed, cfg):
     torch.set_num_threads(1)
     n_forms = cfg["n_forms"]; h_dim = d
@@ -204,6 +229,7 @@ def _run_cell(strength, lr, d, activation, seed, cfg):
             wratio_embedding=measure_separability_whitened(emb, pos_of, 2),
             wratio_hidden=measure_separability_whitened(hid, pos_of, 2),
             specialization=_specialization(m, form_of, pos_of, spec),
+            interaction_fit=_interaction_fit(m, P, form_of, pos_of, spec),
         ))
     if cfg.get("reps_dir"):
         os.makedirs(cfg["reps_dir"], exist_ok=True)
@@ -217,7 +243,7 @@ def run(cfg):
     fields = ["interaction_strength", "lr", "d", "h_dim", "activation", "n_forms",
               "n_lexemes", "n_steps", "seed", "model", "final_loss",
               "ratio_embedding", "ratio_hidden", "wratio_embedding", "wratio_hidden",
-              "specialization"]
+              "specialization", "interaction_fit"]
     cells = [(s, lr, d, act, sd)
              for s in cfg["interaction_strength_values"]
              for lr in cfg["lr_values"]
