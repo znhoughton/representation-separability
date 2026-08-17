@@ -5,6 +5,50 @@ this project — the "why", separate from METHOD.md's "what". Newest at top.
 
 ---
 
+## ReLU entangles; tanh doesn't — because tanh's nonlinearity is *avoidable*
+
+Headline result of the MLP experiment (measured with the gauge-invariant whitened
+metric, well-sampled + converged cells):
+
+- **ReLU** makes a separable representation (Model B) entangled at the hidden
+  layer, with an **architectural floor even at alpha = 0** (entanglement with *no*
+  class-item interaction in the data) that **rises with alpha**. Mechanism: ReLU
+  rectifies `W1_c c + W1_r r`, so the item term is gated by the class term.
+- **identity** is flat by theorem (linear can't change recoverability — the
+  acceptance test).
+- **tanh** is also flat — but for a subtler, important reason.
+
+**Why tanh is flat — and why it's still worth reporting.** tanh's nonlinearity
+only "bites" at large pre-activations (`|z| >~ 2`); near 0 it is ~linear. The
+network *keeps it in the linear regime*: measured pre-activations were `|z|`
+median ~0.2, 0% in the saturating region, while ReLU gated ~67% of units at the
+*same* scale (its kink is at 0, so it is active at any scale). A 5x gain on `W1`
+was trained straight back down (tanh stayed at `|z|`~0.19, unchanged loss and
+flatness) — the network actively shrinks weights to avoid tanh's lossy saturation.
+
+So the asymmetry is real and defensible: **ReLU's rectification is unavoidable
+(kink at 0), tanh's saturation is avoidable and the network avoids it.** The
+entanglement therefore requires a nonlinearity that is *active at the network's
+operating point*.
+
+**Paper role:** keep tanh, but demoted from a co-equal condition to a robustness
+result — it answers the reviewer's inevitable "is this ReLU-specific / an
+artifact?" with "the entanglement needs an unavoidable nonlinearity." Present it
+with the pre-activation evidence, or it reads as a confusing null.
+
+**If a reviewer wants "does a *forced*-saturating nonlinearity entangle?"** — that
+needs `tanh(g * LayerNorm(W1 e))` (normalization pins the scale so the network
+can't shrink around it). But it fights the network's preference and will raise the
+loss, so it measures entanglement on a deliberately-degraded model — a real but
+*different* question. Not built.
+
+**Capacity (d):** relative entanglement (delta as a fraction of the ceiling
+`d/(n_classes-1)`) rises from d=16 to ~d=64 then plateaus by d=128 — so the raw
+growth is mostly metric scaling, the real effect is bounded, and the story holds
+without the d=256 cells (which diverge under lr=0.01; see the d256 diagnostic).
+
+---
+
 ## The separability metric is gauge-dependent; the fix is to whiten first
 
 ### The problem
