@@ -5,3 +5,6 @@ __pycache__/
 
 # Saved representation arrays (large, regenerable) -- results CSVs stay tracked
 data/experiment2_reps/
+
+# Experiment 3 saved reps (large, regenerable)
+data/experiment3_reps/
