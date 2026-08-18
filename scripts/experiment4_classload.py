@@ -24,6 +24,7 @@ Regimes to read off (via the identity/linear reference):
 import csv
 import math
 import os
+import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
@@ -207,15 +208,26 @@ def run(cfg):
     Path(cfg["out_csv"]).parent.mkdir(parents=True, exist_ok=True)
     if cfg.get("reps_dir"):
         Path(cfg["reps_dir"]).mkdir(parents=True, exist_ok=True)
-    done = 0
+    n_cells = len(cells); done = 0; start = time.time(); tty = sys.stdout.isatty()
     with open(cfg["out_csv"], "w", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=fields); w.writeheader()
         with ProcessPoolExecutor(max_workers=n_workers) as ex:
             futs = {ex.submit(_run_cell, c, cfg): c for c in cells}
             for fut in as_completed(futs):
                 w.writerow(fut.result()); fh.flush(); done += 1
-                if done % 50 == 0 or done == len(cells):
-                    print(f"  {done}/{len(cells)} cells")
+                frac = done / n_cells; el = time.time() - start
+                eta = (el / frac - el) if frac > 0 else 0.0
+                if tty:                                    # live in-place bar
+                    fill = int(30 * frac)
+                    bar = "=" * fill + (">" + " " * (30 - fill - 1) if fill < 30 else "")
+                    print(f"\r  [{bar}] {done}/{n_cells} ({frac * 100:4.0f}%)  "
+                          f"{int(el // 60)}m{int(el % 60):02d}s elapsed  "
+                          f"eta {int(eta // 60)}m{int(eta % 60):02d}s   ", end="", flush=True)
+                elif done % 25 == 0 or done == n_cells:    # redirected: periodic lines
+                    print(f"  {done}/{n_cells} ({frac * 100:4.0f}%)  "
+                          f"eta {int(eta // 60)}m{int(eta % 60):02d}s", flush=True)
+    if tty:
+        print()
     print(f"Done -> {cfg['out_csv']}")
 
 
