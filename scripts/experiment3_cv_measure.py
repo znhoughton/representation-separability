@@ -31,8 +31,15 @@ Output: data/experiment3_cv_results.csv, one row per (cell, model), joinable to
 experiment3_conversion_results.csv on (interaction_strength, lr, d, activation,
 seed, model).
 """
-import csv
 import os
+
+# Keep it a good neighbour: cap BLAS threads BEFORE numpy imports so this can run
+# next to the 18-worker simulation without oversubscribing cores. (setdefault, so
+# an explicit env value from the caller still wins.)
+for _v in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
+    os.environ.setdefault(_v, "1")
+
+import csv
 import re
 from pathlib import Path
 
