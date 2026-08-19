@@ -150,14 +150,45 @@ EXP3_CONFIG = dict(
 )
 
 
-def _train(m, P, n_steps, batch_size, lr, device="cpu"):
+def _train(m, P, max_steps, batch_size, lr, device="cpu",
+           eval_every=500, patience=10, min_delta=3e-4):
+    """Train with EARLY STOPPING on the exact expected loss against the true P (not a
+    noisy sampled-token estimate). Stop when that loss fails to improve by >min_delta
+    for `patience` consecutive evals (a real PLATEAU = converged), or at max_steps.
+    Returns (steps_run, best_loss). NOTE: converged means plateaued, NOT "reached the
+    entropy of P" -- low-d models are capacity-limited and plateau above that floor;
+    the gap to entropy is a capacity signal, not undertraining. Keep patience generous
+    and min_delta small so the plateau is real and not a premature stop."""
     m.to(device)
-    Pt = torch.tensor(P, dtype=torch.float32, device=device); opt = torch.optim.Adam(m.parameters(), lr=lr)
+    Pt = torch.tensor(P, dtype=torch.float32, device=device)
+    opt = torch.optim.Adam(m.parameters(), lr=lr)
     nl = P.shape[0]
-    for _ in range(n_steps):
+    all_idx = torch.arange(nl, device=device)
+
+    def expected_loss():
+        m.eval(); tot = 0.0
+        with torch.no_grad():
+            for s in range(0, nl, 4096):
+                idx = all_idx[s:s + 4096]
+                tot += -(Pt[idx] * F.log_softmax(m(idx), dim=-1)).sum(-1).sum().item()
+        m.train()
+        return tot / nl
+
+    best = float("inf"); bad = 0; steps = 0
+    for step in range(max_steps):
         li = torch.randint(0, nl, (batch_size,), device=device)
         tk = torch.multinomial(Pt[li], 1).squeeze(-1)
         F.cross_entropy(m(li), tk).backward(); opt.step(); opt.zero_grad(set_to_none=True)
+        steps = step + 1
+        if steps % eval_every == 0:
+            v = expected_loss()
+            if v < best - min_delta:
+                best = v; bad = 0
+            else:
+                bad += 1
+                if bad >= patience:
+                    break
+    return steps, (best if best < float("inf") else expected_loss())
 
 
 def _specialization(m, form_of, pos_of, spec):
