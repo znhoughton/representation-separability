@@ -28,8 +28,8 @@ BATCH = 2048          # NOTE: batch is part of the optimization regime -- larger
 #                       batch=2048 is fine AS LONG AS the learned regime (relu >> identity) survives
 #                       it (check pending). If it doesn't, cancel and drop BATCH back to 64.
 #                       Large batch -> ~32x fewer steps -> the full grid in hours.
-GPU_WORKERS = 12      # ~1.5GB/worker at batch=2048,d=64 -> ~18GB of 20GB; empty_cache per cell
-#                       bounds it. If OOM anyway, drop to 10; if plenty of headroom, try 15.
+GPU_WORKERS = 30      # ~1.5GB/worker at batch=2048,d=64 -> ~45GB of 80GB VRAM (fine). Real limit is
+#                       CPU cores (measurement + data-gen are CPU); watch nvidia-smi/htop and adjust.
 DEVICE = "cuda"
 
 
