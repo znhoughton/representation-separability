@@ -24,7 +24,7 @@ import experiment5b_interaction_matched as e5b   # noqa: E402
 import experiment5_capacity_matched as e5         # noqa: E402
 
 BATCH = 2048          # large batch -> far fewer steps (the GPU win); see caveat above
-GPU_WORKERS = 4       # a few cells concurrently, sharing the GPU (100GB VRAM is plenty)
+GPU_WORKERS = 15      # ~1GB VRAM each -> ~15GB of 20GB; concurrent cells fill the GPU
 DEVICE = "cuda"
 
 
