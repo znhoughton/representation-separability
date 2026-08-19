@@ -37,13 +37,17 @@ def main():
     ap.add_argument("--seeds", type=int, default=3)
     ap.add_argument("--max-steps", type=int, default=150000)
     ap.add_argument("--log-every", type=int, default=6000)
+    ap.add_argument("--wd", type=float, default=0.0,
+                    help="AdamW weight decay -- regularizes the rep so cvwh stops drifting. "
+                         "Try 0.01 and 0.1: if the cvwh column flattens (vs wd=0 climbing "
+                         "forever), we have a stable, reportable measurement.")
     args = ap.parse_args()
     d, K, vocab, dev = args.d, args.K, 24000, args.device
     n_forms = max(4, round(150 * d / 2 ** K))
     rng = np.random.default_rng(0); torch.manual_seed(0)
     P, form_of, cat_of, n_cat = build_factored_matched(rng, K, n_forms, vocab, 60, 0.0, n_spec=40)
     opt_loss = float(-(P * np.log(np.clip(P, 1e-12, None))).sum(1).mean())
-    print(f"cell d={d} K={K} vocab={vocab} n_lex={len(form_of)}  lr={args.lr} batch={args.batch}")
+    print(f"cell d={d} K={K} vocab={vocab} n_lex={len(form_of)}  lr={args.lr} batch={args.batch} wd={args.wd}")
     print(f"optimal loss (entropy of P) = {opt_loss:.3f}\n", flush=True)
 
     Pt = torch.tensor(P, dtype=torch.float32, device=dev)
@@ -60,7 +64,7 @@ def main():
     for seed in range(args.seeds):
         torch.manual_seed(seed)
         m = ModelB_conv(n_forms, n_cat, form_of, cat_of, vocab, d, d, "relu").to(dev)
-        opt = torch.optim.Adam(m.parameters(), lr=args.lr)
+        opt = torch.optim.AdamW(m.parameters(), lr=args.lr, weight_decay=args.wd)
         print(f"--- seed {seed} ---   {'step':>8}{'loss':>9}{'gap':>8}{'cvwh':>9}", flush=True)
         done = 0
         while done < args.max_steps:
