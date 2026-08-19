@@ -36,6 +36,49 @@ sys.path.insert(0, str(REPO_ROOT / "scripts"))
 from experiment4_classload import cv_wh_multi, item_rank  # noqa: E402
 
 
+def _class_subspace(X, y, n_classes, m_eff):
+    means = np.array([X[y == c].mean(0) for c in range(n_classes)])
+    _, _, Vt = np.linalg.svd(means - means.mean(0), full_matrices=False)
+    return Vt[:m_eff]
+
+
+def _nc_cv_acc(X, y, k=5, seed=0):
+    """Cross-validated nearest-class-centroid accuracy over the labels present."""
+    rng = np.random.default_rng(seed)
+    n = len(y); folds = np.array_split(rng.permutation(n), k)
+    labels = np.unique(y); correct = tot = 0
+    for i in range(k):
+        te = folds[i]; tr = np.concatenate([folds[j] for j in range(k) if j != i])
+        present = [l for l in labels if (y[tr] == l).sum() >= 1]
+        cent = np.array([X[tr][y[tr] == l].mean(0) for l in present]); lab = np.array(present)
+        pred = lab[(X[te] @ cent.T - 0.5 * np.sum(cent ** 2, 1)[None, :]).argmax(1)]
+        correct += (pred == y[te]).sum(); tot += len(te)
+    return correct / tot if tot else float("nan")
+
+
+def item_destruction(X, class_y, item_y, n_classes, m_eff, min_item=20):
+    """Project the class(POS) subspace out of the within-class residual and measure
+    how much item(=lemma) identity is destroyed -- graded (between-item signal) and
+    behavioral (nearest-lemma-centroid probe accuracy before/after). Item classes are
+    restricted to lemmas with >= min_item tokens so centroids are stable."""
+    m_eff = int(round(m_eff))
+    C = _class_subspace(X, class_y, n_classes, m_eff)
+    res = X - np.array([X[class_y == c].mean(0) for c in range(n_classes)])[class_y]
+    res_nc = res - (res @ C.T) @ C
+    lems, cnt = np.unique(item_y, return_counts=True)
+    keep = set(lems[cnt >= min_item])
+    im = np.array([it in keep for it in item_y])
+    if im.sum() < 10 or len(keep) < 2:
+        return dict(signal_destroyed=None, acc_full=None, acc_noclass=None, decode_drop=None)
+    c0 = np.array([res[im][item_y[im] == i].mean(0) for i in sorted(keep)])
+    c1 = np.array([res_nc[im][item_y[im] == i].mean(0) for i in sorted(keep)])
+    b0 = float((c0 ** 2).sum())
+    sig = (1 - float((c1 ** 2).sum()) / b0) if b0 > 0 else None
+    af = _nc_cv_acc(res[im], item_y[im]); an = _nc_cv_acc(res_nc[im], item_y[im])
+    drop = (1 - an / af) if af and af > 0 else None
+    return dict(signal_destroyed=sig, acc_full=af, acc_noclass=an, decode_drop=drop)
+
+
 # ------------------------------------------------------------------ UD parsing
 def parse_conllu(path):
     """Yield sentences as lists of (form, lemma, upos), skipping multiword-token
@@ -116,6 +159,7 @@ def measure(reps, upos, lemma, min_class_count=50):
     code = {c: i for i, c in enumerate(kept)}
     y = np.array([code[u] for u in upos[mask]])
     n_classes = len(kept)
+    lem = lemma[mask]
     rows = []
     for li, X in reps.items():
         Xm = X[mask]
@@ -123,9 +167,13 @@ def measure(reps, upos, lemma, min_class_count=50):
         k_it = item_rank(Xm, y, n_classes)
         d = Xm.shape[1]
         cap = ((m_eff + k_it) / d) if (m_eff is not None and k_it is not None) else None
-        rows.append(dict(layer=li, d=d, n_tokens=len(y), n_pos=n_classes,
-                         n_lemmas=len(np.unique(lemma[mask])),
-                         m_eff=m_eff, k_item=k_it, capacity=cap, cvwh=cvwh))
+        row = dict(layer=li, d=d, n_tokens=len(y), n_pos=n_classes,
+                   n_lemmas=len(np.unique(lem)),
+                   m_eff=m_eff, k_item=k_it, capacity=cap, cvwh=cvwh,
+                   item_destroyed_wh=(cvwh * m_eff / d) if (cvwh is not None and m_eff) else None)
+        if m_eff is not None:
+            row.update(item_destruction(Xm, y, lem, n_classes, m_eff))
+        rows.append(row)
     return rows, kept
 
 
@@ -163,18 +211,20 @@ def main():
 
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     fields = ["model", "layer", "d", "n_tokens", "n_pos", "n_lemmas",
-              "m_eff", "k_item", "capacity", "cvwh"]
+              "m_eff", "k_item", "capacity", "cvwh", "item_destroyed_wh",
+              "signal_destroyed", "acc_full", "acc_noclass", "decode_drop"]
     write_header = not Path(args.out).exists()
     with open(args.out, "a", newline="") as fh:
-        w = csv.DictWriter(fh, fieldnames=fields)
+        w = csv.DictWriter(fh, fieldnames=fields, extrasaction="ignore")
         if write_header:
             w.writeheader()
         for r in rows:
             r["model"] = args.model
             w.writerow(r)
-            print(f"  layer {r['layer']:>3}: cvwh={r['cvwh']!s:>8}  "
-                  f"m_eff={r['m_eff']!s:>6}  k_item={r['k_item']!s:>8}  "
-                  f"capacity={r['capacity']!s:>8}", flush=True)
+            print(f"  layer {r['layer']:>3}: cvwh={r['cvwh']!s:>8}  capacity={r['capacity']!s:>8}  "
+                  f"item_destroyed_wh={r.get('item_destroyed_wh')!s:>8}  "
+                  f"signal_destroyed={r.get('signal_destroyed')!s:>8}  "
+                  f"decode_drop={r.get('decode_drop')!s:>8}", flush=True)
     print(f"Done -> {args.out}")
 
 
