@@ -105,11 +105,17 @@ def build_factored(rng, n_factors, n_forms, vocab, interact, n_cross=10, n_perfa
 
 
 # ------------------------------------------------------------------------- measure
-def cv_wh_multi(X, y, n_classes, k=5, n_repeats=2, seed=0):
-    """Cross-validated whitened separability, generalized to n_classes and rank-capped.
-    Fit whitener + class means on TRAIN, evaluate item variance in the class subspace
-    on TEST. <~0.05 separable, ~1 chance, elevated => inseparable. Also returns the
-    effective class-subspace rank actually used (m_eff)."""
+def cv_wh_multi(X, y, n_classes, k=5, n_repeats=2, seed=0, n_null=20):
+    """Cross-validated whitened separability, generalized to n_classes. Fit whitener +
+    class means on TRAIN, evaluate item variance in the class subspace on TEST.
+    <~0.05 separable, ~1 chance, elevated => inseparable. Also returns m_eff.
+
+    The class-subspace rank is estimated by PARALLEL ANALYSIS: shuffle the labels to
+    see how strong a "class" direction gets under pure noise, and keep only the real
+    class directions that stick up above that floor. This is essential -- a lenient
+    rank threshold over-counts when class means are LOW-rank (e.g. additive/
+    compositional structure spans few dims), pulling spurious noise directions into
+    the class subspace and MANUFACTURING inseparability for a separable rep."""
     X = np.asarray(X, dtype=np.float64); n, d = X.shape; m = n_classes - 1
     rng = np.random.default_rng(seed); out, meffs = [], []
     for _ in range(n_repeats):
@@ -124,9 +130,14 @@ def cv_wh_multi(X, y, n_classes, k=5, n_repeats=2, seed=0):
             W = vec @ np.diag(val ** -0.5) @ vec.T
             Xtrw = (X[tr] - mu0) @ W
             means = np.array([Xtrw[y[tr] == c].mean(axis=0) for c in range(n_classes)])
-            cm = means - means.mean(axis=0)
-            _, S, Vt = np.linalg.svd(cm, full_matrices=False)
-            m_eff = min(m, int((S > 1e-6 * (S[0] + 1e-12)).sum())) or 1
+            _, S, Vt = np.linalg.svd(means - means.mean(axis=0), full_matrices=False)
+            null_top = []                       # strongest class singular value under shuffled labels
+            for _ in range(n_null):
+                yp = rng.permutation(y[tr])
+                mp = np.array([Xtrw[yp == c].mean(axis=0) for c in range(n_classes)])
+                null_top.append(np.linalg.svd(mp - mp.mean(axis=0), compute_uv=False)[0])
+            floor = float(np.percentile(null_top, 95))
+            m_eff = max(1, min(m, int((S > floor).sum())))
             C = Vt[:m_eff]
             res = ((X[te] - mu0) @ W) - means[y[te]]
             v_class = float(np.mean(np.sum((res @ C.T) ** 2, axis=1)))

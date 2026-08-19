@@ -96,6 +96,11 @@ def _run_cell(spec, cfg):
     cvwh_h, m_eff = cv_wh_multi(hid, cat_of, n_cat)
     k_it = item_rank(hid, cat_of, n_cat)
     cap = ((m_eff + k_it) / d) if (m_eff is not None and k_it is not None) else None
+    if cfg.get("reps_dir"):
+        os.makedirs(cfg["reps_dir"], exist_ok=True)
+        fn = f"K{K}_phi{phi}_d{d}_{activation}_s{seed}.npz"
+        np.savez_compressed(os.path.join(cfg["reps_dir"], fn), hid=hid.astype(np.float32),
+                            cat_of=cat_of.astype(np.int32), form_of=form_of.astype(np.int32))
     return dict(K=K, phi=phi, d=d, activation=activation, lr=lr, seed=seed,
                 n_classes=n_cat, n_lexemes=n_lex, n_over_d=n_lex / d,
                 m_eff=m_eff, k_item=k_it, capacity=cap,
@@ -141,7 +146,7 @@ EXP5B_CONFIG = dict(
     phi_values=[0.0, 0.25, 0.5, 0.75, 1.0],  # additive (0) -> interactive (1), budget fixed
     per_config_S=60,                       # category tokens per config, HELD CONSTANT
     n_spec=40,                             # item (form-specific) tokens
-    d_values=[32, 64],
+    d_values=[16, 32, 64],                 # three dimensions (parallel-analysis rank fix reclaims high d)
     n_forms_per_d=6,                       # n/d >= 24 (clean measurement)
     activation_values=["relu", "identity"],
     lr_values=[0.003],
@@ -151,6 +156,7 @@ EXP5B_CONFIG = dict(
     batch_size=64,
     n_workers=18,
     out_csv=str(REPO_ROOT / "data" / "experiment5b_interaction_matched_results.csv"),
+    reps_dir=str(REPO_ROOT / "data" / "experiment5b_reps"),   # save reps -> future re-measurement is free
 )
 
 
