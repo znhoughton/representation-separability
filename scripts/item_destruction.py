@@ -64,23 +64,6 @@ def _signal_destroyed(res, res_nc, item_of):
     return (1 - float((c1 ** 2).sum()) / b0) if b0 > 0 else None
 
 
-def _nc_cv_acc(X, y, k=5, seed=0):
-    """Cross-validated nearest-class-centroid accuracy (cheap item decoder)."""
-    rng = np.random.default_rng(seed)
-    n = len(y); folds = np.array_split(rng.permutation(n), k)
-    labels = np.unique(y); correct = 0; total = 0
-    for i in range(k):
-        te = folds[i]; tr = np.concatenate([folds[j] for j in range(k) if j != i])
-        present = [l for l in labels if (y[tr] == l).any()]
-        cent = np.array([X[tr][y[tr] == l].mean(0) for l in present])
-        lab = np.array(present)
-        # nearest centroid: argmin ||x - c||^2 = argmax x.c - 0.5||c||^2
-        score = X[te] @ cent.T - 0.5 * np.sum(cent ** 2, 1)[None, :]
-        pred = lab[score.argmax(1)]
-        correct += (pred == y[te]).sum(); total += len(te)
-    return correct / total if total else float("nan")
-
-
 def _one(path):
     z = np.load(path)
     hid = z["hid"].astype(np.float64); cat_of = z["cat_of"]; form_of = z["form_of"]
@@ -89,8 +72,7 @@ def _one(path):
     row = _parse(os.path.basename(path))
     row.update(n_cat=n_cat, n_lex=len(hid), m_eff=m_eff, cvwh=cvwh)
     if m_eff is None:
-        row.update(item_destroyed_wh=None, item_destroyed_raw=None,
-                   acc_full=None, acc_noclass=None, decode_drop=None)
+        row.update(item_destroyed_wh=None, item_destroyed_raw=None, signal_destroyed=None)
         return row
     m_eff = int(round(m_eff))
     C = _class_subspace(hid, cat_of, n_cat, m_eff)      # (m_eff, d)
@@ -102,12 +84,8 @@ def _one(path):
     # decoding: item identifiability from the residual, BEFORE vs AFTER removing the
     # class-subspace-aligned part of it. drop = fraction of item-ID that lived in class.
     res_nc = res - proj @ C
-    acc_full = _nc_cv_acc(res, form_of)
-    acc_nc = _nc_cv_acc(res_nc, form_of)
-    drop = (1 - acc_nc / acc_full) if acc_full and acc_full > 0 else None
     sig = _signal_destroyed(res, res_nc, form_of)
-    row.update(item_destroyed_wh=cvwh * m_eff / d, item_destroyed_raw=raw,
-               signal_destroyed=sig, acc_full=acc_full, acc_noclass=acc_nc, decode_drop=drop)
+    row.update(item_destroyed_wh=cvwh * m_eff / d, item_destroyed_raw=raw, signal_destroyed=sig)
     return row
 
 
@@ -122,8 +100,7 @@ def main():
         print(f"No .npz found in {args.reps_dir}", file=sys.stderr); sys.exit(1)
     print(f"{len(files)} cells; {args.workers} workers -> {args.out}", flush=True)
     fields = ["name", "K", "phi", "load", "d", "activation", "seed", "n_cat", "n_lex",
-              "m_eff", "cvwh", "item_destroyed_wh", "item_destroyed_raw",
-              "signal_destroyed", "acc_full", "acc_noclass", "decode_drop"]
+              "m_eff", "cvwh", "item_destroyed_wh", "item_destroyed_raw", "signal_destroyed"]
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     done = 0
     with open(args.out, "w", newline="") as fh:
