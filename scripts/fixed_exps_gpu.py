@@ -23,8 +23,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import experiment5b_interaction_matched as e5b   # noqa: E402
 import experiment5_capacity_matched as e5         # noqa: E402
 
-BATCH = 2048          # large batch -> far fewer steps (the GPU win); see caveat above
-GPU_WORKERS = 15      # ~1GB VRAM each -> ~15GB of 20GB; concurrent cells fill the GPU
+BATCH = 2048          # NOTE: batch is part of the optimization regime -- larger batch = more
+#                       separable. Since we're re-baselining the WHOLE toy from scratch, adopting
+#                       batch=2048 is fine AS LONG AS the learned regime (relu >> identity) survives
+#                       it (check pending). If it doesn't, cancel and drop BATCH back to 64.
+#                       Large batch -> ~32x fewer steps -> the full grid in hours.
+GPU_WORKERS = 12      # ~1.5GB/worker at batch=2048,d=64 -> ~18GB of 20GB; empty_cache per cell
+#                       bounds it. If OOM anyway, drop to 10; if plenty of headroom, try 15.
 DEVICE = "cuda"
 
 

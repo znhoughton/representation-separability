@@ -59,16 +59,19 @@ def _run_cell(spec, cfg):
     k_it = item_rank(hid, cat_of, n_cat)
     cap = ((m_eff + k_it) / d) if (m_eff is not None and k_it is not None) else None
     name = "single" if structure == "single" else ("factored_int" if interact else "factored_add")
+    loss = expected_cross_entropy(m, P)
     if cfg.get("reps_dir"):
         os.makedirs(cfg["reps_dir"], exist_ok=True)
         fn = f"{name}_L{load}_d{d}_{activation}_lr{lr}_s{seed}.npz"
         np.savez_compressed(os.path.join(cfg["reps_dir"], fn),
                             hid=hid.astype(np.float32), cat_of=cat_of.astype(np.int32),
                             form_of=form_of.astype(np.int32))
+    if cfg.get("device") == "cuda":      # release this cell's GPU memory so workers don't accumulate
+        import torch; del m; torch.cuda.empty_cache()
     return dict(structure=name, load=load, d=d, activation=activation, lr=lr, seed=seed,
                 n_classes=n_cat, n_lexemes=n_lex, n_over_d=n_lex / d,
                 m_eff=m_eff, k_item=k_it, capacity=cap,
-                final_loss=expected_cross_entropy(m, P), cvwh_hidden=cvwh_h)
+                final_loss=loss, cvwh_hidden=cvwh_h)
 
 
 def run(cfg):
