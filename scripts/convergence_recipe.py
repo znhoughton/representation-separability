@@ -50,7 +50,8 @@ def main():
         dt = time.time() - t0
         cvwh, _ = cv_wh_multi(m.get_all_hidden(), cat_of, n_cat)
         results.append((batch, lr, steps, loss, cvwh, dt))
-        print(f"{batch:>6}{lr:>7}{steps:>9}{loss:>8.3f}{loss - opt:>9.3f}{cvwh:>8.3f}{dt:>6.0f}s", flush=True)
+        cs = f"{cvwh:.3f}" if cvwh is not None else "None"
+        print(f"{batch:>6}{lr:>7}{steps:>9}{loss:>8.3f}{loss - opt:>9.3f}{cs:>8}{dt:>6.0f}s", flush=True)
         if args.device == "cuda":
             del m; torch.cuda.empty_cache()
     floor = min(r[3] for r in results)
