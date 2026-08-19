@@ -151,7 +151,7 @@ def _train(m, P, n_steps, batch_size, lr):
     nl = P.shape[0]
     for _ in range(n_steps):
         li = torch.randint(0, nl, (batch_size,)); tk = torch.multinomial(Pt[li], 1).squeeze(-1)
-        F.cross_entropy(m(li), tk).backward(); opt.step(); opt.zero_grad()
+        F.cross_entropy(m(li), tk).backward(); opt.step(); opt.zero_grad(set_to_none=True)
 
 
 def _specialization(m, form_of, pos_of, spec):

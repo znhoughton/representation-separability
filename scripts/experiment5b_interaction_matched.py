@@ -108,17 +108,10 @@ def _run_cell(spec, cfg):
 
 
 def run(cfg):
-    cells = []
-    for d in cfg["d_values"]:
-        for K in cfg["K_values"]:
-            # skip low-class high-d cells: too many forms for the vocab to keep items distinct
-            if max(4, round(cfg["target_n_over_d"] * d / (2 ** K))) > cfg["max_forms"]:
-                continue
-            for phi in cfg["phi_values"]:
-                for act in cfg["activation_values"]:
-                    for lr in cfg["lr_values"]:
-                        for sd in range(cfg["n_seeds"]):
-                            cells.append((K, phi, d, act, lr, sd))
+    cells = [(K, phi, d, act, lr, sd)
+             for d in cfg["d_values"] for K in cfg["K_values"]
+             for phi in cfg["phi_values"] for act in cfg["activation_values"]
+             for lr in cfg["lr_values"] for sd in range(cfg["n_seeds"])]
     n_workers = cfg.get("n_workers") or min(18, os.cpu_count() or 1)
     print(f"Experiment 5b (interaction, budget-matched): {len(cells)} cells, {n_workers} workers. "
           f"S={cfg['per_config_S']} category tokens/config held fixed; sweeping phi.")
@@ -154,14 +147,12 @@ EXP5B_CONFIG = dict(
     per_config_S=60,                       # category tokens per config, HELD CONSTANT
     n_spec=40,                             # item (form-specific) tokens
     d_values=[16, 32, 64],                 # three dimensions
-    target_n_over_d=150,                    # n_forms set per cell so n/d=150 (clean, whitening)
-    max_forms=1350,                         # skip cells needing more forms than vocab can keep distinct
-    #                                         (at vocab=6000 this keeps item-token overlap <=~9; drops
-    #                                          the low-class d=64 corner, n_classes<8)
+    target_n_over_d=150,                    # n_forms set per cell so n/d=150 (clean whitening)
     activation_values=["relu", "identity"],
     lr_values=[0.003],
     n_seeds=8,
-    vocab_size=6000,                       # large enough that many forms keep distinct item collocates
+    vocab_size=12000,                      # constant; sized for the worst cell (~2400 forms) so items
+    #                                        stay distinct (overlap <=8) everywhere -- no cells skipped
     exposures_per_lexeme=1500,
     batch_size=64,
     n_workers=18,

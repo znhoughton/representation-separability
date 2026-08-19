@@ -112,8 +112,10 @@ mis-estimated and the ratio inflates.
   collapses (a separable rep then reads maximally inseparable — observed at d=64 with
   800 forms in a vocab of 1000). So clean high d needs **both** more samples (forms) and
   more distinct items (vocab), and the cost of the low-class high-d corner (most forms →
-  most vocab) is roughly quadratic. We use vocab=6000 and **skip** that corner
-  (`n_classes < 8` at d=64) rather than pay for it.
+  most vocab) is roughly quadratic. We use a **constant** vocab=12000 (sized for the
+  worst cell so item-token overlap stays ≤8 everywhere) and run the full grid — vocab
+  is held constant across cells; only `n_forms` varies (to keep n/d fixed), which is
+  absorbed by the matched-capacity analysis.
 - **LLM:** every token occurrence is a sample **and** the vocabulary is real and huge —
   so both coupled requirements are satisfied for free. A modest corpus is millions of
   tokens over d_model of a few thousand → **n/d in the hundreds to thousands**, with

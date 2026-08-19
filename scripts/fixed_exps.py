@@ -18,11 +18,10 @@ Runs, in priority order, each with 18 workers:
   2. Experiment 5  -- capacity-matched single / additive / interactive (this is
      the corrected replacement for Exp 4 too).
 
-Both across d = {16, 32, 64} at n/d=150 with vocab=6000, so high d is well-sampled AND
-items stay distinct (more forms need more vocab or they share collocates and item
-structure collapses). The low-class high-d corner (n_classes<8 at d=64), which would
-need prohibitively more vocab, is skipped -- clean everywhere it matters. Just run and
-leave it:  python scripts/fixed_exps.py
+Both across d = {16, 32, 64} at n/d=150 with a CONSTANT vocab=12000 (sized for the
+worst / low-class high-d cell so item-token overlap stays <=8 everywhere). Nothing is
+skipped -- the full grid including the low-class corner runs. Just run and leave it:
+    python scripts/fixed_exps.py
 """
 import sys
 from pathlib import Path
