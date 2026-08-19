@@ -83,7 +83,8 @@ def _run_cell(spec, cfg):
     import torch
     torch.set_num_threads(1)
     K, phi, d, activation, lr, seed = spec
-    n_forms = cfg["n_forms_per_d"] * d
+    n_cat = 2 ** K
+    n_forms = max(4, round(cfg["target_n_over_d"] * d / n_cat))   # uniform n/d -> n_lex = target*d
     rng = np.random.default_rng(seed); torch.manual_seed(seed)
     P, form_of, cat_of, n_cat = build_factored_matched(
         rng, K, n_forms, cfg["vocab_size"], cfg["per_config_S"], phi, n_spec=cfg["n_spec"])
@@ -146,8 +147,8 @@ EXP5B_CONFIG = dict(
     phi_values=[0.0, 0.25, 0.5, 0.75, 1.0],  # additive (0) -> interactive (1), budget fixed
     per_config_S=60,                       # category tokens per config, HELD CONSTANT
     n_spec=40,                             # item (form-specific) tokens
-    d_values=[16, 32, 64],                 # three dimensions (parallel-analysis rank fix reclaims high d)
-    n_forms_per_d=6,                       # n/d >= 24 (clean measurement)
+    d_values=[16, 32, 64],                 # three dimensions
+    target_n_over_d=200,                    # n_forms set per cell so n/d=200 everywhere (clean at high d)
     activation_values=["relu", "identity"],
     lr_values=[0.003],
     n_seeds=8,

@@ -41,8 +41,9 @@ def _run_cell(spec, cfg):
     import torch
     torch.set_num_threads(1)
     structure, load, interact, d, activation, lr, seed = spec
-    n_forms = cfg["n_forms_per_d"] * d            # scale items with d -> keep n/d high
     vocab = cfg["vocab_size"]
+    n_cat_intended = load if structure == "single" else 2 ** load
+    n_forms = max(4, round(cfg["target_n_over_d"] * d / n_cat_intended))  # uniform n/d = target
     rng = np.random.default_rng(seed); torch.manual_seed(seed)
     if structure == "single":
         P, form_of, cat_of, n_cat = build_single(rng, load, n_forms, vocab)
@@ -83,7 +84,7 @@ def run(cfg):
                             cells.append(("factored", K, it, d, act, lr, sd))
     n_workers = cfg.get("n_workers") or min(18, os.cpu_count() or 1)
     print(f"Experiment 5 (capacity-matched structure): {len(cells)} cells, {n_workers} workers. "
-          f"n_forms={cfg['n_forms_per_d']}*d. uniform-loss=log({cfg['vocab_size']})={math.log(cfg['vocab_size']):.3f}.")
+          f"n/d={cfg['target_n_over_d']}. uniform-loss=log({cfg['vocab_size']})={math.log(cfg['vocab_size']):.3f}.")
     fields = ["structure", "load", "d", "activation", "lr", "seed", "n_classes",
               "n_lexemes", "n_over_d", "m_eff", "k_item", "capacity", "final_loss", "cvwh_hidden"]
     Path(cfg["out_csv"]).parent.mkdir(parents=True, exist_ok=True)
@@ -113,8 +114,8 @@ def run(cfg):
 
 
 EXP5_CONFIG = dict(
-    d_values=[32, 64],
-    n_forms_per_d=6,                       # n_forms = 6*d -> n/d = 6*n_classes (>=24), clean measurement
+    d_values=[16, 32, 64],
+    target_n_over_d=200,                   # n_forms set per cell so n/d=200 everywhere (clean at high d)
     single_loads=[4, 6, 8, 12, 16],        # flat factor: m up to 3..15
     factored_loads=[2, 3, 4],              # K binary factors -> 4,8,16 configs
     factored_interact=[True, False],       # interacting vs additive, same K

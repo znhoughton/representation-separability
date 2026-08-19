@@ -18,8 +18,10 @@ Runs, in priority order, each with 18 workers:
   2. Experiment 5  -- capacity-matched single / additive / interactive (this is
      the corrected replacement for Exp 4 too).
 
-Both across d = {16, 32, 64} (three clean dimensions; the rank fix reclaims high d).
-Just run this and leave it: `python scripts/fixed_exps.py`
+Both across d = {16, 32, 64} at a uniform n/d=200 (n_forms set per cell), so high d
+is well-sampled and clean -- the rank fix does most of the work and the extra samples
+finish the job on the d=64 corner. Just run this and leave it:
+    python scripts/fixed_exps.py
 """
 import sys
 from pathlib import Path
