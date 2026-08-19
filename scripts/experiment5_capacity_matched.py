@@ -72,14 +72,20 @@ def _run_cell(spec, cfg):
 
 
 def run(cfg):
+    def _nf(n_cat, d):
+        return max(4, round(cfg["target_n_over_d"] * d / n_cat))
     cells = []
     for d in cfg["d_values"]:
         for act in cfg["activation_values"]:
             for lr in cfg["lr_values"]:
                 for sd in range(cfg["n_seeds"]):
                     for L in cfg["single_loads"]:
+                        if _nf(L, d) > cfg["max_forms"]:      # low-class high-d: skip (vocab limit)
+                            continue
                         cells.append(("single", L, None, d, act, lr, sd))
                     for K in cfg["factored_loads"]:
+                        if _nf(2 ** K, d) > cfg["max_forms"]:
+                            continue
                         for it in cfg["factored_interact"]:
                             cells.append(("factored", K, it, d, act, lr, sd))
     n_workers = cfg.get("n_workers") or min(18, os.cpu_count() or 1)
@@ -115,14 +121,15 @@ def run(cfg):
 
 EXP5_CONFIG = dict(
     d_values=[16, 32, 64],
-    target_n_over_d=200,                   # n_forms set per cell so n/d=200 everywhere (clean at high d)
+    target_n_over_d=150,                   # n_forms set per cell so n/d=150 (clean whitening)
+    max_forms=1350,                        # skip low-class high-d cells (vocab can't keep items distinct)
     single_loads=[4, 6, 8, 12, 16],        # flat factor: m up to 3..15
     factored_loads=[2, 3, 4],              # K binary factors -> 4,8,16 configs
     factored_interact=[True, False],       # interacting vs additive, same K
     activation_values=["relu", "identity"],
     lr_values=[0.003],
     n_seeds=8,                             # power for the matched-capacity contrast
-    vocab_size=1000,
+    vocab_size=6000,                       # large enough that many forms keep distinct item collocates
     exposures_per_lexeme=1500,
     batch_size=64,
     n_workers=18,

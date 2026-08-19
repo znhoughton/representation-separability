@@ -106,12 +106,19 @@ the heavier-tailed relu representations). Below that the whitening covariance is
 mis-estimated and the ratio inflates.
 
 - **Toy:** each item is exactly one measurement point, so n = number of lexemes. We hit
-  the target by scaling items — `n_forms` is set per cell so `n_lex = target · d`
-  (uniform n/d, currently 200). This costs training compute but nothing conceptual.
-- **LLM:** every token occurrence is a sample. A modest corpus is millions of tokens
-  over d_model of a few thousand → **n/d in the hundreds to thousands**. The exact
-  quantity that is starved in the toy is lavish for an LLM — the LLM case is *easier* to
-  measure, not harder.
+  the target by scaling items — `n_forms` is set per cell for `n_lex = target · d`
+  (currently n/d ≈ 150). **But two requirements couple**: more forms need more *vocab*,
+  or the forms share item collocates, become indistinguishable, and item structure
+  collapses (a separable rep then reads maximally inseparable — observed at d=64 with
+  800 forms in a vocab of 1000). So clean high d needs **both** more samples (forms) and
+  more distinct items (vocab), and the cost of the low-class high-d corner (most forms →
+  most vocab) is roughly quadratic. We use vocab=6000 and **skip** that corner
+  (`n_classes < 8` at d=64) rather than pay for it.
+- **LLM:** every token occurrence is a sample **and** the vocabulary is real and huge —
+  so both coupled requirements are satisfied for free. A modest corpus is millions of
+  tokens over d_model of a few thousand → **n/d in the hundreds to thousands**, with
+  genuinely distinct words. The exact things that are starved in the toy are lavish for
+  an LLM — the LLM case is *easier* to measure, not harder.
 
 ---
 

@@ -83,8 +83,7 @@ def _run_cell(spec, cfg):
     import torch
     torch.set_num_threads(1)
     K, phi, d, activation, lr, seed = spec
-    n_cat = 2 ** K
-    n_forms = max(4, round(cfg["target_n_over_d"] * d / n_cat))   # uniform n/d -> n_lex = target*d
+    n_forms = max(4, round(cfg["target_n_over_d"] * d / (2 ** K)))  # n_lex = target*d (uniform n/d)
     rng = np.random.default_rng(seed); torch.manual_seed(seed)
     P, form_of, cat_of, n_cat = build_factored_matched(
         rng, K, n_forms, cfg["vocab_size"], cfg["per_config_S"], phi, n_spec=cfg["n_spec"])
@@ -109,10 +108,17 @@ def _run_cell(spec, cfg):
 
 
 def run(cfg):
-    cells = [(K, phi, d, act, lr, sd)
-             for d in cfg["d_values"] for K in cfg["K_values"]
-             for phi in cfg["phi_values"] for act in cfg["activation_values"]
-             for lr in cfg["lr_values"] for sd in range(cfg["n_seeds"])]
+    cells = []
+    for d in cfg["d_values"]:
+        for K in cfg["K_values"]:
+            # skip low-class high-d cells: too many forms for the vocab to keep items distinct
+            if max(4, round(cfg["target_n_over_d"] * d / (2 ** K))) > cfg["max_forms"]:
+                continue
+            for phi in cfg["phi_values"]:
+                for act in cfg["activation_values"]:
+                    for lr in cfg["lr_values"]:
+                        for sd in range(cfg["n_seeds"]):
+                            cells.append((K, phi, d, act, lr, sd))
     n_workers = cfg.get("n_workers") or min(18, os.cpu_count() or 1)
     print(f"Experiment 5b (interaction, budget-matched): {len(cells)} cells, {n_workers} workers. "
           f"S={cfg['per_config_S']} category tokens/config held fixed; sweeping phi.")
@@ -148,11 +154,14 @@ EXP5B_CONFIG = dict(
     per_config_S=60,                       # category tokens per config, HELD CONSTANT
     n_spec=40,                             # item (form-specific) tokens
     d_values=[16, 32, 64],                 # three dimensions
-    target_n_over_d=200,                    # n_forms set per cell so n/d=200 everywhere (clean at high d)
+    target_n_over_d=150,                    # n_forms set per cell so n/d=150 (clean, whitening)
+    max_forms=1350,                         # skip cells needing more forms than vocab can keep distinct
+    #                                         (at vocab=6000 this keeps item-token overlap <=~9; drops
+    #                                          the low-class d=64 corner, n_classes<8)
     activation_values=["relu", "identity"],
     lr_values=[0.003],
     n_seeds=8,
-    vocab_size=1000,
+    vocab_size=6000,                       # large enough that many forms keep distinct item collocates
     exposures_per_lexeme=1500,
     batch_size=64,
     n_workers=18,
