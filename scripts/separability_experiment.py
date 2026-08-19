@@ -1091,9 +1091,10 @@ def expected_cross_entropy(model, P):
     distributions; used to confirm training actually converged before
     trusting a separability measurement at that (d, n_total_classes) cell.
     """
-    P_t = torch.tensor(P, dtype=torch.float32)
+    dev = next(model.parameters()).device
+    P_t = torch.tensor(P, dtype=torch.float32, device=dev)
     n_verbs = P.shape[0]
-    idx = torch.arange(n_verbs)
+    idx = torch.arange(n_verbs, device=dev)
     with torch.no_grad():
         logits = model(idx)
         log_probs = F.log_softmax(logits, dim=-1)

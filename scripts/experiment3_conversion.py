@@ -106,7 +106,9 @@ class ModelB_conv(nn.Module):
         super().__init__()
         assert d % 2 == 0
         self.d_half = d // 2
-        self.form_of = torch.tensor(form_of); self.pos_of = torch.tensor(pos_of)
+        # buffers so model.to(device) moves the index tensors (GPU support)
+        self.register_buffer("form_of", torch.as_tensor(form_of, dtype=torch.long))
+        self.register_buffer("pos_of", torch.as_tensor(pos_of, dtype=torch.long))
         self.n_lex = len(form_of)
         self.c = nn.Embedding(n_pos, self.d_half)
         self.r = nn.Embedding(n_forms, self.d_half)
@@ -123,11 +125,13 @@ class ModelB_conv(nn.Module):
 
     def get_all_embeddings(self):
         with torch.no_grad():
-            return self._embedding(torch.arange(self.n_lex)).cpu().numpy()
+            lx = torch.arange(self.n_lex, device=self.pos_of.device)
+            return self._embedding(lx).cpu().numpy()
 
     def get_all_hidden(self):
         with torch.no_grad():
-            return self.head.hid(self._embedding(torch.arange(self.n_lex))).cpu().numpy()
+            lx = torch.arange(self.n_lex, device=self.pos_of.device)
+            return self.head.hid(self._embedding(lx)).cpu().numpy()
 
 
 EXP3_CONFIG = dict(
@@ -146,11 +150,13 @@ EXP3_CONFIG = dict(
 )
 
 
-def _train(m, P, n_steps, batch_size, lr):
-    Pt = torch.tensor(P, dtype=torch.float32); opt = torch.optim.Adam(m.parameters(), lr=lr)
+def _train(m, P, n_steps, batch_size, lr, device="cpu"):
+    m.to(device)
+    Pt = torch.tensor(P, dtype=torch.float32, device=device); opt = torch.optim.Adam(m.parameters(), lr=lr)
     nl = P.shape[0]
     for _ in range(n_steps):
-        li = torch.randint(0, nl, (batch_size,)); tk = torch.multinomial(Pt[li], 1).squeeze(-1)
+        li = torch.randint(0, nl, (batch_size,), device=device)
+        tk = torch.multinomial(Pt[li], 1).squeeze(-1)
         F.cross_entropy(m(li), tk).backward(); opt.step(); opt.zero_grad(set_to_none=True)
 
 

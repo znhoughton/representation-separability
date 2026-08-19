@@ -53,7 +53,7 @@ def _run_cell(spec, cfg):
     n_steps = math.ceil(cfg["exposures_per_lexeme"] * n_lex / cfg["batch_size"])
     torch.manual_seed(seed)
     m = ModelB_conv(n_forms, n_cat, form_of, cat_of, vocab, d, d, activation)
-    _train(m, P, n_steps, cfg["batch_size"], lr)
+    _train(m, P, n_steps, cfg["batch_size"], lr, cfg.get("device", "cpu"))
     hid = m.get_all_hidden()
     cvwh_h, m_eff = cv_wh_multi(hid, cat_of, n_cat)
     k_it = item_rank(hid, cat_of, n_cat)
