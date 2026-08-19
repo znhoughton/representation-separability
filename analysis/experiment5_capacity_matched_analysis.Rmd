@@ -26,9 +26,11 @@ and that class *structure* seemed to matter — but it compared structures at ma
 factored structures have different effective class rank). Experiment 5 fixes two
 things:
 
-1. **Measurement**: `n_forms = 6·d`, so n/d ≥ 24 everywhere and the CV-whitened
-   estimate no longer inflates for the ReLU representation at larger d (Exp 4's
-   high-d cells were contaminated at n/d ≈ 8).
+1. **Measurement**: `n_forms` is set per cell so **n/d = 150** everywhere (constant),
+   plus the corrected **parallel-analysis rank** for the class subspace, so the
+   CV-whitened estimate no longer inflates for the ReLU representation at larger d
+   (Exp 4's high-d cells were contaminated at n/d ≈ 8). Vocab is held constant at
+   12000 across all cells (no per-cell vocab — that was a reviewer red flag).
 2. **The confound**: the three structures (`single`, `factored_add`, `factored_int`)
    are swept over **overlapping capacity**, and matched on *measured* capacity here
    via `cvwh ~ ns(capacity) + structure`. A structure effect at matched capacity
@@ -40,6 +42,12 @@ gauge-invariant, self-calibrating (separable ≈ 0, chance ≈ 1), undersampling
 **Caveat carried into the interpretation:** `factored_int` has more category tokens
 than `factored_add` (per-factor + factor-pair), so "interaction" is confounded with
 *cue richness* — read the additive-vs-interacting direction with that in mind.
+Experiment 5b removes this confound with a matched token budget.
+
+**Regime note:** these runs use batch=2048 (GPU). Larger batch = less gradient noise
+= more separable, so absolute `cvwh` is ~4x smaller than the batch=64 numbers; the
+learned regime (relu above the identity floor) and the structure ordering survive it.
+Read the *contrasts* — relu-vs-identity gap and the structure shifts — not the raw scale.
 
 ```{r libs}
 library(tidyverse); library(splines)
@@ -57,7 +65,7 @@ dat <- read_csv(file.path("..", "data", "experiment5_capacity_matched_results.cs
          d = as.integer(d),
          structure = factor(structure, levels = c("single", "factored_add", "factored_int")),
          activation = factor(activation)) %>%
-  mutate(uniform_loss = log(1000),
+  mutate(uniform_loss = log(12000),
          converged = final_loss < uniform_loss - 0.4,
          artifact  = cvwh_hidden > 1.05 & activation == "identity")  # gauge-invariant linear can't exceed ~1 unless mis-estimated
 glimpse(dat)
