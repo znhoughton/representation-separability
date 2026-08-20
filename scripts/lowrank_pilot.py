@@ -110,7 +110,11 @@ def main():
     # bias the measurement -- d/rank is a real *capacity* knob (slack to separate), not a
     # measurement artifact. Run --d larger to test "entangles even with room to spare".
     R = args.r_class + args.r_item + args.r_int
-    d = args.d if args.d > 0 else R
+    # A ReLU model needs d COMFORTABLY above rank to actually fit a rank-R target; at d=R
+    # it is effectively capacity-limited (loss won't reach the floor, geometry drifts).
+    # So the fittable baseline is d > R; sweep d down toward/below R for the superposition
+    # (capacity-limited) regime. Default to a comfortable margin.
+    d = args.d if args.d > 0 else 3 * R
     conds = [("additive", args.r_class, args.r_item + args.r_int, 0),
              ("interactive", args.r_class, args.r_item, args.r_int)]
     for cond, rc, ri, r_int in conds:
