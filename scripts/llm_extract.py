@@ -132,31 +132,53 @@ def extract(model_name, sentences, layer_idxs, max_tokens, device, seed=0,
 
 
 # -------------------------------------------------------------------- measure
-def measure(reps, upos, lemma, min_class_count=50):
-    """For each layer compute cvwh, m_eff, k_item, capacity over POS classes that
-    have at least min_class_count tokens."""
+def aggregate_types(X, upos, lemma, min_count=5):
+    """Aggregate per-token reps to per-(lemma, POS) TYPE means (average over contexts),
+    keeping types with >= min_count tokens. Isolates lemma identity from context, so
+    k_item/capacity reflect item structure rather than contextual variance. NOTE: far
+    fewer points than tokens -> smaller n/d (watch n_over_d for undersampling)."""
+    keys = np.array([f"{l}\t{u}" for l, u in zip(lemma, upos)])
+    uniq, inv, counts = np.unique(keys, return_inverse=True, return_counts=True)
+    sums = np.zeros((len(uniq), X.shape[1]), dtype=np.float64)
+    np.add.at(sums, inv, X.astype(np.float64))
+    means = (sums / counts[:, None]).astype(np.float32)
+    keep = counts >= min_count
+    parts = np.array([k.split("\t") for k in uniq[keep]])
+    return means[keep], parts[:, 1], parts[:, 0]      # X_type, upos_type, lemma_type
+
+
+def _core(X, y, lem, n_classes, n_pos, layer, level):
+    cvwh, m_eff = cv_wh_multi(X, y, n_classes)
+    k_it = item_rank(X, y, n_classes)
+    d = X.shape[1]
+    cap = ((m_eff + k_it) / d) if (m_eff is not None and k_it is not None) else None
+    row = dict(layer=layer, level=level, d=d, n_points=len(y), n_over_d=round(len(y) / d, 1),
+               n_pos=n_pos, n_lemmas=len(np.unique(lem)),
+               m_eff=m_eff, k_item=k_it, capacity=cap, cvwh=cvwh,
+               item_destroyed_wh=(cvwh * m_eff / d) if (cvwh is not None and m_eff) else None)
+    if m_eff is not None:
+        row.update(item_destruction(X, y, lem, n_classes, m_eff))
+    return row
+
+
+def measure(reps, upos, lemma, min_class_count=50, min_type_count=5):
+    """Measure at BOTH the token level (sample-rich; k_item includes context) and the
+    type = (lemma, POS)-mean level (clean item structure, but smaller n/d). Two rows per
+    layer; compare their capacity, and check n_over_d before trusting type-level cvwh."""
     classes, counts = np.unique(upos, return_counts=True)
     keep = set(classes[counts >= min_class_count])
     mask = np.array([u in keep for u in upos])
-    kept = sorted(keep)
-    code = {c: i for i, c in enumerate(kept)}
-    y = np.array([code[u] for u in upos[mask]])
-    n_classes = len(kept)
-    lem = lemma[mask]
+    kept = sorted(keep); code = {c: i for i, c in enumerate(kept)}; n_classes = len(kept)
     rows = []
     for li, X in reps.items():
-        Xm = X[mask]
-        cvwh, m_eff = cv_wh_multi(Xm, y, n_classes)
-        k_it = item_rank(Xm, y, n_classes)
-        d = Xm.shape[1]
-        cap = ((m_eff + k_it) / d) if (m_eff is not None and k_it is not None) else None
-        row = dict(layer=li, d=d, n_tokens=len(y), n_pos=n_classes,
-                   n_lemmas=len(np.unique(lem)),
-                   m_eff=m_eff, k_item=k_it, capacity=cap, cvwh=cvwh,
-                   item_destroyed_wh=(cvwh * m_eff / d) if (cvwh is not None and m_eff) else None)
-        if m_eff is not None:
-            row.update(item_destruction(Xm, y, lem, n_classes, m_eff))
-        rows.append(row)
+        Xt, ut, lt = X[mask], upos[mask], lemma[mask]
+        yt = np.array([code[u] for u in ut])
+        rows.append(_core(Xt, yt, lt, n_classes, n_classes, li, "token"))
+        Xty, uty, lty = aggregate_types(Xt, ut, lt, min_type_count)
+        pos_present = sorted(set(uty))
+        if len(Xty) > n_classes + 5 and len(pos_present) >= 2:
+            yty = np.array([code[u] for u in uty])
+            rows.append(_core(Xty, yty, lty, n_classes, len(pos_present), li, "type"))
     return rows, kept
 
 
@@ -166,8 +188,11 @@ def main():
     ap.add_argument("--conllu", required=True, help="path to a UD .conllu file")
     ap.add_argument("--layers", default="-1,-2",
                     help="comma list of hidden_states indices, or 'all' (0=embeddings)")
-    ap.add_argument("--max-tokens", type=int, default=40000)
+    ap.add_argument("--max-tokens", type=int, default=200000,
+                    help="cap on tokens; whitening wants n/d >~100, so raise for big d")
     ap.add_argument("--min-class-count", type=int, default=50)
+    ap.add_argument("--min-type-count", type=int, default=5,
+                    help="min tokens for a (lemma,POS) type to enter the type-level measure")
     ap.add_argument("--device", default="cpu")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--out", default=str(REPO_ROOT / "data" / "llm_separability.csv"))
@@ -189,11 +214,11 @@ def main():
     print(f"Extracted {len(upos)} tokens; POS present: "
           f"{dict(zip(*np.unique(upos, return_counts=True)))}", flush=True)
 
-    rows, kept = measure(reps, upos, lemma, args.min_class_count)
+    rows, kept = measure(reps, upos, lemma, args.min_class_count, args.min_type_count)
     print(f"Measured over {len(kept)} POS classes: {kept}", flush=True)
 
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
-    fields = ["model", "layer", "d", "n_tokens", "n_pos", "n_lemmas",
+    fields = ["model", "layer", "level", "d", "n_points", "n_over_d", "n_pos", "n_lemmas",
               "m_eff", "k_item", "capacity", "cvwh", "item_destroyed_wh", "signal_destroyed"]
     write_header = not Path(args.out).exists()
     with open(args.out, "a", newline="") as fh:
@@ -203,9 +228,9 @@ def main():
         for r in rows:
             r["model"] = args.model
             w.writerow(r)
-            print(f"  layer {r['layer']:>3}: cvwh={r['cvwh']!s:>8}  capacity={r['capacity']!s:>8}  "
-                  f"item_destroyed_wh={r.get('item_destroyed_wh')!s:>8}  "
-                  f"signal_destroyed={r.get('signal_destroyed')!s:>8}", flush=True)
+            print(f"  layer {r['layer']:>3} [{r['level']:>5}]: n/d={r['n_over_d']!s:>6}  "
+                  f"capacity={r['capacity']!s:>8}  cvwh={r['cvwh']!s:>8}  "
+                  f"m_eff={r['m_eff']!s:>6}  k_item={r['k_item']!s:>7}", flush=True)
     print(f"Done -> {args.out}")
 
 
