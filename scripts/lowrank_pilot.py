@@ -128,11 +128,11 @@ def main():
             opt_loss = float(-(P * np.log(np.clip(P, 1e-12, None))).sum(1).mean())
             rows = trajectory(P, form_of, cat_of, n_cat, d, args.device,
                               args.lr, args.batch, args.max_steps, args.log_every, seed)
-            print(f"  seed {seed}: optimal(entropy)={opt_loss:.3f}   "
-                  f"{'step':>7}{'loss':>9}{'gap':>8}{'cvwh':>8}")
+            print(f"  seed {seed}: optimal(entropy)={opt_loss:.3f}")
+            print(f"    {'step':>8}{'loss':>9}{'gap':>8}{'cvwh':>8}")
             for step, loss, cvwh in rows:
                 cs = f"{cvwh:.3f}" if cvwh is not None else "None"
-                print(f"{'':>27}{step:>7}{loss:>9.3f}{loss - opt_loss:>8.3f}{cs:>8}", flush=True)
+                print(f"    {step:>8}{loss:>9.3f}{loss - opt_loss:>8.3f}{cs:>8}", flush=True)
 
 
 if __name__ == "__main__":
