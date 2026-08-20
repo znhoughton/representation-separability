@@ -82,7 +82,8 @@ def _run_cell(spec, cfg):
 def run(cfg):
     cells = []
     for R in cfg["ranks"]:
-        ds = sorted({max(1, round(rr * R)) for rr in cfg["d_over_r"]})
+        # ModelB_conv splits d into class/item halves -> d must be even
+        ds = sorted({max(2, int(2 * round(rr * R / 2))) for rr in cfg["d_over_r"]})
         for d in ds:
             for cond in cfg["conditions"]:
                 for sd in range(cfg["n_seeds"]):
