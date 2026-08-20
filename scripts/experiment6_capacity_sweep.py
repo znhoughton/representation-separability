@@ -108,6 +108,7 @@ def run(cfg):
     if n_cells == 0:
         print(f"All cells present in {out}; nothing to do."); return
     resuming = out.exists() and done_keys
+    offset = len(done_keys); total = offset + n_cells    # overall sweep size (done + to-run)
     done = 0; start = time.time(); tty = sys.stdout.isatty()
     with open(out, "a" if resuming else "w", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=fields)
@@ -117,15 +118,18 @@ def run(cfg):
             futs = {ex.submit(_run_cell, c, cfg): c for c in cells}
             for fut in as_completed(futs):
                 w.writerow(fut.result()); fh.flush(); done += 1
-                frac = done / n_cells; el = time.time() - start
-                eta = (el / frac - el) if frac > 0 else 0.0
+                overall = offset + done              # progress over the WHOLE sweep
+                sess = done / n_cells; el = time.time() - start
+                eta = (el / sess - el) if sess > 0 else 0.0   # ETA from THIS session's rate
                 if tty:
+                    frac = overall / total
                     fill = int(30 * frac); bar = "=" * fill + (">" + " " * (30 - fill - 1) if fill < 30 else "")
-                    print(f"\r  [{bar}] {done}/{n_cells} ({frac * 100:4.0f}%)  "
+                    print(f"\r  [{bar}] {overall}/{total} ({frac * 100:4.0f}%)  "
                           f"{int(el // 60)}m{int(el % 60):02d}s  eta {int(eta // 60)}m{int(eta % 60):02d}s   ",
                           end="", flush=True)
                 elif done % 25 == 0 or done == n_cells:
-                    print(f"  {done}/{n_cells} ({frac * 100:4.0f}%)  eta {int(eta // 60)}m", flush=True)
+                    print(f"  {overall}/{total} ({overall / total * 100:4.0f}%)  "
+                          f"eta {int(eta // 60)}m", flush=True)
     if tty:
         print()
     print(f"Done -> {cfg['out_csv']}")
