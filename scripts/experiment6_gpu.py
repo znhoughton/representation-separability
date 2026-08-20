@@ -10,5 +10,5 @@ import experiment6_capacity_sweep as e6  # noqa: E402
 if __name__ == "__main__":
     mp.set_start_method("spawn", force=True)   # CUDA + multiprocessing
     cfg = dict(e6.EXP6_CONFIG)
-    cfg.update(device="cuda", n_workers=30)
+    cfg.update(device="cuda", n_workers=20, resume=True)   # 20 workers; resume skips done cells
     e6.run(cfg)

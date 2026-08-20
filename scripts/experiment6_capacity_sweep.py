@@ -88,16 +88,31 @@ def run(cfg):
             for cond in cfg["conditions"]:
                 for sd in range(cfg["n_seeds"]):
                     cells.append((R, d, cond, sd))
-    n_workers = cfg.get("n_workers") or min(30, os.cpu_count() or 1)
-    print(f"Experiment 6 (capacity sweep): {len(cells)} cells, {n_workers} workers, "
-          f"device={cfg.get('device', 'cpu')}. ranks={cfg['ranks']}, "
-          f"{len(cfg['d_over_r'])} d/R ratios, {cfg['n_seeds']} seeds.", flush=True)
     fields = ["rank", "d", "d_over_r", "condition", "seed", "n_classes", "n_lexemes",
               "n_over_d", "m_eff", "k_item", "capacity", "gap", "final_loss", "opt_loss", "cvwh"]
-    Path(cfg["out_csv"]).parent.mkdir(parents=True, exist_ok=True)
-    n_cells = len(cells); done = 0; start = time.time(); tty = sys.stdout.isatty()
-    with open(cfg["out_csv"], "w", newline="") as fh:
-        w = csv.DictWriter(fh, fieldnames=fields); w.writeheader()
+    out = Path(cfg["out_csv"]); out.parent.mkdir(parents=True, exist_ok=True)
+    # RESUME: skip cells already present in the CSV (keyed by rank, d, condition, seed)
+    done_keys = set()
+    if cfg.get("resume", True) and out.exists():
+        with open(out, newline="") as fh:
+            for r in csv.DictReader(fh):
+                try:
+                    done_keys.add((int(r["rank"]), int(r["d"]), r["condition"], int(r["seed"])))
+                except (ValueError, KeyError):
+                    continue                         # skip a truncated/partial last row
+        cells = [c for c in cells if c not in done_keys]
+    n_workers = cfg.get("n_workers") or min(30, os.cpu_count() or 1)
+    n_cells = len(cells)
+    print(f"Experiment 6 (capacity sweep): {len(done_keys)} already done, {n_cells} to run, "
+          f"{n_workers} workers, device={cfg.get('device', 'cpu')}.", flush=True)
+    if n_cells == 0:
+        print(f"All cells present in {out}; nothing to do."); return
+    resuming = out.exists() and done_keys
+    done = 0; start = time.time(); tty = sys.stdout.isatty()
+    with open(out, "a" if resuming else "w", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=fields)
+        if not resuming:
+            w.writeheader()
         with ProcessPoolExecutor(max_workers=n_workers) as ex:
             futs = {ex.submit(_run_cell, c, cfg): c for c in cells}
             for fut in as_completed(futs):
