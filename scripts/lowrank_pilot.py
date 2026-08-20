@@ -104,8 +104,11 @@ def main():
     args = ap.parse_args()
 
     # Match TOTAL rank across conditions (additive pads its item main effect with the
-    # interaction budget), and default d to that rank so there are NO free dimensions to
-    # inject init noise into cvwh. So the ONLY difference is additive vs interactive.
+    # interaction budget) so the ONLY difference is additive vs interactive. d defaults to
+    # that rank (r/d = 1, the tightest fittable baseline). NOTE: cvwh is verified robust to
+    # free dims (separable rep reads 0.000 with up to 40 noise dims), so d>rank does NOT
+    # bias the measurement -- d/rank is a real *capacity* knob (slack to separate), not a
+    # measurement artifact. Run --d larger to test "entangles even with room to spare".
     R = args.r_class + args.r_item + args.r_int
     d = args.d if args.d > 0 else R
     conds = [("additive", args.r_class, args.r_item + args.r_int, 0),
