@@ -88,7 +88,7 @@ def trajectory(P, form_of, cat_of, n_cat, d, dev, lr, batch, max_steps, log_ever
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--device", default="cpu")
-    ap.add_argument("--d", type=int, default=32)
+    ap.add_argument("--d", type=int, default=0, help="hidden width; 0 = match the (total) rank")
     ap.add_argument("--n-config", type=int, default=8)
     ap.add_argument("--n-form", type=int, default=400)
     ap.add_argument("--vocab", type=int, default=2000)
@@ -98,21 +98,28 @@ def main():
     ap.add_argument("--scale", type=float, default=3.0)
     ap.add_argument("--lr", type=float, default=0.003)
     ap.add_argument("--batch", type=int, default=512)
-    ap.add_argument("--max-steps", type=int, default=60000)
-    ap.add_argument("--log-every", type=int, default=6000)
+    ap.add_argument("--max-steps", type=int, default=120000)
+    ap.add_argument("--log-every", type=int, default=8000)
     ap.add_argument("--seeds", type=int, default=2)
     args = ap.parse_args()
 
-    for cond, r_int in [("additive", 0), ("interactive", args.r_int)]:
-        rank = args.r_class + args.r_item + r_int
-        print(f"\n===== {cond}: rank = {rank} (r_class={args.r_class}+r_item={args.r_item}+r_int={r_int}), "
-              f"d={args.d} {'>= rank (fittable)' if args.d >= rank else '< rank (capacity-limited)'} =====")
+    # Match TOTAL rank across conditions (additive pads its item main effect with the
+    # interaction budget), and default d to that rank so there are NO free dimensions to
+    # inject init noise into cvwh. So the ONLY difference is additive vs interactive.
+    R = args.r_class + args.r_item + args.r_int
+    d = args.d if args.d > 0 else R
+    conds = [("additive", args.r_class, args.r_item + args.r_int, 0),
+             ("interactive", args.r_class, args.r_item, args.r_int)]
+    for cond, rc, ri, r_int in conds:
+        rank = rc + ri + r_int
+        print(f"\n===== {cond}: rank={rank} (r_class={rc}+r_item={ri}+r_int={r_int}), "
+              f"d={d} {'(fittable)' if d >= rank else '(capacity-limited)'} =====")
         for seed in range(args.seeds):
             rng = np.random.default_rng(seed)
             P, form_of, cat_of, n_cat = build_lowrank(
-                rng, args.n_form, args.n_config, args.vocab, args.r_class, args.r_item, r_int, args.scale)
+                rng, args.n_form, args.n_config, args.vocab, rc, ri, r_int, args.scale)
             opt_loss = float(-(P * np.log(np.clip(P, 1e-12, None))).sum(1).mean())
-            rows = trajectory(P, form_of, cat_of, n_cat, args.d, args.device,
+            rows = trajectory(P, form_of, cat_of, n_cat, d, args.device,
                               args.lr, args.batch, args.max_steps, args.log_every, seed)
             print(f"  seed {seed}: optimal(entropy)={opt_loss:.3f}   "
                   f"{'step':>7}{'loss':>9}{'gap':>8}{'cvwh':>8}")
