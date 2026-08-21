@@ -167,7 +167,10 @@ def _train(m, P, max_steps, batch_size, lr, device="cpu",
         torch.backends.cudnn.allow_tf32 = True
     m.to(device)
     Pt = torch.tensor(P, dtype=torch.float32, device=device)
-    opt = torch.optim.Adam(m.parameters(), lr=lr)
+    try:
+        opt = torch.optim.Adam(m.parameters(), lr=lr, fused=(device == "cuda"))  # fused kernel = free speedup
+    except (TypeError, RuntimeError):
+        opt = torch.optim.Adam(m.parameters(), lr=lr)
     nl = P.shape[0]
     all_idx = torch.arange(nl, device=device)
     use_amp = amp and device == "cuda"
