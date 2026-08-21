@@ -137,7 +137,8 @@ EXP7_CONFIG = dict(
     max_steps=150000,
     lr=0.003,
     batch=512,
-    amp=True,                                            # bf16 autocast on cuda (~2x); reps/eval stay fp32
+    amp=False,                                           # bf16 is SLOWER for these tiny models (spot-check);
+    #                                                      autocast overhead > tensor-core gain. (On for LLMs.)
     n_workers=None,
     device="cpu",
     out_csv=str(REPO_ROOT / "data" / "experiment7_capacity_grid_results.csv"),
