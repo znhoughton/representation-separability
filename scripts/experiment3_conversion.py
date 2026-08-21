@@ -163,8 +163,8 @@ def _train(m, P, max_steps, batch_size, lr, device="cpu",
     early-stopping eval stays fp32 so the stop criterion is exact, and get_all_hidden (the
     reps we measure) is unaffected (fp32 params, no autocast there)."""
     if device == "cuda":
-        torch.backends.cuda.matmul.allow_tf32 = True
-        torch.backends.cudnn.allow_tf32 = True
+        torch.backends.cuda.matmul.allow_tf32 = False   # pure fp32 matmuls (TF32 barely helps this
+        torch.backends.cudnn.allow_tf32 = False         # launch-bound workload; keep the regime clean)
     m.to(device)
     Pt = torch.tensor(P, dtype=torch.float32, device=device)
     try:
