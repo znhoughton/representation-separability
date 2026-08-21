@@ -54,7 +54,8 @@ def _run_cell(spec, cfg):
     torch.manual_seed(seed)
     m = ModelA_MLP(nl, cfg["vocab"], d, d, act).to(dev)         # free per-lexeme embedding
     steps, loss = _train(m, P, cfg["max_steps"], cfg["batch"], cfg["lr"], dev,
-                         eval_every=cfg.get("eval_every", 500), patience=cfg.get("patience", 10))
+                         eval_every=cfg.get("eval_every", 500), patience=cfg.get("patience", 10),
+                         amp=cfg.get("amp", False))
     hid = m.get_all_hidden()
     sep, k_class = separability(hid, cat_of, n_cat, form_of)
     opt_loss = float(-(P * np.log(np.clip(P, 1e-12, None))).sum(1).mean())
@@ -136,6 +137,7 @@ EXP7_CONFIG = dict(
     max_steps=150000,
     lr=0.003,
     batch=512,
+    amp=True,                                            # bf16 autocast on cuda (~2x); reps/eval stay fp32
     n_workers=None,
     device="cpu",
     out_csv=str(REPO_ROOT / "data" / "experiment7_capacity_grid_results.csv"),

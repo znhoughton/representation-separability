@@ -151,21 +151,28 @@ EXP3_CONFIG = dict(
 
 
 def _train(m, P, max_steps, batch_size, lr, device="cpu",
-           eval_every=500, patience=10, min_delta=3e-4):
+           eval_every=500, patience=10, min_delta=3e-4, amp=False):
     """Train with EARLY STOPPING on the exact expected loss against the true P (not a
     noisy sampled-token estimate). Stop when that loss fails to improve by >min_delta
     for `patience` consecutive evals (a real PLATEAU = converged), or at max_steps.
     Returns (steps_run, best_loss). NOTE: converged means plateaued, NOT "reached the
     entropy of P" -- low-d models are capacity-limited and plateau above that floor;
     the gap to entropy is a capacity signal, not undertraining. Keep patience generous
-    and min_delta small so the plateau is real and not a premature stop."""
+    and min_delta small so the plateau is real and not a premature stop.
+    amp=True -> bf16 autocast for the TRAINING forward on cuda (~2x on tensor cores); the
+    early-stopping eval stays fp32 so the stop criterion is exact, and get_all_hidden (the
+    reps we measure) is unaffected (fp32 params, no autocast there)."""
+    if device == "cuda":
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
     m.to(device)
     Pt = torch.tensor(P, dtype=torch.float32, device=device)
     opt = torch.optim.Adam(m.parameters(), lr=lr)
     nl = P.shape[0]
     all_idx = torch.arange(nl, device=device)
+    use_amp = amp and device == "cuda"
 
-    def expected_loss():
+    def expected_loss():                                   # fp32 -> precise stopping signal
         m.eval(); tot = 0.0
         with torch.no_grad():
             for s in range(0, nl, 4096):
@@ -178,7 +185,9 @@ def _train(m, P, max_steps, batch_size, lr, device="cpu",
     for step in range(max_steps):
         li = torch.randint(0, nl, (batch_size,), device=device)
         tk = torch.multinomial(Pt[li], 1).squeeze(-1)
-        F.cross_entropy(m(li), tk).backward(); opt.step(); opt.zero_grad(set_to_none=True)
+        with torch.autocast("cuda", dtype=torch.bfloat16, enabled=use_amp):
+            loss = F.cross_entropy(m(li), tk)
+        loss.backward(); opt.step(); opt.zero_grad(set_to_none=True)
         steps = step + 1
         if steps % eval_every == 0:
             v = expected_loss()
