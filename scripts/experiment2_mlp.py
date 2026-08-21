@@ -106,11 +106,13 @@ class ModelA_MLP(nn.Module):
 
     def get_all_embeddings(self):
         with torch.no_grad():
-            return self.embed(torch.arange(self.n_verbs)).cpu().numpy()
+            dev = self.embed.weight.device
+            return self.embed(torch.arange(self.n_verbs, device=dev)).cpu().numpy()
 
     def get_all_hidden(self):
         with torch.no_grad():
-            return self.head.hid(self.embed(torch.arange(self.n_verbs))).cpu().numpy()
+            dev = self.embed.weight.device
+            return self.head.hid(self.embed(torch.arange(self.n_verbs, device=dev))).cpu().numpy()
 
 
 class ModelB_MLP(nn.Module):
