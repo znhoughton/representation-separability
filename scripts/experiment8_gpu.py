@@ -22,12 +22,18 @@ def main():
     # cores (workers spend most of each step waiting on the GPU, so more processes than cores
     # keeps it fed). Push up until GPU-Util hits 100%; benchmark_machines.py finds the peak.
     cfg.update(device="cuda", n_workers=50, resume=True)
-    # Dual-spark sharding:  node A -> `python experiment8_gpu.py 0 2`,  node B -> `... 1 2`
-    # (each writes its own _shardN.csv; merge_shards.py combines them). No args = whole grid.
-    if len(sys.argv) >= 3:
-        i, n = int(sys.argv[1]), int(sys.argv[2])
+    # Args (all optional):  [shard_i shard_n] [n_workers]
+    #   whole grid, tuned workers:   python experiment8_gpu.py --workers 40
+    #   dual-spark node A / B:       python experiment8_gpu.py 0 2   /   ... 1 2
+    #   ...with a benchmarked count:  python experiment8_gpu.py 0 2 --workers 44
+    # Use whatever benchmark_machines.py found best for THIS machine (no reason to assume 50).
+    args = list(sys.argv[1:])
+    if "--workers" in args:
+        j = args.index("--workers")
+        cfg["n_workers"] = int(args[j + 1]); del args[j:j + 2]
+    if len(args) >= 2:
+        i, n = int(args[0]), int(args[1])
         cfg["shard"] = (i, n)
-        cfg["n_workers"] = 32                                  # ~1.5x a 20-core Spark node
         cfg["out_csv"] = cfg["out_csv"].replace(".csv", f"_shard{i}.csv")
         cfg["reps_dir"] = cfg["reps_dir"] + f"_shard{i}"
     e8.run(cfg)
