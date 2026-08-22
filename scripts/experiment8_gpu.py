@@ -22,6 +22,14 @@ def main():
     # cores (workers spend most of each step waiting on the GPU, so more processes than cores
     # keeps it fed). Push up until GPU-Util hits 100%; benchmark_machines.py finds the peak.
     cfg.update(device="cuda", n_workers=50, resume=True)
+    # Dual-spark sharding:  node A -> `python experiment8_gpu.py 0 2`,  node B -> `... 1 2`
+    # (each writes its own _shardN.csv; merge_shards.py combines them). No args = whole grid.
+    if len(sys.argv) >= 3:
+        i, n = int(sys.argv[1]), int(sys.argv[2])
+        cfg["shard"] = (i, n)
+        cfg["n_workers"] = 32                                  # ~1.5x a 20-core Spark node
+        cfg["out_csv"] = cfg["out_csv"].replace(".csv", f"_shard{i}.csv")
+        cfg["reps_dir"] = cfg["reps_dir"] + f"_shard{i}"
     e8.run(cfg)
 
     print("\n" + "=" * 60 + "\nMEASURE VALIDATION BATTERY (frac/k)\n" + "=" * 60, flush=True)
