@@ -57,7 +57,9 @@ def _run_cell(spec, cfg):
                          eval_every=cfg.get("eval_every", 500), patience=cfg.get("patience", 10),
                          amp=cfg.get("amp", False))
     hid = m.get_all_hidden()
-    sep, k_class = separability(hid, cat_of, n_cat, form_of)
+    # record NORMALIZED sep for a stable column meaning; perdim(=sep/d) & raw(=sep*k/d) are
+    # derived post-hoc by add_frac_column.py. (separability() default is mode="perdim" now.)
+    sep, k_class = separability(hid, cat_of, n_cat, form_of, mode="norm")
     opt_loss = float(-(P * np.log(np.clip(P, 1e-12, None))).sum(1).mean())
     if cfg.get("reps_dir"):
         fn = f"rc{rc}_ri{ri}_d{d}_{cond}_{act}_s{seed}.npz"
