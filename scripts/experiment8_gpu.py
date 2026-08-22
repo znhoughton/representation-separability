@@ -18,7 +18,10 @@ import experiment8_interaction_grid as e8  # noqa: E402
 
 def main():
     cfg = dict(e8.EXP8_CONFIG)
-    cfg.update(device="cuda", n_workers=30, resume=True)
+    # GPU-bound, so OVERSUBSCRIBE the cores: ~50 workers pegged the A100 at 100% util on 32
+    # cores (workers spend most of each step waiting on the GPU, so more processes than cores
+    # keeps it fed). Push up until GPU-Util hits 100%; benchmark_machines.py finds the peak.
+    cfg.update(device="cuda", n_workers=50, resume=True)
     e8.run(cfg)
 
     print("\n" + "=" * 60 + "\nMEASURE VALIDATION BATTERY (frac/k)\n" + "=" * 60, flush=True)

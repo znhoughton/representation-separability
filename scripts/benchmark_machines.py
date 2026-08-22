@@ -6,10 +6,14 @@ through the actual ProcessPool, at a FIXED step count so every machine does iden
 the numbers are directly comparable. The cells/min ratio between machines is what carries over
 to the full run.
 
+GPU-bound => OVERSUBSCRIBE the cores (workers wait on the GPU, so more procs than cores keeps
+it fed; ~50 pegged the A100 on 32 cores). Try a couple worker counts and take the peak cells/min.
+
 Usage:  python scripts/benchmark_machines.py [n_workers] [max_steps]
-  A100 box (32 cores):   python scripts/benchmark_machines.py 30
-  Spark   (20 cores):    python scripts/benchmark_machines.py 18
-Defaults: n_workers = min(30, cores-2), max_steps = 6000.
+  A100 box (32 cores):   python scripts/benchmark_machines.py 50
+  ONE Spark node (20c):  python scripts/benchmark_machines.py 32
+Then: dual-spark throughput ~= 2 x a single spark node's cells/min. Compare that to the A100.
+Defaults: n_workers = round(1.5 x cores), max_steps = 6000.
 """
 import os
 for _v in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
@@ -38,7 +42,7 @@ def main():
     import torch
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     gpu = torch.cuda.get_device_name(0) if dev == "cuda" else "CPU-only (no CUDA!)"
-    nw = int(sys.argv[1]) if len(sys.argv) > 1 else min(30, max(1, (os.cpu_count() or 2) - 2))
+    nw = int(sys.argv[1]) if len(sys.argv) > 1 else max(1, round(1.5 * (os.cpu_count() or 2)))
     steps = int(sys.argv[2]) if len(sys.argv) > 2 else 6000
     cfg = dict(e8.EXP8_CONFIG); cfg.update(device=dev, max_steps=steps, reps_dir=None)
     cells = bench_cells()
