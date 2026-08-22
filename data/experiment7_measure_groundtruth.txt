@@ -1,0 +1,18 @@
+1920 cells
+
+class-subspace OVERLAP (GT vs label) and SEPARABILITY (label vs GT) by d (additive):
+      d  overlap  sep_lab   sep_gt  |diff|
+     16     0.99    0.332    0.283   0.049
+     24     0.98    0.236    0.188   0.048
+     32     0.98    0.275    0.206   0.069
+     48     0.96    0.308    0.276   0.032
+     64     0.96    0.387    0.322   0.065
+     96     0.94    0.532    0.468   0.064
+
+   corr(sep_lab, sep_gt) over 960 additive cells = 0.906   (want ~1 -> label-only carries to LLMs)
+
+floor-corrected label-only signal (sep_lab relu - identity) by rank/d:
+   rank/d 0-0.6: median=0.026  n=416
+   rank/d 0.6-0.9: median=0.106  n=40
+   rank/d 0.9-1.3: median=0.551  n=20
+   rank/d 1.3-3: median=0.592  n=4
