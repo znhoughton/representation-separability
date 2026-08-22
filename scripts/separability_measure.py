@@ -28,12 +28,22 @@ def between_class_subspace(hid, cat_of, n_cat):
     return vec[:, :k], k, means, pr
 
 
-def separability(hid, cat_of, n_cat, item_of, subspace=None):
-    """Fraction of the ITEM SIGNAL (between-item centroids of the within-class residual) that
-    lies in the class subspace, normalized by chance (k/d). Using centroids -- not the full
-    residual -- makes it robust to within-item noise/context (which averages out) rather than
-    diluted by it. 0 = separable, 1 = chance, >1 = item signal concentrated in class subspace.
-    Pass `subspace` (d x k orthonormal) to score a GIVEN class subspace (e.g. ground truth)."""
+def separability(hid, cat_of, n_cat, item_of, subspace=None, mode="perdim"):
+    """How much of the ITEM SIGNAL (between-item centroids of the within-class residual) lives
+    in the class subspace. Base quantity is the RAW FRACTION `frac = ||proj_C(item)||^2 /
+    ||item||^2` in [0,1] (0 = item orthogonal to the class subspace = separable; 1 = entirely
+    within it = fully entangled). Using centroids -- not the full residual -- makes it robust to
+    within-item noise (which averages out). `mode` sets what is returned:
+      "perdim" (default, REPORTED): frac / k -- fraction PER class dimension. This is the only
+          variant that is BOTH d-invariant AND robust to k-misestimation (the participation
+          ratio can find k=1 where the truth is 2; raw frac then undercounts, but frac/k does
+          not -- see validate_separability convergent test). It equals the old normalized sep
+          with the spurious d factor removed (old_sep = frac*d/k = perdim*d).
+      "raw": frac itself -- directly interpretable, but k-sensitive (undercounts when k is), so
+          only comparable at fixed/known k.
+      "norm": frac / (k/d) -- the DEPRECATED scale; d-contaminated (a real 0.03/dim read as 0.37).
+    Pure geometry: no chance reference, no control model -> runs unchanged on one model's reps
+    (e.g. an LLM). Pass `subspace` (d x k orthonormal) to score a GIVEN class subspace (e.g. GT)."""
     hid = np.asarray(hid, dtype=np.float64); d = hid.shape[1]
     if subspace is None:
         C, k, means, _ = between_class_subspace(hid, cat_of, n_cat)
@@ -47,7 +57,8 @@ def separability(hid, cat_of, n_cat, item_of, subspace=None):
     if vt <= 0 or k <= 0:
         return None, k
     frac = float(((cent @ C) ** 2).sum()) / vt
-    return frac / (k / d), k
+    val = {"raw": frac, "perdim": frac / k, "norm": frac / (k / d)}[mode]
+    return val, k
 
 
 def item_retained_after_class_ablation(hid, cat_of, n_cat, item_of):

@@ -49,13 +49,13 @@ def _p(name, ok, detail):
 
 
 def test_known_answer():
-    print("1. KNOWN-ANSWER (measured sep vs planted phi*d/k):")
+    print("1. KNOWN-ANSWER (measured frac/k vs planted phi / r_class):")
     ok = True; seps = []
     for phi in [0.0, 0.05, 0.15, 0.35, 0.6]:
-        hid, cat, form, _ = make_rep(phi, seed=1)
-        sep, k = separability(hid, cat, 16, form)
-        exp = phi * hid.shape[1] / k
-        close = (phi == 0.0 and sep < 0.15) or (phi > 0 and abs(sep - exp) / max(exp, 1e-6) < 0.25)
+        hid, cat, form, _ = make_rep(phi, seed=1)                 # make_rep plants r_class=2
+        sep, k = separability(hid, cat, 16, form)                 # perdim = frac/k ~= phi/r_class
+        exp = phi / 2.0
+        close = (phi == 0.0 and sep < 0.03) or (phi > 0 and abs(sep - exp) / max(exp, 1e-6) < 0.25)
         ok &= _p(f"phi={phi}", close, f"measured={sep:.3f} expected~{exp:.3f} (k={k})")
         seps.append(sep)
     mono = all(seps[i] < seps[i + 1] for i in range(len(seps) - 1))
@@ -106,7 +106,7 @@ def test_adversarial():
     ok &= _p("separable + anisotropic noise", s < 0.2, f"sep={s:.3f} (want ~0)")
     hid, cat, form, _ = make_rep(0.6, seed=5, class_amp=0.4)
     s, _ = separability(hid, cat, 16, form)
-    ok &= _p("entangled + weak/hidden class", s > 1.0, f"sep={s:.3f} (want elevated)")
+    ok &= _p("entangled + weak/hidden class", s > 0.1, f"frac/k={s:.3f} (want elevated vs ~0)")
     return ok
 
 
