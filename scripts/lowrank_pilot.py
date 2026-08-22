@@ -55,6 +55,41 @@ def build_lowrank(rng, n_form, n_config, vocab, r_class, r_item, r_int, scale):
     return P.astype(np.float32), form_of.astype(np.int64), cat_of.astype(np.int64), n_config
 
 
+def build_lowrank_frac(rng, n_form, n_config, vocab, r_class, r_item, scale, int_frac):
+    """Low-rank softmax LM where the interaction is set to a TARGET FRACTION of the logit variance.
+    int_frac in [0,1]: 0 = additive (interaction contributes nothing; bit-identical to
+    build_lowrank with r_int=0), 1 = PURE interaction (main effects zeroed), and in between the
+    interaction amplitude is solved PER CELL so the interaction contributes exactly `int_frac` of
+    the logit variance -- an interpretable, evenly-spaceable 'how non-additive' axis. Interaction
+    dims r_int = min(r_class, r_item). Main effects are drawn first, so int_frac=0 reproduces the
+    additive P exactly (reuse-safe). Returns (P, form_of, cat_of, n_config, achieved_frac)."""
+    class_code = rng.standard_normal((n_config, r_class))
+    item_code = rng.standard_normal((n_form, r_item))
+    Lc = rng.standard_normal((vocab, r_class)) / np.sqrt(r_class)
+    Li = rng.standard_normal((vocab, r_item)) / np.sqrt(r_item)
+    form_of = np.repeat(np.arange(n_form), n_config)
+    cat_of = np.tile(np.arange(n_config), n_form)
+    main = class_code[cat_of] @ Lc.T + item_code[form_of] @ Li.T          # additive main effects
+    if int_frac <= 0:
+        logits, achieved = main, 0.0
+    else:
+        r_int = min(r_class, r_item)
+        Uc = rng.standard_normal((r_class, r_int)); Ui = rng.standard_normal((r_item, r_int))
+        Lx = rng.standard_normal((vocab, r_int)) / np.sqrt(r_int)
+        int_logits = ((class_code[cat_of] @ Uc) * (item_code[form_of] @ Ui)) @ Lx.T   # bilinear
+        if int_frac >= 1.0:
+            logits, achieved = int_logits, 1.0                            # pure interaction
+        else:
+            v_main = float(main.var(0).sum()); v_int = float(int_logits.var(0).sum())
+            a = np.sqrt((int_frac / (1.0 - int_frac)) * (v_main / max(v_int, 1e-12)))
+            logits = main + a * int_logits
+            achieved = (a ** 2 * v_int) / (v_main + a ** 2 * v_int)        # == int_frac by construction
+    logits = logits * scale
+    P = np.exp(logits); P /= P.sum(1, keepdims=True)
+    return (P.astype(np.float32), form_of.astype(np.int64), cat_of.astype(np.int64),
+            n_config, float(achieved))
+
+
 def trajectory(P, form_of, cat_of, n_cat, d, dev, lr, batch, max_steps, log_every, seed):
     n_form = len(np.unique(form_of))
     torch.manual_seed(seed)
