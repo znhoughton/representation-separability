@@ -125,7 +125,9 @@ def run(cfg):
 
 EXP7_CONFIG = dict(
     r_class_values=[1, 2, 4, 8],
-    r_item_values=[1, 2, 4, 8, 16],
+    r_item_values=[1, 2, 4, 8, 16, 24, 32, 48, 64],   # widened: high r_item pushes rank/d>1 at
+    #                                                    d=32/48/64 too, not only d=16 -> breaks the
+    #                                                    "capacity vs smallest-d" confound in one grid
     d_values=[16, 24, 32, 48, 64, 96],
     conditions=["additive", "interactive"],
     activations=["relu", "identity"],
