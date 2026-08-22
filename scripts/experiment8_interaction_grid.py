@@ -14,6 +14,7 @@ import os
 for _v in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
     os.environ.setdefault(_v, "1")
 import csv
+import multiprocessing as mp
 import sys
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -108,7 +109,7 @@ def run(cfg):
         w = csv.DictWriter(fh, fieldnames=fields)
         if not resuming:
             w.writeheader()
-        with ProcessPoolExecutor(max_workers=n_workers) as ex:
+        with ProcessPoolExecutor(max_workers=n_workers, mp_context=mp.get_context("spawn")) as ex:
             futs = {ex.submit(_run_cell, c, cfg): c for c in cells}
             for fut in as_completed(futs):
                 w.writerow(fut.result()); fh.flush(); done += 1

@@ -18,6 +18,7 @@ Defaults: n_workers = round(1.5 x cores), max_steps = 6000.
 import os
 for _v in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
     os.environ.setdefault(_v, "1")
+import multiprocessing as mp
 import sys
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -49,7 +50,7 @@ def main():
     print(f"GPU: {gpu}\nworkers: {nw} | cells: {len(cells)} | fixed {steps} steps/cell | device: {dev}\n", flush=True)
 
     t0 = time.time()
-    with ProcessPoolExecutor(max_workers=nw) as ex:
+    with ProcessPoolExecutor(max_workers=nw, mp_context=mp.get_context("spawn")) as ex:
         futs = [ex.submit(e8._run_cell, c, cfg) for c in cells]
         for i, f in enumerate(as_completed(futs), 1):
             f.result()
