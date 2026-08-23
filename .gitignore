@@ -23,3 +23,5 @@ data/experiment6_reps/
 
 # Experiment 7 saved reps (large, regenerable)
 data/experiment7_reps/
+data/experiment8_reps_shard1/*.npz
+data/experiment8_reps_shard0/*.npz
