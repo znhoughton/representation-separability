@@ -314,7 +314,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--lr", type=float, default=None,
         help="Override CHECK_CONFIG's learning rate (default: CHECK_CONFIG's "
-             "own lr, inherited from SWEEP_CONFIG -- currently 0.05). Warmup "
+             "own lr, inherited from SWEEP_CONFIG -- currently 0.01). Warmup "
              "was tried and ruled out (see CHECK_CONFIG's warmup_steps "
              "comment); this tests the other hypothesis, that lr=0.05 itself "
              "is too large for the largest/most crowded cells' steady-state "

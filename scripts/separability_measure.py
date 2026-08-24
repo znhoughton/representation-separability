@@ -61,6 +61,34 @@ def separability(hid, cat_of, n_cat, item_of, subspace=None, mode="perdim"):
     return val, k
 
 
+def item_class_geometry(hid, cat_of, n_cat, item_of):
+    """Geometric decomposition of the item signal into its class-INDEPENDENT part (the centroid
+    `frac` uses) and its class-DEPENDENT part (the deviation `frac` discards -- the interaction),
+    using only residuals and subspace projections (no ANOVA). Returns:
+      marg_frac : ||proj_C(centroid)||^2 / ||centroid||^2  -- the item MARGINAL in the class
+                  subspace. This is exactly `separability(mode="raw")`: are class & item on
+                  separate axes?
+      int_share : ||deviation||^2 / (||centroid||^2 + ||deviation||^2)  -- how much of the item's
+                  within-class variation is class-DEPENDENT (interaction magnitude, 0..1).
+      int_frac  : ||proj_C(deviation)||^2 / ||deviation||^2  -- is the INTERACTION itself on the
+                  class axes (shares class-marginal directions, ~1) or on its own axis (~0)?
+    So `frac` asks whether the class-independent item part is separable; `int_frac` asks the same
+    of the class-dependent part; `int_share` says how big that class-dependent part is."""
+    hid = np.asarray(hid, np.float64)
+    C, k, means, _ = between_class_subspace(hid, cat_of, n_cat)
+    res = hid - means[cat_of]
+    items = np.unique(item_of)
+    cent_by = {i: res[item_of == i].mean(0) for i in items}
+    cent = np.array([cent_by[i] for i in items])                  # class-independent (marginal)
+    dev = res - np.array([cent_by[i] for i in item_of])           # class-dependent (interaction)
+    vc = float((cent ** 2).sum()); vd = float((dev ** 2).sum())
+    return dict(
+        marg_frac=(float(((cent @ C) ** 2).sum()) / vc) if vc > 0 else None,
+        int_share=(vd / (vc + vd)) if (vc + vd) > 0 else None,
+        int_frac=(float(((dev @ C) ** 2).sum()) / vd) if vd > 0 else None,
+        k=k)
+
+
 def item_retained_after_class_ablation(hid, cat_of, n_cat, item_of):
     """INDEPENDENT functional check: ablate the class subspace, then measure how much of the
     item(=form) SIGNAL (between-item variance of the within-class residual) survives.
