@@ -70,10 +70,10 @@ def item_class_geometry(hid, cat_of, n_cat, item_of):
                   separate axes?
       int_share : ||deviation||^2 / (||centroid||^2 + ||deviation||^2)  -- how much of the item's
                   within-class variation is class-DEPENDENT (interaction magnitude, 0..1).
-      int_frac  : ||proj_C(deviation)||^2 / ||deviation||^2  -- is the INTERACTION itself on the
-                  class axes (shares class-marginal directions, ~1) or on its own axis (~0)?
-    So `frac` asks whether the class-independent item part is separable; `int_frac` asks the same
-    of the class-dependent part; `int_share` says how big that class-dependent part is."""
+      int_on_class : ||proj_C(deviation)||^2 / ||deviation||^2  -- is the INTERACTION itself on
+                  the class axes (shares class-marginal directions, ~1) or on its own axis (~0)?
+    So `frac` asks whether the class-independent item part is separable; `int_on_class` asks the
+    same of the class-dependent part; `int_share` says how big that class-dependent part is."""
     hid = np.asarray(hid, np.float64)
     C, k, means, _ = between_class_subspace(hid, cat_of, n_cat)
     res = hid - means[cat_of]
@@ -85,7 +85,7 @@ def item_class_geometry(hid, cat_of, n_cat, item_of):
     return dict(
         marg_frac=(float(((cent @ C) ** 2).sum()) / vc) if vc > 0 else None,
         int_share=(vd / (vc + vd)) if (vc + vd) > 0 else None,
-        int_frac=(float(((dev @ C) ** 2).sum()) / vd) if vd > 0 else None,
+        int_on_class=(float(((dev @ C) ** 2).sum()) / vd) if vd > 0 else None,
         k=k)
 
 

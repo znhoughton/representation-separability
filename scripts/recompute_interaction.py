@@ -38,21 +38,22 @@ def main():
             g = item_class_geometry(z["hid"], z["cat_of"], n_cat, z["form_of"])
             if g["marg_frac"] is None:
                 continue
-            rows.append(dict(int_frac=float(ifr), activation=act, **g))
+            rows.append(dict(int_frac=float(ifr), activation=act, marg_frac=g["marg_frac"],
+                             int_share=g["int_share"], int_on_class=g["int_on_class"]))
     if not rows:
         raise SystemExit(f"no reps found in {[str(x) for x in REP_DIRS]}")
     df = pd.DataFrame(rows)
     df.to_csv(REPO / "data" / "experiment8_interaction_geometry.csv", index=False)
     print(f"{len(df)} reps.  Geometric interaction characterization by int_frac:\n")
-    print(f"{'int_frac':>9}{'act':>10}{'marg_frac':>11}{'int_share':>11}{'int_frac':>10}")
+    print(f"{'int_frac':>9}{'act':>10}{'marg_frac':>11}{'int_share':>11}{'int_on_class':>13}")
     for f in sorted(df.int_frac.unique()):
         for a in ("identity", "relu"):
             s = df[(df.int_frac == f) & (df.activation == a)]
             if len(s):
                 print(f"{f:>9.2f}{a:>10}{s.marg_frac.median():>11.3f}"
-                      f"{s.int_share.median():>11.3f}{s.int_frac.median():>10.3f}")
-    print("\nmarg_frac = item marginal in POS/class subspace (separability);"
-          " int_share = interaction magnitude; int_frac = interaction on class axis (~0=own axis).")
+                      f"{s.int_share.median():>11.3f}{s.int_on_class.median():>13.3f}")
+    print("\nmarg_frac = item marginal in class subspace (separability); int_share = interaction"
+          " magnitude; int_on_class = interaction on the class axis (~0 = its own axis).")
 
 
 if __name__ == "__main__":
