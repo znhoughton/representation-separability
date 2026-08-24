@@ -26,6 +26,23 @@ interaction on its own axis) or entangled (the interaction smeared into the marg
 does is empirical, and it is what we measure. In particular, the proof above forces the rep to be
 *non-additive*, **not** *inseparable* — those are different claims.
 
+**A note on the boundary (pure interaction) and *output-relevance*.** As `int_frac → 1` the
+marginals shrink; at `int_frac = 1` (pure interaction, `logits = f(a,b)` only) they vanish —
+averaged over the other factor, neither class nor item has any effect. That is the *most extreme*
+inseparability (class and item cannot be factored at all), but `frac`, a ratio of the now-vanishing
+marginal signals, degenerates to 0/0 there and cannot quantify it (its value is noise; the real
+tell is `k_class → 1`). Separability is still a coherent question at that boundary — the
+*instrument* bottoms out, not the concept.
+
+Mechanistically this follows from one principle: **a gradient-trained representation contains
+exactly the output-relevant structure.** Marginals are learned — and can be kept on separate axes —
+only when they move the output; a component the loss does not reward receives no gradient and is
+not built. (The "separable-and-accurate" solution that carries unused marginals in the readout's
+null space exists in weight space but is never reached by backprop — mathematically possible ≠
+learnable.) Pure interaction removes the marginals from the output, so they are unlearnable and the
+representation is inseparable. This is exactly why `frac` erodes as `int_frac` rises: increasing
+interaction strips the marginals of their job.
+
 ---
 
 ## 1. Methods
