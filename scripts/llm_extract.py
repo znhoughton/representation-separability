@@ -67,7 +67,8 @@ def extract(model_name, sentences, layer_idxs, max_tokens, device, seed=0, max_l
     import torch
     from transformers import AutoModel, AutoTokenizer
 
-    tok = AutoTokenizer.from_pretrained(model_name)
+    tok = AutoTokenizer.from_pretrained(model_name, add_prefix_space=True)  # BPE needs this for
+    #                                             is_split_into_words word-aligned extraction
     if random_init:
         from transformers import AutoConfig
         cfg = AutoConfig.from_pretrained(model_name); cfg.output_hidden_states = True
