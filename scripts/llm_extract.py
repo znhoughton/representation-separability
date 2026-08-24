@@ -58,14 +58,23 @@ def parse_conllu(path):
 
 
 # ------------------------------------------------------------- representation
-def extract(model_name, sentences, layer_idxs, max_tokens, device, seed=0, max_length=256):
+def extract(model_name, sentences, layer_idxs, max_tokens, device, seed=0, max_length=256,
+            random_init=False):
     """Run the model over sentences; return {layer: (N,d) array}, upos array, lemma array --
-    one row per UD token, taking each word's LAST subword hidden state."""
+    one row per UD token, taking each word's LAST subword hidden state. random_init=True loads the
+    architecture with FRESH random weights (same config/tokenizer) -> the 'before learning'
+    baseline: frac_trained vs frac_random shows what training did to POS/lemma separability."""
     import torch
     from transformers import AutoModel, AutoTokenizer
 
     tok = AutoTokenizer.from_pretrained(model_name)
-    model = AutoModel.from_pretrained(model_name, output_hidden_states=True)
+    if random_init:
+        from transformers import AutoConfig
+        cfg = AutoConfig.from_pretrained(model_name); cfg.output_hidden_states = True
+        torch.manual_seed(seed)
+        model = AutoModel.from_config(cfg)
+    else:
+        model = AutoModel.from_pretrained(model_name, output_hidden_states=True)
     model.eval().to(device)
     if not tok.is_fast:
         raise RuntimeError(f"{model_name} lacks a fast tokenizer; word_ids() alignment needs one.")
@@ -160,6 +169,8 @@ def main():
     ap.add_argument("--min-item", type=int, default=20, help="min tokens for a lemma (token level)")
     ap.add_argument("--device", default="cpu")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--random-init", action="store_true",
+                    help="fresh random weights (before-learning baseline) instead of pretrained")
     ap.add_argument("--out", default=str(REPO_ROOT / "data" / "llm_separability.csv"))
     args = ap.parse_args()
 
@@ -173,22 +184,24 @@ def main():
     else:
         layer_idxs = [int(x) for x in args.layers.split(",")]
 
-    reps, upos, lemma = extract(args.model, sentences, layer_idxs, args.max_tokens, args.device, args.seed)
-    print(f"Extracted {len(upos)} tokens; POS: {dict(zip(*np.unique(upos, return_counts=True)))}", flush=True)
+    reps, upos, lemma = extract(args.model, sentences, layer_idxs, args.max_tokens, args.device,
+                                args.seed, random_init=args.random_init)
+    init = "random" if args.random_init else "pretrained"
+    print(f"[{init}] extracted {len(upos)} tokens; POS: {dict(zip(*np.unique(upos, return_counts=True)))}", flush=True)
 
     rows, kept = measure(reps, upos, lemma, args.min_class_count, args.min_type_count, args.min_item)
     print(f"Measured over {len(kept)} POS classes: {kept}", flush=True)
 
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
-    fields = ["model", "layer", "level", "d", "n_points", "n_over_d", "n_pos", "n_lemmas_used",
-              "k_class", "frac"]
+    fields = ["model", "init", "layer", "level", "d", "n_points", "n_over_d", "n_pos",
+              "n_lemmas_used", "k_class", "frac"]
     write_header = not Path(args.out).exists()
     with open(args.out, "a", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=fields, extrasaction="ignore")
         if write_header:
             w.writeheader()
         for r in rows:
-            r["model"] = args.model
+            r["model"] = args.model; r["init"] = init
             w.writerow(r)
             print(f"  layer {r['layer']!s:>4} [{r['level']:>5}]: n/d={r['n_over_d']!s:>7}  "
                   f"k_class={r['k_class']!s:>5}  frac={r['frac']!s:>7}", flush=True)
