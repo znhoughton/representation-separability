@@ -23,10 +23,10 @@ FN = re.compile(r"rc(\d+)_ri(\d+)_d(\d+)_if([\d.]+)_(identity|relu)_s(\d+)\.npz"
 
 
 def main():
+    present = [rd for rd in REP_DIRS if rd.exists() and any(rd.glob("*.npz"))]
+    tag = ("_" + present[0].name.split("_")[-1]) if (len(present) == 1 and "shard" in present[0].name) else ""
     rows, seen = [], set()
-    for rd in REP_DIRS:
-        if not rd.exists():
-            continue
+    for rd in present:
         for f in sorted(rd.glob("*.npz")):
             m = FN.match(f.name)
             if not m or f.name in seen:
@@ -38,13 +38,16 @@ def main():
             g = item_class_geometry(z["hid"], z["cat_of"], n_cat, z["form_of"])
             if g["marg_frac"] is None:
                 continue
-            rows.append(dict(int_frac=float(ifr), activation=act, marg_frac=g["marg_frac"],
-                             int_share=g["int_share"], int_on_class=g["int_on_class"]))
+            rows.append(dict(r_class=int(rc), r_item=int(ri), d=int(d), int_frac=float(ifr),
+                             activation=act, seed=int(sd), marg_frac=g["marg_frac"],
+                             int_share=g["int_share"], int_on_class=g["int_on_class"], k_class=g["k"]))
     if not rows:
         raise SystemExit(f"no reps found in {[str(x) for x in REP_DIRS]}")
     df = pd.DataFrame(rows)
-    df.to_csv(REPO / "data" / "experiment8_interaction_geometry.csv", index=False)
-    print(f"{len(df)} reps.  Geometric interaction characterization by int_frac:\n")
+    out = REPO / "data" / f"experiment8_interaction_geometry{tag}.csv"
+    df.to_csv(out, index=False)
+    print(f"wrote {len(df)} per-cell rows -> {out.name}\n")
+    print("Geometric interaction characterization by int_frac (medians):\n")
     print(f"{'int_frac':>9}{'act':>10}{'marg_frac':>11}{'int_share':>11}{'int_on_class':>13}")
     for f in sorted(df.int_frac.unique()):
         for a in ("identity", "relu"):
