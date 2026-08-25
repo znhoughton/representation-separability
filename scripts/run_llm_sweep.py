@@ -25,8 +25,8 @@ PAIRS = [  # (OPT-BabyLM, size-matched Pythia)
     ("znhoughton/opt-babylm-350m-20eps-seed964", "EleutherAI/pythia-410m"),
     ("znhoughton/opt-babylm-1.3B-20eps-seed964", "EleutherAI/pythia-1.4b"),
 ]
-FIELDS = ["model", "family", "size_bin", "init", "layer", "level", "d", "n_points", "n_over_d",
-          "n_pos", "n_lemmas_used", "k_class", "frac"]
+FIELDS = ["model", "family", "size_bin", "init", "standardized", "layer", "level", "d", "n_points",
+          "n_over_d", "n_pos", "n_lemmas_used", "k_class", "frac"]
 
 
 def _resolve_layers(model_name):
@@ -39,9 +39,11 @@ def run_one(model_name, family, size_bin, init, sentences, args, writer):
     reps, upos, lemma = L.extract(model_name, sentences, _resolve_layers(model_name),
                                   args.max_tokens, args.device, args.seed,
                                   random_init=(init == "random"))
-    rows, kept = L.measure(reps, upos, lemma, args.min_class_count, args.min_type_count, args.min_item)
+    rows, kept = L.measure(reps, upos, lemma, args.min_class_count, args.min_type_count,
+                           args.min_item, args.standardize)
     for r in rows:
-        r.update(model=model_name, family=family, size_bin=size_bin, init=init)
+        r.update(model=model_name, family=family, size_bin=size_bin, init=init,
+                 standardized=args.standardize)
         writer.writerow(r)
     print(f"  [{init:>10}] {model_name}: {len(rows)} rows over {len(kept)} POS", flush=True)
 
@@ -55,6 +57,8 @@ def main():
     ap.add_argument("--min-item", type=int, default=20)
     ap.add_argument("--device", default="cuda")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--standardize", action="store_true",
+                    help="z-score each hidden dim before measuring (needed: LLMs have outlier dims)")
     ap.add_argument("--out", default=str(REPO_ROOT / "data" / "llm_separability.csv"))
     args = ap.parse_args()
 

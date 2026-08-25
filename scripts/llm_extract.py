@@ -121,25 +121,30 @@ def aggregate_types(X, upos, lemma, min_count=5):
     return means[keep], parts[:, 1], parts[:, 0]      # X_type, upos_type, lemma_type
 
 
-def _frac(X, pos_code, lemma, n_pos, min_item):
-    """`frac` on lemmas with >= min_item tokens (stable centroids). class=POS, item=lemma."""
+def _frac(X, pos_code, lemma, n_pos, min_item, standardize=False):
+    """`frac` on lemmas with >= min_item tokens (stable centroids). class=POS, item=lemma.
+    standardize=True z-scores each hidden dimension first -- required for LLM reps, where a few
+    massive-activation dims otherwise dominate the between-class scatter (collapsing k_class->1)."""
     lems, cnt = np.unique(lemma, return_counts=True)
     keep = set(lems[cnt >= min_item].tolist())
     m = np.array([l in keep for l in lemma])
     if m.sum() < 10 or len(keep) < 2:
         return None, None, 0
-    f, k = separability(X[m], pos_code[m], n_pos, lemma[m], mode="raw")
+    Xf = X[m].astype(np.float64)
+    if standardize:
+        Xf = (Xf - Xf.mean(0)) / (Xf.std(0) + 1e-8)
+    f, k = separability(Xf, pos_code[m], n_pos, lemma[m], mode="raw")
     return f, k, len(keep)
 
 
-def _row(X, pos_code, lemma, n_pos, layer, level, min_item):
-    f, k, n_item = _frac(X, pos_code, lemma, n_pos, min_item)
+def _row(X, pos_code, lemma, n_pos, layer, level, min_item, standardize=False):
+    f, k, n_item = _frac(X, pos_code, lemma, n_pos, min_item, standardize)
     return dict(layer=layer, level=level, d=X.shape[1], n_points=len(pos_code),
                 n_over_d=round(len(pos_code) / X.shape[1], 1), n_pos=n_pos,
                 n_lemmas_used=n_item, k_class=k, frac=f)
 
 
-def measure(reps, upos, lemma, min_class_count=50, min_type_count=5, min_item=20):
+def measure(reps, upos, lemma, min_class_count=50, min_type_count=5, min_item=20, standardize=False):
     """`frac` at token level (context in the centroid) and type=(lemma,POS)-mean level (context
     averaged out; toy analog). Two rows per layer. Watch n_over_d at the type level."""
     classes, counts = np.unique(upos, return_counts=True)
@@ -151,11 +156,11 @@ def measure(reps, upos, lemma, min_class_count=50, min_type_count=5, min_item=20
     for li, X in reps.items():
         Xt, ut, lt = X[mask], upos[mask], lemma[mask]
         yt = np.array([code[u] for u in ut])
-        rows.append(_row(Xt, yt, lt, n_pos, li, "token", min_item))
+        rows.append(_row(Xt, yt, lt, n_pos, li, "token", min_item, standardize))
         Xty, uty, lty = aggregate_types(Xt, ut, lt, min_type_count)
         if len(Xty) > n_pos + 5 and len(set(uty)) >= 2:
             yty = np.array([code[u] for u in uty])
-            rows.append(_row(Xty, yty, lty, n_pos, li, "type", min_item=1))  # types already ≥min_count
+            rows.append(_row(Xty, yty, lty, n_pos, li, "type", 1, standardize))  # types already ≥min_count
     return rows, kept
 
 
@@ -172,6 +177,8 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--random-init", action="store_true",
                     help="fresh random weights (before-learning baseline) instead of pretrained")
+    ap.add_argument("--standardize", action="store_true",
+                    help="z-score each hidden dim before measuring (handles LLM outlier dims)")
     ap.add_argument("--out", default=str(REPO_ROOT / "data" / "llm_separability.csv"))
     args = ap.parse_args()
 
@@ -190,19 +197,20 @@ def main():
     init = "random" if args.random_init else "pretrained"
     print(f"[{init}] extracted {len(upos)} tokens; POS: {dict(zip(*np.unique(upos, return_counts=True)))}", flush=True)
 
-    rows, kept = measure(reps, upos, lemma, args.min_class_count, args.min_type_count, args.min_item)
+    rows, kept = measure(reps, upos, lemma, args.min_class_count, args.min_type_count,
+                         args.min_item, args.standardize)
     print(f"Measured over {len(kept)} POS classes: {kept}", flush=True)
 
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
-    fields = ["model", "init", "layer", "level", "d", "n_points", "n_over_d", "n_pos",
-              "n_lemmas_used", "k_class", "frac"]
+    fields = ["model", "init", "standardized", "layer", "level", "d", "n_points", "n_over_d",
+              "n_pos", "n_lemmas_used", "k_class", "frac"]
     write_header = not Path(args.out).exists()
     with open(args.out, "a", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=fields, extrasaction="ignore")
         if write_header:
             w.writeheader()
         for r in rows:
-            r["model"] = args.model; r["init"] = init
+            r["model"] = args.model; r["init"] = init; r["standardized"] = args.standardize
             w.writerow(r)
             print(f"  layer {r['layer']!s:>4} [{r['level']:>5}]: n/d={r['n_over_d']!s:>7}  "
                   f"k_class={r['k_class']!s:>5}  frac={r['frac']!s:>7}", flush=True)
