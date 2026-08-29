@@ -35,7 +35,11 @@ data/experiment9_reps/
 .vscode/
 .claude/
 data/vua_reps/
-# concatenated UD corpus (33 MB, regenerable via scripts/build_concat_ud.py) -- CSVs stay tracked
+# superseded scripts/analyses/data, kept on disk for reference (regenerable, out of the tree)
+/archive/
+# all saved representation dirs (large, regenerable) -- catch-all; result CSVs stay tracked
+data/*_reps/
+# concatenated / single UD corpora (regenerable via scripts/llm/build_concat_ud.py) -- CSVs stay tracked
 data/ud/
 # Quarto paper build artifacts (extension installed via `quarto add`; PDFs/TeX are generated)
 paper/_extensions/
@@ -43,3 +47,15 @@ paper/*.pdf
 paper/*.tex
 paper/.quarto/
 paper/*_files/
+# stray shell / editor / tool dotfiles at repo root (personal env — never commit)
+/.bash_profile
+/.bashrc
+/.profile
+/.zprofile
+/.zshrc
+/.gitconfig
+/.gitmodules
+/.ripgreprc
+/.mcp.json
+/.idea
+/.vscode

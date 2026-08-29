@@ -52,7 +52,7 @@ interaction strips the marginals of their job.
 A low-rank softmax LM over `vocab = 2000` tokens. Every **lexeme** is a (form, class) pair:
 `n_form = 500` forms (items) × `n_config = 16` classes = 8000 lexemes. Each has a target next-token
 distribution `P = softmax(logits)`, where the logits are a **constant-scale mixture** of additive
-main effects and a bilinear interaction (`scripts/lowrank_pilot.py:build_lowrank_frac`):
+main effects and a bilinear interaction (`scripts/lib/lowrank_pilot.py:build_lowrank_frac`):
 
 ```
 logits(form f, class c) = scale·[ √(1−β)·main_u(f,c) + √β·interaction_u(f,c) ]
@@ -75,7 +75,7 @@ fit any target. Trained to convergence with early stopping on the **exact** expe
 (fit gap ≈ 0.05 nats). The linear case is the theoretically clean one (see §0: fitting interactive
 data forces a non-additive `hid`); relu can synthesize interactions nonlinearly and is unconstrained.
 
-### 1.3 The grid (`scripts/experiment8_interaction_grid.py`)
+### 1.3 The grid (`scripts/toy/experiment8_interaction_grid.py`)
 
 `r_class{1,2,4,8}` × `r_item{1,2,4,8,16,32}` × `d{16,32,64,96}` × `int_frac{0,.25,.5,.75,1}` ×
 {identity, relu} × **5 seeds** = **4800 cells**. Rank = `r_class+r_item+r_int`
@@ -83,7 +83,7 @@ data forces a non-additive `hid`); relu can synthesize interactions nonlinearly 
 
 ### 1.4 The measure — `frac` (separability of the marginals)
 
-`separability(..., mode="raw")` in `scripts/separability_measure.py`:
+`separability(..., mode="raw")` in `scripts/lib/separability_measure.py`:
 
 1. **Class subspace** `C`: top participation-ratio directions of the raw between-class scatter.
 2. **Item signal**: per-form **centroids** of the within-class residual (`hid − class_mean`).
@@ -198,13 +198,13 @@ collapses); shown but not interpretable. Interpretable range: `int_frac ≤ 0.75
 ## 2.7 Beyond `frac`: the interaction channel (unified measure)
 
 `frac` (§1.4) measures only whether the item and class **marginals** sit on separate axes. The
-**unified measure** (`scripts/unified_separability.py`) adds the second question `frac` is blind
+**unified measure** (`scripts/lib/unified_separability.py`) adds the second question `frac` is blind
 to — how much of the representation is the irreducibly-joint **interaction** γ(item,class), and
 whether that interaction is itself on a separable axis — and reports both from one geometric
 decomposition `M[item,class] = μ + α(item) + β(class) + γ(interaction)`, cross-estimate denoised
 (two independent training inits, gauge-aligned) with a significance + denoised-size gate (see
 NOTES.md for the "why permutation fails on a magnitude; two independent looks work" reasoning).
-Grid: `scripts/experiment9_unified_grid.py --mode cross` (4800 cells, `ModelA_MLP`).
+Grid: `scripts/toy/experiment9_unified_grid.py --mode cross` (4800 cells, `ModelA_MLP`).
 
 **Headline: the interaction is not separable even when the marginals are.** The category is
 cleanly readable as an average, yet the item's category-conditioned behavior cannot be factored
@@ -321,8 +321,9 @@ carry the argument; the fourth (morphology) is multi-token and enters only as ca
 POS/role/morphology use concatenated UD English (EWT+GUM+LinES+ParTUT+GENTLE+PUD, ~706K tokens;
 `build_concat_ud.py`); metaphor uses the VUA20 corpus (content words only). Identifiability requires
 each item to appear at ≥2 class levels with ≥10 tokens each. Models: OPT-BabyLM (child-scale data)
-vs. size-matched Pythia (the Pile), three scales each. Scripts: `measure_llm.py` (POS),
-`measure_llm_role.py`, `measure_llm_metaphor.py` (+ `extract_vua.py`), `measure_llm_morph.py`.
+vs. size-matched Pythia (the Pile), three scales each. Scripts (`scripts/llm/`): `measure_llm.py`
+(POS), `measure_llm_role.py`, `measure_llm_metaphor.py` (+ `extract_vua.py`), `measure_llm_morph.py`;
+corpus via `build_concat_ud.py` / reps via `run_llm_sweep.py`. Shared measure: `scripts/lib/unified_separability.py`.
 
 ### 4.1 The core result
 

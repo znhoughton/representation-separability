@@ -65,8 +65,8 @@ synthetic: `m_eff` recovers true rank, separable reads ~0 at every rank, genuine
 inseparability still detected.
 
 Implementations: `cv_wh_multi` (general, n-class, parallel-analysis rank) in
-`scripts/experiment4_classload.py`; the 2-class whitened version
-`measure_separability_whitened` in `scripts/separability_experiment.py`.
+`archive/scripts/experiment4_classload.py`; the 2-class whitened version
+`measure_separability_whitened` in `archive/scripts/separability_experiment.py`.
 
 ---
 
@@ -159,6 +159,13 @@ form embedding is the parameter-sharing (abstraction) commitment. Contrast model
 Every cell records `final_loss` (undertraining guard: exclude cells near
 `log(vocab_size)`), and the `identity` activation is the gauge-invariant **linear
 reference** (separable below the capacity wall, forced above).
+
+> **Note (repo layout).** Experiments 3–5b are superseded by the interaction grid
+> (`scripts/toy/experiment8_interaction_grid.py`) and the unified grid
+> (`scripts/toy/experiment9_unified_grid.py`); their scripts + data now live in
+> `archive/` (gitignored, kept on disk for reference). The live model/trainer they
+> defined (`ModelA_MLP`, `_train`) was extracted into `scripts/lib/toy_models.py`.
+> The LLM extension below is **complete** — see `SEPARABILITY_FINDINGS.md` §4.
 
 ---
 
