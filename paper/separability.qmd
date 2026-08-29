@@ -1,0 +1,201 @@
+---
+title: "Neither Separable nor Inseparable: How Language Models Both Abstract and Entangle Lexeme and Category"
+author:
+  - name: "Anonymous"
+    affiliations:
+      - name: "Anonymous Institution"
+    email: anon@example.edu
+abstract: |
+  A word's contextual representation might factor cleanly into a reusable *category* component (e.g.
+  \textsc{noun}) and an *item* component (e.g. \emph{dog}), or the two might be entangled. We
+  operationalise this as a geometric decomposition of item-by-category representations into marginal
+  (item, category) and interaction terms, and measure it across four linguistic distinctions
+  spanning grammar and meaning in six pretrained language models. We find that the answer is neither
+  "separable" nor "inseparable": the category marginal is cleanly separable from the item marginal
+  everywhere, yet a significant, depth-built item-by-category interaction remains that cannot be
+  factored back into category plus item. The balance is *graded* across distinctions — strong
+  reusable abstraction for part-of-speech, partial for grammatical role, and *absent* for metaphor,
+  where the distinction lives only as a per-lexeme interaction. Because the interaction is neither an
+  item part nor a category part, developmental "which is learned first" questions and single-direction
+  probing are structurally blind to it.
+bibliography: refs.bib
+acl-mode: review
+number-sections: true
+tbl-cap-location: bottom
+format:
+  acl-pdf:
+    keep-tex: true
+---
+
+# Methods
+
+## A separability measure {#sec-measure}
+
+For a distinction with items $i \in \{1,\dots,I\}$ (e.g. lemmas) crossed with category levels
+$c \in \{1,\dots,C\}$ (e.g. \textsc{noun}/\textsc{verb}), let $M[i,c] \in \mathbb{R}^d$ be the mean
+representation of item $i$ used at level $c$. We decompose $M$ additively,
+
+$$
+M[i,c] = \mu + \alpha(i) + \beta(c) + \gamma(i,c),
+$$ {#eq-decomp}
+
+into a grand mean $\mu$, an **item marginal** $\alpha$ (constant across categories), a **category
+marginal** $\beta$ (constant across items), and the **interaction** $\gamma$ — the part of an item's
+category-conditioned representation that cannot be predicted from item and category alone. Each term
+is obtained by the usual centred projections, giving mutually orthogonal *sources* of variance whose
+squared norms partition the between-cell structure.
+
+We report two quantities. **Interaction size** is the interaction's share of the between-cell
+structure, $\texttt{size}_\gamma = \lVert\gamma\rVert^2 / (\lVert\alpha\rVert^2 + \lVert\beta\rVert^2 + \lVert\gamma\rVert^2)$.
+**Marginal leakage** $\texttt{leak}_{i\to c}$ is the fraction of the item-marginal energy lying in
+the category subspace; $\texttt{leak}_{i\to c}\!\approx\!0$ means item and category sit on separate
+axes (projecting out the category leaves the item marginal intact).
+
+**Standardisation.** Transformer hidden states contain a few *rogue* dimensions with $10^2$–$10^3\times$
+the variance of the rest [@timkey2021bark], which otherwise dominate any raw scatter eigendecomposition.
+We $z$-score each dimension before decomposing (a diagonal transform, so it needs no $n\!\gg\!d$
+regime, unlike whitening). The measure is therefore invariant to per-dimension rescaling and to
+orthogonal rotation, but not to general linear reparametrisation — we do **not** whiten, so that the
+identical measure applies to the toy models and the LLMs.
+
+**Denoising and significance.** An interaction magnitude cannot be permutation-tested directly
+(shuffling structure does not reduce a sum of squares). We instead estimate $\gamma$ on two
+independent halves of the tokens and use the signed cross-product $\langle\gamma_A,\gamma_B\rangle$:
+a per-item permutation null gives a significance test, and the cross term denoises the reported size.
+We flag an interaction as present only when it is both significant and above a denoised-size floor.
+
+## Constructions and data {#sec-constructions}
+
+We measure four distinctions (@tbl-constructions). Three are **same-token**: the item's surface form
+is *identical* across category levels, so the last-subword representation is read from the same token
+in every level and there is no tokenisation confound. These carry the argument. The fourth,
+morphology, is multi-token (the plural/past is spelled with an extra subword) and enters only as a
+control.
+
+| construction | distinction | item | levels | same-token | $n$ |
+|:--|:--|:--|:--|:-:|--:|
+| POS category | noun / verb | lemma | \textsc{noun}/\textsc{verb} | ✓ | 131 |
+| POS category | noun / adjective | lemma | \textsc{noun}/\textsc{adj} | ✓ | 27 |
+| grammatical role | subject / object | surface form | \textit{nsubj}/\textit{obj} | ✓ | 49 |
+| metaphor | literal / metaphorical | surface form | lit/met | ✓ | 180 |
+| morphology | number, tense | lemma | Sing/Plur, Pres/Past | ✗ | 200 / 81 |
+
+: The four distinctions. Same-token constructions hold the surface form fixed across category
+levels. {#tbl-constructions}
+
+**Identifiability.** The interaction $\gamma(i,c)$ is estimable only for items attested at $\ge 2$
+levels; we require $\ge 10$ tokens per cell. For POS this restricts to *convertible* lemmas (words
+used as both noun and verb, e.g. \emph{run}, \emph{hit}); role and metaphor have no such restriction
+(any noun occurs as subject and object; any content word occurs literally and metaphorically). For
+role and metaphor we key the item on the **surface form** rather than the lemma, which guarantees an
+identical token across levels (a lemma such as \emph{thing}/\emph{things} can differ in number across
+roles, but \emph{things}-subject and \emph{things}-object are the same token).
+
+**Corpora.** POS, role, and morphology use a concatenation of six English Universal Dependencies
+treebanks [@nivre2020ud] (EWT, GUM, LinES, ParTUT, GENTLE, PUD; $\approx$706K tokens). Metaphor uses
+the VUA20 corpus [@leong2020vua; @steen2010vua], restricted to content words (\textsc{verb},
+\textsc{noun}, \textsc{adj}, \textsc{adv}).
+
+**Models.** We use two families at three matched scales each: OPT-BabyLM (trained on child-scale data
+[@warstadt2023babylm]) and Pythia (trained on the Pile [@biderman2023pythia]), at 125M/160M,
+350M/410M, and 1.3B/1.4B parameters.
+
+**Extraction.** For each token we take the last-subword hidden state at every layer (embeddings
+through the final block). Representations are extracted once and the measure is applied offline, per
+layer, per construction.
+
+# Results
+
+## Marginals separate, interaction remains {#sec-core}
+
+@tbl-core reports the two quantities at the largest scale of each family (the pattern is
+scale-invariant within family). Two things hold simultaneously in every same-token construction.
+First, **the marginals separate cleanly**: $\texttt{leak}_{i\to c}\approx 0.001$–$0.018$, so the
+reusable category/role direction is nearly orthogonal to the item direction — there is genuine,
+portable abstraction. Second, **a significant interaction remains**, and it is *built by
+contextualisation*: in every same-token construction the interaction is $\approx 0$ at layer 0
+(static embeddings) and grows monotonically with depth. Because the token is identical across levels
+*and* absolute position is already encoded at layer 0, the near-zero layer-0 interaction rules out
+both the tokenisation and the linear-position confounds; the entanglement is created by the
+transformer.
+
+| construction | model | $\texttt{leak}_{i\to c}$ | $\texttt{size}_\gamma$: L0 $\to$ mid $\to$ max |
+|:--|:--|--:|:--|
+| noun/verb | pythia-1.4b | 0.002 | 0.09 → 0.16 → **0.26** |
+| noun/verb | babylm-1.3B | 0.004 | 0.17 → 0.13 → 0.18 |
+| noun/adj | pythia-1.4b | 0.011 | 0.06 → 0.10 → **0.16** |
+| noun/adj | babylm-1.3B | 0.005 | 0.09 → 0.09 → 0.12 |
+| role | pythia-1.4b | 0.003 | **0.001** → 0.045 → 0.10 |
+| role | babylm-1.3B | 0.001 | **0.005** → 0.036 → 0.07 |
+| metaphor | pythia-1.4b | — | **0.001** → 0.051 → 0.08 |
+| metaphor | babylm-1.3B | — | **0.002** → 0.019 → 0.03 |
+| morphology | pythia-1.4b | 0.001 | *0.20* → 0.09 → *0.20* |
+| morphology | babylm-1.3B | 0.008 | *0.40* → 0.23 → *0.40* |
+
+: Marginal leakage and interaction size (layer 0, middle layer, and maximum over layers). Bold marks
+the near-zero layer-0 interaction of the same-token constructions; italics mark the layer-0-peaked
+morphology profile (@sec-morph). Metaphor has no defined leakage (no category marginal; @sec-metaphor).
+{#tbl-core}
+
+## Abstraction is graded across distinctions {#sec-graded}
+
+Neither "separable" nor "inseparable" describes the representations. They are **both** abstractive
+and entangling, and the balance depends on the distinction. Part-of-speech has a strong reusable
+category marginal *and* a large depth-growing interaction. Grammatical role has a smaller but real
+reusable marginal and a smaller interaction. **Metaphor has no reusable marginal at all**: the
+category main effect $\beta$ is $\approx 0$ and not significant, so $\texttt{leak}_{i\to c}$ is
+undefined — there is no shared "metaphor direction." The metaphor signal is entirely the per-lexeme
+interaction $\gamma$.
+
+## Metaphor: no shared axis, only a per-word interaction {#sec-metaphor}
+
+We confirm the metaphor result with linear probes at the top layer (pythia-410m; @tbl-probe). A
+**pooled** literal/metaphorical probe reaches 0.79 accuracy, but this is *word identity*: words differ
+in metaphor base-rate, so decoding which word predicts metaphoricity for free. Removing word identity
+by **centring each word** collapses the probe to chance (0.53) — there is no shared metaphor axis,
+consistent with $\beta\approx 0$. A **per-word** probe, however, recovers 0.69 (76% of words above
+0.6, growing with depth; e.g. *course* 0.96, *account* 0.95, *plant* 0.92): metaphoricity *is* encoded,
+but word-specifically, pointing in a different direction for each lexeme. This is exactly the
+significant, depth-growing $\gamma$, and it argues against metaphor being "literal + a uniform
+coercion operator" in the sense of a compositional generative lexicon [@pustejovsky1995generative],
+which would appear as a shared $\beta$.
+
+| probe | accuracy | interpretation |
+|:--|--:|:--|
+| pooled lit/met | 0.79 | word identity / base-rate |
+| globally word-centred | 0.53 | no shared metaphor axis ($\approx$ chance) |
+| per-word | 0.69 | word-specific signal (the interaction) |
+
+: Metaphor probes at the top layer (pythia-410m); chance = 0.50. {#tbl-probe}
+
+## Morphology: a tokenisation confound {#sec-morph}
+
+Regular number/tense show the same marginal separability ($\texttt{leak}_{i\to c}\approx
+0.001$–$0.008$) and a real interaction, but the depth profile **inverts**: the interaction *peaks at
+layer 0* and dips with depth (@tbl-core, italics). This is the tokenisation confound — the plural/past
+is read at a *different subword* (dog vs dog-\textbf{s}), so the layer-0 interaction reflects token
+identity, not morphology. It is the mirror image of the same-token profile, which is why the
+same-token constructions carry the argument. A genuinely zero-marked control (\emph{cut}/\emph{hit},
+\emph{sheep}/\emph{fish}) is positive but underpowered ($n=3$–4 lemmas).
+
+## Family difference {#sec-family}
+
+Across POS, role, and metaphor, Pythia builds more interaction with depth than BabyLM/OPT, whose
+profile is flatter and, for the multi-token POS grid, layer-0-heavy. Part of BabyLM's layer-0 mass is
+plausibly an OPT *absolute*-positional-embedding artifact (vs Pythia's rotary embeddings), which
+appears at the embedding layer; we state the family difference as a hypothesis, not an established
+effect, as it is confounded by architecture and training-data scale together.
+
+# Discussion {#sec-discussion}
+
+The measurement reframes an old dichotomy [@houghton2024exemplars; @tomasello2003constructing].
+Rather than asking whether a model *abstracts* categories or *stores exemplars*, we quantify how much
+of a distinction is a reusable component (the marginals) versus an item-bound conjunction (the
+interaction, superposed onto the shared code [@elhage2022superposition]), and find real models sit in
+between — with a balance that shifts across linguistic dimensions. Two standard methods are
+structurally blind to the entangled part. Developmental "which is learned first" questions presuppose
+that the representation partitions into an item part and a category part; the interaction is neither,
+so for it the ordering question has no referent. Single-direction probing [@hewitt2019structural]
+recovers the category marginal but not the interaction — and for metaphor, where the marginal does not
+exist, would wrongly conclude the distinction is not represented. The interaction is precisely where
+the exemplar-versus-abstraction tension lives, and it is exactly what those methods cannot see.

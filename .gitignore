@@ -25,3 +25,21 @@ data/experiment6_reps/
 data/experiment7_reps/
 data/experiment8_reps_shard1/*.npz
 data/experiment8_reps_shard0/*.npz
+
+# LLM contextual reps (~325 GB, regenerable via run_llm_sweep.py) -- results CSVs stay tracked
+data/llm_reps/
+# Experiment 9 unified-grid saved reps (~8 GB, regenerable) -- CSVs stay tracked
+data/experiment9_reps/
+# editor / tool dirs
+.idea/
+.vscode/
+.claude/
+data/vua_reps/
+# concatenated UD corpus (33 MB, regenerable via scripts/build_concat_ud.py) -- CSVs stay tracked
+data/ud/
+# Quarto paper build artifacts (extension installed via `quarto add`; PDFs/TeX are generated)
+paper/_extensions/
+paper/*.pdf
+paper/*.tex
+paper/.quarto/
+paper/*_files/

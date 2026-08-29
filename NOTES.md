@@ -5,6 +5,49 @@ this project — the "why", separate from METHOD.md's "what". Newest at top.
 
 ---
 
+## Denoising the interaction: two independent estimates, not a magnitude threshold
+
+The unified measure asks two things of each component (item / class / interaction): its
+**size** and its **orthogonality** (the leaks/angles). The orthogonality of a component is
+only defined when the component *exists* — asking "is the interaction on its own axis?" when
+there is no interaction returns the direction of near-zero noise (this is why additive data,
+`int_frac=0`, gave a spurious `leak_int→margins ≈ 0.7`, and the mirror case at `int_frac=1`
+makes the *marginal* leaks degenerate). So a leak must be **gated on whether its component is
+real**.
+
+**Why not permutation.** The natural idea — shuffle labels, see if `size_interaction` drops —
+does not work, and the reason is worth remembering: `size = ‖γ‖²` is a *magnitude*. Label
+permutation destroys *structure* but does not reduce a sum of squares; both label-shuffle and
+ter-Braak residual permutation give a null that depends only on ‖residual‖² and shuffle-induced
+mean removal, **not** on whether the residual is real interaction or junk of the same size.
+Permutation tests are for structure statistics, not magnitudes. So permutation cannot separate
+signal from equal-magnitude noise here.
+
+**What does work: an independent replicate.** With two independent estimates of the same cell,
+`s = ⟨γ_A, γ_B⟩` is ~0 when γ is noise (the two are independent so their inner product cancels)
+and positive when γ is real signal (both halves see the same γ). Because it can be zero *or
+negative* under the null, testing `s > 0` (bootstrap over items → CI excludes 0) is a genuine
+test, not a threshold on a positively-biased magnitude. This is the principled gate.
+
+**The toy and the LLM get their two estimates differently — necessarily, because their noise
+sources differ — but the *method* (cross-correlate two independent estimates) is identical:**
+- **LLM:** split each (lemma, POS) cell's *token contexts* into two halves. Removes **context
+  noise** (a lemma's hidden state jitters across sentences).
+- **Toy:** train **two models on the same task with different init seeds**. Removes the
+  **init-dependent null-space junk** — the free per-lexeme embedding leaves the `d − rank`
+  loss-unconstrained directions to be filled by init/optimization, and that junk (independent
+  across inits, shared signal across inits) is exactly what pollutes γ on additive data. Naive
+  replication (re-running one trained model, or measurement-time input jitter) does **not** fix
+  this: the junk is baked into the fixed weights, identical across passes, so it survives the
+  split. Two independent inits are what make it resampleable.
+
+So "split-half denoising" is not LLM-only; it is "cross-correlate two independent looks at the
+cell." The toy realizes the two looks as two inits, the LLM as two context halves. That parity
+is what lets us calibrate the gate on the toy (where we also hold a ground-truth additive
+control) and trust the same gate on the LLM.
+
+---
+
 ## ReLU entangles; tanh doesn't — because tanh's nonlinearity is *avoidable*
 
 Headline result of the MLP experiment (measured with the gauge-invariant whitened
