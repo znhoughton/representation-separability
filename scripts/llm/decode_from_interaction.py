@@ -1,0 +1,212 @@
+"""#3 positive control: does the INTERACTION subspace carry the SPECIFIC category label, or just
+generic context? The LLM analog of the toy keep-only superposition test
+(scripts/toy/validate_superposition.py). The measure already shows gamma is large (size_interaction)
+and real (the cross-half permutation gate). This asks the next question -- is it *usable*: can you
+read the category off the interaction subspace alone?
+
+Method (per construction, deep layer, largest model of each family):
+  X       = standardize_columns(reps)                 # same per-dim z-score as the measure
+  M[i,c]  = balanced cell means -> _decompose -> mu, alpha(item), beta(class), gamma(interaction)
+  S_int   = orthonormal basis for the gamma directions (the "interaction subspace")
+  KEEP-ONLY: project tokens onto S_int and decode, vs chance and vs a RANDOM subspace of equal dim:
+    - class decode  (5-fold CV logistic regression, classes balanced) -> is the CATEGORY in gamma?
+    - item  decode  (nearest-centroid, like the toy)                  -> is ITEM identity in gamma?
+  class_int >> chance AND > class_rand  ==>  the interaction subspace is category-enriched: gamma
+  encodes the specific label item-specifically, not generic context. (The random-subspace control
+  answers "does ANY k-dim slice decode this?"; CV answers "does it generalize, not memorize?".)
+
+Constructions: pos (noun/verb from the saved upos/lemma), role (nsubj/obj, item=form, deprel
+re-derived like measure_llm_role), metaphor (lit/met from the VUA reps). Not circular: S_int is the
+gamma directions (beta, the shared class axis, is already subtracted in the decomposition), and the
+random-subspace + CV calibrate the read.
+
+Run (CPU, in-sandbox):
+  python scripts/llm/decode_from_interaction.py --construction pos  --reps-dir data/llm_reps \
+         --conllu data/ud/en_all-ud.conllu --out data/llm_decode_interaction.csv
+  python scripts/llm/decode_from_interaction.py --construction role --reps-dir data/llm_reps --conllu ...
+  python scripts/llm/decode_from_interaction.py --construction metaphor --reps-dir data/vua_reps
+"""
+import argparse
+import csv
+import sys
+from pathlib import Path
+
+import numpy as np
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+for _sub in ("lib", "llm", "toy"):
+    sys.path.insert(0, str(REPO_ROOT / "scripts" / _sub))
+from unified_separability import (standardize_columns, build_balanced_grid, _cell_means,  # noqa: E402
+                                  _decompose, _orthobasis)
+
+FIELDS = ["model", "construction", "layer", "n_items", "n_points", "k_int",
+          "class_int", "class_rand", "class_full", "class_chance",
+          "class_peritem", "class_peritem_null",
+          "item_int", "item_rand", "item_chance"]
+
+
+def _cv_logreg(X, y, seed=0):
+    """5-fold CV balanced accuracy of a logistic classifier (guards against memorization)."""
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.model_selection import StratifiedKFold
+    from sklearn.metrics import balanced_accuracy_score
+    accs = []
+    for tr, te in StratifiedKFold(5, shuffle=True, random_state=seed).split(X, y):
+        clf = LogisticRegression(max_iter=1000, C=1.0).fit(X[tr], y[tr])
+        accs.append(balanced_accuracy_score(y[te], clf.predict(X[te])))
+    return float(np.mean(accs))
+
+
+def _nc_acc(X, label):
+    """Nearest-centroid decoding accuracy for `label` (matches the toy keep-only item decode)."""
+    labs = np.unique(label)
+    cents = np.array([X[label == l].mean(0) for l in labs])
+    d2 = ((X[:, None, :] - cents[None, :, :]) ** 2).sum(-1)
+    return float((labs[d2.argmin(1)] == label).mean())
+
+
+def _balance(y, rng):
+    """Indices for an equal-class subsample (so class accuracy isn't inflated by base rate)."""
+    labs, out = np.unique(y), []
+    k = min(int((y == l).sum()) for l in labs)
+    for l in labs:
+        out.append(rng.choice(np.where(y == l)[0], k, replace=False))
+    return np.concatenate(out)
+
+
+def _peritem_class_decode(Xb, ib, cb, pos_label, rng, shuffle=False):
+    """CLEAN gamma read: hold item fixed (removes alpha), remove the shared class axis beta, then
+    decode class WITHIN each item from the residual -> the item-specific class signal = interaction.
+    Averaged over items (>=8/class). `shuffle` permutes labels within item for the null."""
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.model_selection import StratifiedKFold
+    from sklearn.metrics import balanced_accuracy_score
+    y = (cb == pos_label).astype(int)
+    mu1, mu0 = Xb[y == 1].mean(0), Xb[y == 0].mean(0)      # pooled beta (shared class) direction
+    w = mu1 - mu0; w = w / (np.linalg.norm(w) + 1e-12)
+    Xr = Xb - np.outer(Xb @ w, w)                          # project out the shared class axis
+    accs = []
+    for it in np.unique(ib):
+        m = ib == it; yy = y[m].copy(); Xi = Xr[m]
+        if shuffle:
+            yy = rng.permutation(yy)
+        n0, n1 = int((yy == 0).sum()), int((yy == 1).sum())
+        if min(n0, n1) < 8:
+            continue
+        k = min(n0, n1)                                    # balance within item
+        sel = np.concatenate([rng.choice(np.where(yy == 0)[0], k, False),
+                              rng.choice(np.where(yy == 1)[0], k, False)])
+        a = [balanced_accuracy_score(yy[sel][te], LogisticRegression(max_iter=1000).fit(
+                Xi[sel][tr], yy[sel][tr]).predict(Xi[sel][te]))
+             for tr, te in StratifiedKFold(5, shuffle=True, random_state=0).split(Xi[sel], yy[sel])]
+        accs.append(np.mean(a))
+    return float(np.mean(accs)) if accs else float("nan")
+
+
+def load(construction, path, layer, conllu):
+    """-> (model, X[layer], item_of, class_of, classes) for the construction."""
+    z = np.load(path, allow_pickle=True); model = str(z["model"])
+    if construction == "pos":
+        X = z[f"layer_{layer}"]; item = z["lemma"]; cls = z["upos"]; classes = ("NOUN", "VERB")
+    elif construction == "role":
+        from llm_extract import parse_conllu, derive_labels
+        up = z["upos"]; lem = z["lemma"]; n = len(up)
+        lab = derive_labels(model, list(parse_conllu(conllu)))
+        du, dl = lab["upos"][:n], lab["lemma"][:n]
+        if not (np.array_equal(du, up) and np.array_equal(dl, lem)):
+            raise RuntimeError(f"{model}: alignment mismatch on role labels")
+        X = z[f"layer_{layer}"]; form = np.array([f.lower() for f in lab["form"][:n]])
+        deprel = lab["deprel"][:n]
+        m = (up == "NOUN")                                  # nouns as subject vs object (same token)
+        X, item, cls, classes = X[m], form[m], deprel[m], ("nsubj", "obj")
+    elif construction == "metaphor":
+        X = z[f"layer_{layer}"]; item = np.array([f.lower() for f in z["form"]])
+        cls = np.where(z["label"].astype(int) == 1, "met", "lit"); classes = ("lit", "met")
+    else:
+        raise ValueError(construction)
+    return model, X, np.asarray(item), np.asarray(cls), classes
+
+
+def decode_file(construction, path, layer, conllu, min_cell, n_rand, seed):
+    model, X, item, cls, classes = load(construction, path, layer, conllu)
+    Xs = standardize_columns(X.astype(np.float64))
+    items, classes_, cells = build_balanced_grid(item, cls, min_cell=min_cell, classes=list(classes))
+    if len(items) < 2:
+        return None
+    M = _cell_means(Xs, cells, items, classes_)[0]
+    _, _, _, gamma = _decompose(M)
+    S_int = _orthobasis(gamma.reshape(len(items) * len(classes_), -1))   # d x k interaction basis
+    k = S_int.shape[1]
+    idx = np.concatenate([cells[(it, c)] for it in items for c in classes_])   # balanced token set
+    Xb, ib, cb = Xs[idx], item[idx], cls[idx]
+    rng = np.random.default_rng(seed)
+    d = Xs.shape[1]
+    # ---- class: keep-only decode from the interaction subspace, vs random subspace, vs full rep ----
+    y = (cb == classes_[1]).astype(int)
+    bi = _balance(y, rng); Xk, yk = Xb[bi], y[bi]
+    class_int = _cv_logreg(Xk @ S_int, yk, seed)
+    class_rand = float(np.mean([_cv_logreg(Xk @ np.linalg.qr(rng.standard_normal((d, d)))[0][:, :k], yk, seed)
+                                for _ in range(n_rand)]))
+    class_full = _cv_logreg(Xk, yk, seed)
+    # ---- CLEAN class-in-gamma: per-item, beta removed (isolates the item-specific interaction) ----
+    class_peritem = _peritem_class_decode(Xb, ib, cb, classes_[1], np.random.default_rng(seed))
+    class_null = _peritem_class_decode(Xb, ib, cb, classes_[1], np.random.default_rng(seed), shuffle=True)
+    # ---- item: keep-only nearest-centroid (the exemplar-residue read), vs random subspace ----
+    item_int = _nc_acc(Xb @ S_int, ib)
+    item_rand = float(np.mean([_nc_acc(Xb @ np.linalg.qr(rng.standard_normal((d, d)))[0][:, :k], ib)
+                               for _ in range(n_rand)]))
+    return dict(model=model, construction=construction, layer=layer, n_items=len(items),
+                n_points=len(idx), k_int=k,
+                class_int=round(class_int, 4), class_rand=round(class_rand, 4),
+                class_full=round(class_full, 4), class_chance=0.5,
+                class_peritem=round(class_peritem, 4), class_peritem_null=round(class_null, 4),
+                item_int=round(item_int, 4), item_rand=round(item_rand, 4),
+                item_chance=round(1.0 / len(np.unique(ib)), 4))
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--construction", required=True, choices=["pos", "role", "metaphor"])
+    ap.add_argument("--reps-dir", required=True)
+    ap.add_argument("--conllu", default=None, help="required for role (deprel re-derivation)")
+    ap.add_argument("--models", nargs="*", default=["pythia-1.4b", "opt-babylm-1.3B"],
+                    help="substrings; default = the largest of each family")
+    ap.add_argument("--layer", type=int, default=None, help="default = deepest layer")
+    ap.add_argument("--min-cell", type=int, default=10)
+    ap.add_argument("--n-rand", type=int, default=8)
+    ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--out", default=str(REPO_ROOT / "data" / "llm_decode_interaction.csv"))
+    args = ap.parse_args()
+    if args.construction == "role" and not args.conllu:
+        raise SystemExit("--conllu is required for construction=role")
+
+    files = sorted(Path(args.reps_dir).glob("*.npz"))
+    files = [p for p in files if "__random" not in p.name
+             and any(m in p.name for m in args.models)]
+    out = Path(args.out); out.parent.mkdir(parents=True, exist_ok=True)
+    write_header = not out.exists()
+    with open(out, "a", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=FIELDS, extrasaction="ignore")
+        if write_header:
+            w.writeheader()
+        for p in files:
+            z = np.load(p, allow_pickle=True)
+            layer = args.layer if args.layer is not None else max(int(li) for li in z["layer_idxs"])
+            print(f"=== {p.name} L{layer} ({args.construction}) ===", flush=True)
+            try:
+                r = decode_file(args.construction, str(p), layer, args.conllu, args.min_cell,
+                                args.n_rand, args.seed)
+            except Exception as e:
+                print(f"  !! failed: {type(e).__name__}: {e}", flush=True); continue
+            if r is None:
+                print("  (no balanced grid)", flush=True); continue
+            w.writerow(r); fh.flush()
+            print(f"  class keep-only: int={r['class_int']:.3f} rand={r['class_rand']:.3f} full={r['class_full']:.3f}"
+                  f"  |  class per-item(beta-removed): {r['class_peritem']:.3f} null={r['class_peritem_null']:.3f}"
+                  f"  |  item keep-only: int={r['item_int']:.3f} rand={r['item_rand']:.3f} chance={r['item_chance']:.4f}"
+                  f"  (k={r['k_int']})", flush=True)
+    print(f"Done -> {out}")
+
+
+if __name__ == "__main__":
+    main()

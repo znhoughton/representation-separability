@@ -378,7 +378,38 @@ component (α, β) vs an item-bound conjunction (γ) — and that balance **depe
 So abstraction is strongest for grammatical category, present-but-partial for role, and *absent* for
 metaphor — a spectrum, not a constant.
 
-### 4.3 The payoff — why "which is learned first?" and single-direction probing are blind to γ
+### 4.3 The interaction functionally carries the concept — a positive control
+
+`size_interaction` shows γ is large and the cross-half gate shows it is *real* (replicates across
+independent data halves), but neither shows it carries the **specific** category rather than generic
+correlated context (metaphor sits in different sentences, subjects and objects in different
+constructions). We test that directly — the LLM analog of the toy keep-only superposition test
+(§2.7; `scripts/llm/decode_from_interaction.py`) — at the deepest layer of the largest model in each
+family. Holding the **item fixed** (so the item marginal α cannot contribute) and **projecting out
+the shared class axis β**, the category is still decodable from the residual — which is exactly the
+interaction γ — by a cross-validated linear probe, while a within-item label permutation sits at
+chance:
+
+| construction | class-from-γ  pythia-1.4b | babylm-1.3B | perm. null |
+|---|---|---|---|
+| POS noun/verb | **0.95** | **0.93** | ~0.50 |
+| role nsubj/obj | **0.84** | **0.85** | ~0.50 |
+| metaphor lit/met | **0.70** | **0.65** | ~0.50 |
+
+The interaction is therefore **not generic context**: it functionally encodes the specific category,
+item-specifically (α removed by holding item fixed, β removed by projection; the null at chance is the
+honesty check on the CV). Three points reinforce it: (i) the effect is **graded the same way** as
+`size_interaction` — POS > role > metaphor — so the constructions line up on this measure too; (ii)
+metaphor's value (0.70) **reproduces its independent per-word probe** (§4.2, 0.69), the same quantity
+measured two ways; (iii) **item identity is also superposed in γ** — decoding the *item* from the
+interaction subspace alone runs at **~23–116× chance** (the exemplar-residue, a direct replication of
+the toy's *dog*-at-35×; a random subspace of equal dimension decodes the item *more*, since the code
+is distributed, but item information is unambiguously present in γ). *Secondary/confounded:* decoding
+the class from the interaction *subspace* directly (0.67–0.92, above a random-subspace control) is
+β-leak-confounded where β is large — which is why the per-item β-removed decode above is the clean
+metric and metaphor's β≈0 made its keep-only clean already.
+
+### 4.4 The payoff — why "which is learned first?" and single-direction probing are blind to γ
 
 A precision point first, so the claim survives recomputation: by raw variance the **item marginal
 dominates the total** (`size_item` ≈ 0.9+) — a word is mostly itself. The interaction is large not as
@@ -399,7 +430,7 @@ conclude "not represented" when the distinction is in fact learned item-by-item.
 fraction is precisely where the exemplar-vs-abstraction tension lives, and it is exactly what these
 two standard methods cannot see.
 
-### 4.4 Morphology as caveated support (and a positive control on the confound)
+### 4.5 Morphology as caveated support (and a positive control on the confound)
 
 Regular Number/Tense show the same marginal separability (`leak_i→c` ≈ 0.001–0.008) and a real
 interaction — but the depth profile **inverts**: γ *peaks at layer 0* and *dips* with depth (Number:
@@ -410,7 +441,7 @@ profile (≈0 at L0, growing) and is exactly why the same-token constructions ca
 same-token control — genuinely zero-marked words (*cut/hit*, *sheep/fish*) — is positive but
 underpowered (n = 3–4 lemmas), so it cannot fully clean up morphology on its own.
 
-### 4.5 Scope and honest caveats
+### 4.6 Scope and honest caveats
 
 - **Gauge.** Orthogonal-invariant only (no whitening, for toy↔LLM consistency), so "marginals
   separable" is relative to the standardized basis. The **interaction's size, its depth-growth, and

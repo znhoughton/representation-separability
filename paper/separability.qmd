@@ -119,6 +119,14 @@ contextualisation*: in every same-token construction the interaction is $\approx
 both the tokenisation and the linear-position confounds; the entanglement is created by the
 transformer.
 
+A scale note for reading @tbl-core: by raw variance the *item* marginal dominates the total
+($\texttt{size}_\alpha \approx 0.9$ — a word is mostly itself), so $\texttt{size}_\gamma$ is the
+interaction's share of the **category-distinguishing** structure (what makes an item's representation
+differ across category levels), *not* a fraction of the whole representation. A value of 0.26 thus
+means roughly a quarter of what separates the categories is irreducibly joint — it does not mean a
+quarter of the representation. The defensible claim is accordingly about that structure: much of what
+makes *dog*-as-noun differ from *dog*-as-verb is joint, not a portable noun part.
+
 | construction | model | $\texttt{leak}_{i\to c}$ | $\texttt{size}_\gamma$: L0 $\to$ mid $\to$ max |
 |:--|:--|--:|:--|
 | noun/verb | pythia-1.4b | 0.002 | 0.09 → 0.16 → **0.26** |
@@ -168,6 +176,32 @@ which would appear as a shared $\beta$.
 
 : Metaphor probes at the top layer (pythia-410m); chance = 0.50. {#tbl-probe}
 
+## The interaction carries the concept, not generic context {#sec-control}
+
+`size`$_\gamma$ shows the interaction is large and the cross-half gate shows it is real, but neither
+shows it carries the *specific* category rather than correlated context. We test this directly (the
+analog of the toy keep-only decode) at the deepest layer of the largest model in each family. Holding
+the **item fixed** (so $\alpha$ cannot contribute) and **projecting out the shared class axis**
+$\beta$, we decode the class from the residual — which is the interaction $\gamma$ — with a
+cross-validated linear probe, against a within-item label-permutation null (@tbl-control).
+
+| construction | pythia-1.4b | babylm-1.3B | perm. null |
+|:--|--:|--:|--:|
+| POS (noun/verb) | **0.95** | **0.93** | 0.50 |
+| role (nsubj/obj) | **0.84** | **0.85** | 0.50 |
+| metaphor (lit/met) | **0.70** | **0.65** | 0.49 |
+
+: Class decoded from the item-specific interaction ($\alpha$ held fixed, $\beta$ removed), vs a
+within-item permutation null; chance = 0.50. {#tbl-control}
+
+The category is decodable from $\gamma$ at 0.65–0.95 while the null sits at chance — so the interaction
+functionally encodes the specific category, item-specifically, not generic context. The effect is
+**graded like** `size`$_\gamma$ (POS $>$ role $>$ metaphor), and metaphor's value reproduces its
+independent per-word probe (@tbl-probe, 0.69). Item identity is likewise superposed in $\gamma$:
+decoding the *item* from the interaction subspace alone runs at 23–116$\times$ chance (a random
+subspace of equal dimension decodes it more — the code is distributed — but item information is
+unambiguously present in $\gamma$).
+
 ## Morphology: a tokenisation confound {#sec-morph}
 
 Regular number/tense show the same marginal separability ($\texttt{leak}_{i\to c}\approx
@@ -197,5 +231,7 @@ structurally blind to the entangled part. Developmental "which is learned first"
 that the representation partitions into an item part and a category part; the interaction is neither,
 so for it the ordering question has no referent. Single-direction probing [@hewitt2019structural]
 recovers the category marginal but not the interaction — and for metaphor, where the marginal does not
-exist, would wrongly conclude the distinction is not represented. The interaction is precisely where
-the exemplar-versus-abstraction tension lives, and it is exactly what those methods cannot see.
+exist, would wrongly conclude the distinction is not represented. And the interaction genuinely
+encodes the category — it is decodable from $\gamma$ item-specifically (@sec-control) — so this is a
+blind spot, not a non-finding: the interaction is precisely where the exemplar-versus-abstraction
+tension lives, and it is exactly what those methods cannot see.
