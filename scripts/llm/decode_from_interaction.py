@@ -41,7 +41,9 @@ from unified_separability import (standardize_columns, build_balanced_grid, _cel
 
 FIELDS = ["model", "construction", "layer", "n_items", "n_points", "k_int",
           "class_int", "class_rand", "class_full", "class_chance",
-          "class_peritem", "class_peritem_null",
+          "class_peritem", "class_peritem_null", "n_peritem",
+          "class_peritem_lo", "class_peritem_hi",
+          "class_peritem_null_lo", "class_peritem_null_hi",
           "item_int", "item_rand", "item_chance"]
 
 
@@ -57,12 +59,27 @@ def _cv_logreg(X, y, seed=0):
     return float(np.mean(accs))
 
 
-def _nc_acc(X, label):
-    """Nearest-centroid decoding accuracy for `label` (matches the toy keep-only item decode)."""
-    labs = np.unique(label)
-    cents = np.array([X[label == l].mean(0) for l in labs])
-    d2 = ((X[:, None, :] - cents[None, :, :]) ** 2).sum(-1)
-    return float((labs[d2.argmin(1)] == label).mean())
+def _nc_acc(X, label, loo=True, chunk=2048):
+    """Nearest-centroid decoding accuracy for `label`. With loo=True each point is removed from its
+    OWN class centroid before scoring, making this a held-out read: the class decode alongside it is
+    5-fold cross-validated, so a training-set item number would not be comparable to it. Chunked over
+    rows so the (n x n_labels x k) distance array is never materialised in full (n_items can be 180
+    and n can be ~15k, which is several GB unchunked)."""
+    X = np.asarray(X, np.float64)
+    labs, inv = np.unique(label, return_inverse=True)
+    sums = np.zeros((len(labs), X.shape[1])); cnts = np.zeros(len(labs))
+    np.add.at(sums, inv, X); np.add.at(cnts, inv, 1)
+    cents = sums / cnts[:, None]
+    correct = 0
+    for s in range(0, len(X), chunk):
+        e = min(s + chunk, len(X))
+        Xc, own = X[s:e], inv[s:e]
+        d2 = ((Xc[:, None, :] - cents[None, :, :]) ** 2).sum(-1)
+        if loo:                                   # own-class centroid recomputed without this point
+            loo_c = (sums[own] - Xc) / np.maximum(1.0, cnts[own] - 1.0)[:, None]
+            d2[np.arange(e - s), own] = ((Xc - loo_c) ** 2).sum(-1)
+        correct += int((d2.argmin(1) == own).sum())
+    return float(correct / len(X))
 
 
 def _balance(y, rng):
@@ -100,7 +117,20 @@ def _peritem_class_decode(Xb, ib, cb, pos_label, rng, shuffle=False):
                 Xi[sel][tr], yy[sel][tr]).predict(Xi[sel][te]))
              for tr, te in StratifiedKFold(5, shuffle=True, random_state=0).split(Xi[sel], yy[sel])]
         accs.append(np.mean(a))
-    return float(np.mean(accs)) if accs else float("nan")
+    return (float(np.mean(accs)) if accs else float("nan")), np.asarray(accs, float)
+
+
+def _boot_ci(vals, rng, n_boot=2000, sig=0.05):
+    """Percentile bootstrap CI over ITEMS for a per-item mean. The per-item accuracies are averaged
+    unweighted and some items contribute as few as 8 tokens per class, so the point estimate alone
+    understates the uncertainty -- and the graded ordering across constructions is a comparison of
+    exactly these means."""
+    v = np.asarray(vals, float)
+    v = v[np.isfinite(v)]
+    if len(v) < 2:
+        return (float("nan"), float("nan"))
+    b = [np.mean(rng.choice(v, len(v), replace=True)) for _ in range(n_boot)]
+    return (float(np.percentile(b, 100 * sig / 2)), float(np.percentile(b, 100 * (1 - sig / 2))))
 
 
 def load(construction, path, layer, conllu):
@@ -149,8 +179,11 @@ def decode_file(construction, path, layer, conllu, min_cell, n_rand, seed):
                                 for _ in range(n_rand)]))
     class_full = _cv_logreg(Xk, yk, seed)
     # ---- CLEAN class-in-gamma: per-item, beta removed (isolates the item-specific interaction) ----
-    class_peritem = _peritem_class_decode(Xb, ib, cb, classes_[1], np.random.default_rng(seed))
-    class_null = _peritem_class_decode(Xb, ib, cb, classes_[1], np.random.default_rng(seed), shuffle=True)
+    class_peritem, pi_accs = _peritem_class_decode(Xb, ib, cb, classes_[1], np.random.default_rng(seed))
+    class_null, pi_null = _peritem_class_decode(Xb, ib, cb, classes_[1],
+                                                np.random.default_rng(seed), shuffle=True)
+    ci_lo, ci_hi = _boot_ci(pi_accs, np.random.default_rng(seed))
+    null_lo, null_hi = _boot_ci(pi_null, np.random.default_rng(seed))
     # ---- item: keep-only nearest-centroid (the exemplar-residue read), vs random subspace ----
     item_int = _nc_acc(Xb @ S_int, ib)
     item_rand = float(np.mean([_nc_acc(Xb @ np.linalg.qr(rng.standard_normal((d, d)))[0][:, :k], ib)
@@ -160,6 +193,9 @@ def decode_file(construction, path, layer, conllu, min_cell, n_rand, seed):
                 class_int=round(class_int, 4), class_rand=round(class_rand, 4),
                 class_full=round(class_full, 4), class_chance=0.5,
                 class_peritem=round(class_peritem, 4), class_peritem_null=round(class_null, 4),
+                n_peritem=int(len(pi_accs)),
+                class_peritem_lo=round(ci_lo, 4), class_peritem_hi=round(ci_hi, 4),
+                class_peritem_null_lo=round(null_lo, 4), class_peritem_null_hi=round(null_hi, 4),
                 item_int=round(item_int, 4), item_rand=round(item_rand, 4),
                 item_chance=round(1.0 / len(np.unique(ib)), 4))
 
