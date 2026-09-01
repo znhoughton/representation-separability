@@ -1,23 +1,12 @@
 ---
-title: "Neither Separable nor Inseparable: How Language Models Both Abstract and Entangle Lexeme and Category"
+title: "Are Lexical Representations Separable? Item and Category in Learned Distributed Representations"
 author:
   - name: "Anonymous"
     affiliations:
       - name: "Anonymous Institution"
     email: anon@example.edu
 abstract: |
-  A word's contextual representation might factor cleanly into a reusable *category* component (e.g.
-  \textsc{noun}) and an *item* component (e.g. \emph{dog}), or the two might be entangled. We
-  operationalise this as a geometric decomposition of item-by-category representations into marginal
-  (item, category) and interaction terms, and measure it across four linguistic distinctions
-  spanning grammar and meaning in six pretrained language models. We find that the answer is neither
-  "separable" nor "inseparable": the category marginal is cleanly separable from the item marginal
-  everywhere, yet a significant, depth-built item-by-category interaction remains that cannot be
-  factored back into category plus item. The balance is *graded* across distinctions — strong
-  reusable abstraction for part-of-speech, partial for grammatical role, and *absent* for metaphor,
-  where the distinction lives only as a per-lexeme interaction. Because the interaction is neither an
-  item part nor a category part, developmental "which is learned first" questions and single-direction
-  probing are structurally blind to it.
+  PLACEHOLDER --- author to write.
 bibliography: refs.bib
 acl-mode: review
 number-sections: true
@@ -27,211 +16,368 @@ format:
     keep-tex: true
 ---
 
-# Methods
+```{r}
+#| label: setup
+#| include: false
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+library(readr); library(dplyr); library(tidyr); library(ggplot2); library(kableExtra)
+library(patchwork); library(scales)
 
-## A separability measure {#sec-measure}
+DATA <- file.path("..", "data")
+rd <- function(f) suppressMessages(read_csv(file.path(DATA, f), show_col_types = FALSE))
 
-For a distinction with items $i \in \{1,\dots,I\}$ (e.g. lemmas) crossed with category levels
-$c \in \{1,\dots,C\}$ (e.g. \textsc{noun}/\textsc{verb}), let $M[i,c] \in \mathbb{R}^d$ be the mean
-representation of item $i$ used at level $c$. We decompose $M$ additively,
+# UO palette, as in the companion papers. Green = the linear reference, gold = the
+# nonlinearity; amber and blue are held for the model families in Experiments 2-3.
+UO <- c(green = "#154733", green2 = "#007030", gold = "#F0B323",
+        amber = "#875E00", blue = "#005581", grey = "#6E6E6E")
+ACT_COL <- c(identity = UO[["green2"]], relu = UO[["gold"]])
+ACT_LAB <- c(identity = "linear", relu = "ReLU")
+
+theme_paper <- function(base = 9) {
+  theme_minimal(base_size = base) +
+    theme(panel.grid.minor = element_blank(),
+          panel.grid.major = element_line(linewidth = 0.25, colour = "grey88"),
+          strip.text = element_text(face = "bold", size = base),
+          legend.position = "top", legend.margin = margin(0, 0, -4, 0),
+          legend.key.height = unit(9, "pt"),
+          axis.title = element_text(size = base))
+}
+
+# ---- Experiment 1: the toy grid, cross-denoised (two initialisations per cell) ----
+# ALL 4800 cells are used. Capacity enters as a reported variable, not as a filter: whether
+# the representation has room to hold every generative direction on its own axis is part of
+# the result, so it is shown rather than assumed.
+toy <- rd("experiment9_cross_results.csv") |>
+  mutate(band = cut(cap, c(-Inf, .5, 1, Inf),
+                    labels = c("room to spare\n(rank/d < 0.5)", "tight\n(0.5-1)",
+                               "impossible\n(> 1)")),
+         act = factor(activation, c("identity", "relu"), c("linear", "ReLU")))
+
+# Separability fails in two distinguishable ways, and the toy separates them: the presence
+# of an interaction term at all, and non-orthogonality among the components. `size_int` is
+# the first; `leak_marg` (item marginal inside the category subspace) and `ov_item` (the
+# interaction's subspace overlapping the item subspace) are the second.
+toy_dose <- toy |>
+  group_by(int_frac, act) |>
+  summarise(n = n(),
+            size_med = median(size_interaction),
+            size_lo = quantile(size_interaction, .25),
+            size_hi = quantile(size_interaction, .75),
+            sig = mean(sig_interaction),
+            leak_med = median(leak_item_into_class, na.rm = TRUE),
+            leak_n = sum(!is.na(leak_item_into_class)),
+            ov_med = median(overlap_item_int, na.rm = TRUE),
+            ov_n = sum(!is.na(overlap_item_int)),
+            .groups = "drop")
+
+# Interaction geometry is only interpretable where an interaction exists AND the marginals
+# do: at int_frac = 0 there is no gamma to orient and at int_frac = 1 no marginals to orient
+# against. The gate already withholds those, and they are excluded from the geometry panels.
+TOY_MID <- c(.25, .5, .75)
+toy_cap <- toy |> filter(int_frac %in% TOY_MID) |>
+  group_by(act, band) |>
+  summarise(n = n(), size_med = median(size_interaction),
+            leak_med = median(leak_item_into_class, na.rm = TRUE),
+            leakint_med = median(leak_int_into_margins, na.rm = TRUE),
+            ov_med = median(overlap_item_int, na.rm = TRUE), .groups = "drop")
+
+toy_null <- toy |> filter(int_frac == 0) |>
+  group_by(act, band) |>
+  summarise(n = n(), sig_rate = mean(sig_interaction),
+            size_med = median(size_interaction), .groups = "drop")
+
+g <- function(x, digits = 3) formatC(x, format = "f", digits = digits)
+pick <- function(tb, a, ifrac, col) tb[[col]][tb$act == a & tb$int_frac == ifrac]
+capget <- function(tb, a, b, col) tb[[col]][tb$act == a & grepl(b, tb$band)]
+```
+
+# Introduction
+
+::: {.content-visible when-format="acl-pdf"}
+<!-- PLACEHOLDER: author to write. Frames the paper as an extension of Exemplars in
+     Disguise: if a learner's behaviour cannot distinguish exemplar storage from
+     abstraction, ask instead whether its representations separate into an item part and
+     a category part. Ends with the Present Study paragraph setting up the three
+     experiments. -->
+:::
+
+# Experiment 1: Item and Category in a Hybrid Learner {#sec-exp1}
+
+Before asking whether a language model's representations separate lexical identity from
+category, we need a setting where the right answer is known. Experiment 1 trains a learner
+on an artificial language whose generative structure we control, so that we can vary how
+much of the language is item-by-category specific and check what the measure recovers.
+
+The learner is deliberately a hybrid of the two accounts at issue. Every word-in-category
+pairing receives its own private embedding, with no parameter sharing between them, which
+is exemplar storage; those embeddings are then read out through a single network shared by
+every pairing, which is abstraction. This is also the architecture of the models in
+Experiment 2, where private token embeddings feed shared transformer blocks. The question
+is what such a learner does with structure that *could* be represented separably.
+
+## Dataset {#sec-exp1-data}
+
+The artificial language is a next-token prediction task over a vocabulary of
+`r max(toy$n_lex) / 16` word types. Each **lexeme** is a (form, category) pair: 250 forms
+crossed with 16 categories, giving 4,000 lexemes, each with its own target distribution
+over the vocabulary. Forms are the items and categories are the classes, so the design is
+the same item-by-category layout used throughout the paper.
+
+Each form $i$ and category $c$ carries a latent code, and the target distribution is
+generated from those codes through independently drawn loadings onto the vocabulary:
 
 $$
-M[i,c] = \mu + \alpha(i) + \beta(c) + \gamma(i,c),
+\text{logits}(i,c) \;=\; s\Big[\sqrt{1-f}\;\overline{m}(i,c) \;+\; \sqrt{f}\;\overline{x}(i,c)\Big]
+$$ {#eq-toy}
+
+where $\overline{m}$ is an **additive** term, the sum of a form contribution and a category
+contribution, and $\overline{x}$ is a **bilinear** term formed from the elementwise product
+of the two codes, so it is irreducibly joint. Both are normalised to unit per-element
+standard deviation before mixing, and the $\sqrt{1-f}, \sqrt{f}$ weighting holds the total
+signal scale fixed, so the dial $f$ changes the *composition* of the language without
+changing how hard it is to learn.
+
+That dial, $f \in \{0, .25, .5, .75, 1\}$, is the manipulation. At $f = 0$ a word's
+behaviour is exactly its form contribution plus its category contribution, with **no
+interaction whatever**. At $f = 1$ behaviour is purely the form-by-category conjunction and
+the marginals vanish. Intermediate values mix the two.
+
+Two properties of the construction matter for what can be concluded. First, the three sets
+of loadings are drawn independently, so the additive and the interactive structure occupy
+approximately orthogonal subspaces of the output space: **a fully separable representation
+exists** for every value of $f$. Second, the learner's hidden layer is at least as wide as
+the generative rank in the cells we analyse, so it has room to place each component on its
+own axis. Any entanglement the measure reports is therefore something the learner did, not
+something the task or the architecture forced.
+
+We cross the dial with the generative ranks of the form code ($r_i \in \{1,2,4,8,16,32\}$),
+the category code ($r_c \in \{1,2,4,8\}$), the hidden width ($d \in \{16,32,64,128\}$), the
+output nonlinearity (linear or ReLU) and five random draws of the language, for
+`r format(nrow(toy), big.mark = ",")` cells in total, all of which are analysed. The ratio of
+generative rank to hidden width, which we call **capacity**, ranges across the grid from
+`r g(min(toy$cap), 2)` to `r g(max(toy$cap), 1)`. Below one a fully separable solution is
+reachable by dimension counting and above one it is not, so capacity is reported as a
+variable rather than used to select cells.
+
+## Method {#sec-exp1-method}
+
+### The learner
+
+Each lexeme has a free $d$-dimensional embedding, initialised at random and trained without
+any sharing across lexemes: nothing ties *dog*-as-noun to *dog*-as-verb. Those embeddings
+pass through one hidden layer of width $d$ with either an identity or a ReLU nonlinearity,
+and then a linear map to the vocabulary. We measure the hidden layer.
+
+The identity condition is the reference case. A linear map cannot destroy linear
+recoverability, so whatever the linear learner does to the geometry is a rotation and
+shear of separable structure rather than a fusion of it. Differences between the two
+conditions are attributable to the nonlinearity.
+
+Training minimises the exact expected cross-entropy against the true target distribution
+rather than a sampled-token estimate, so a cell is deterministic given its language and
+initialisation, and a seed varies only the language and the starting weights. Cells are
+trained to a loss plateau.
+
+### Decomposing a representation {#sec-measure}
+
+Let $M[i,c] \in \mathbb{R}^d$ be the mean representation of item $i$ used at category level
+$c$. We split that grid into four geometric components,
+
+$$
+M[i,c] \;=\; \mu + \alpha(i) + \beta(c) + \gamma(i,c),
 $$ {#eq-decomp}
 
-into a grand mean $\mu$, an **item marginal** $\alpha$ (constant across categories), a **category
-marginal** $\beta$ (constant across items), and the **interaction** $\gamma$ — the part of an item's
-category-conditioned representation that cannot be predicted from item and category alone. Each term
-is obtained by the usual centred projections, giving mutually orthogonal *sources* of variance whose
-squared norms partition the between-cell structure.
+by centring: $\mu$ is the grand mean, $\alpha(i)$ is item $i$'s row mean minus $\mu$,
+$\beta(c)$ is level $c$'s column mean minus $\mu$, and $\gamma(i,c)$ is what remains. The
+familiar reading is the main-effects-plus-interaction partition, with the difference that
+the dependent variable is a vector, so each component is a *direction* in representational
+space rather than a number. In mixed-model terms $\alpha$ is a by-item random intercept,
+$\beta$ is the fixed effect of category, and $\gamma$ is the by-item random slope for
+category; the question of this paper is how much of the category effect is carried by
+$\beta$ rather than by $\gamma$. We use that mapping for intuition only. Nothing is fitted,
+there is no shrinkage, and no distribution is assumed over the by-item terms.
 
-We report two quantities. **Interaction size** is the interaction's share of the between-cell
-structure, $\texttt{size}_\gamma = \lVert\gamma\rVert^2 / (\lVert\alpha\rVert^2 + \lVert\beta\rVert^2 + \lVert\gamma\rVert^2)$.
-**Marginal leakage** $\texttt{leak}_{i\to c}$ is the fraction of the item-marginal energy lying in
-the category subspace; $\texttt{leak}_{i\to c}\!\approx\!0$ means item and category sit on separate
-axes (projecting out the category leaves the item marginal intact).
+A representation is **separable** if a word's representation is the sum of an item part and
+a category part, with the two on their own axes. It can fail in two distinguishable ways,
+and we measure them separately. It fails if the components are **non-orthogonal**, so that
+projecting out the category also removes item information; and it fails if there is a
+**third component**, an item-by-category term that is neither an item part nor a category
+part, whatever its orientation. A representation with a large $\gamma$ does not factor into
+item plus category even if $\gamma$ sits on an axis of its own.
 
-**Standardisation.** Transformer hidden states contain a few *rogue* dimensions with $10^2$–$10^3\times$
-the variance of the rest [@timkey2021bark], which otherwise dominate any raw scatter eigendecomposition.
-We $z$-score each dimension before decomposing (a diagonal transform, so it needs no $n\!\gg\!d$
-regime, unlike whitening). The measure is therefore invariant to per-dimension rescaling and to
-orthogonal rotation, but not to general linear reparametrisation — we do **not** whiten, so that the
-identical measure applies to the toy models and the LLMs.
+Because the four components are mutually orthogonal *as sources*, their squared lengths
+partition the structure of the grid exactly, and we report each as a share of the total.
+**Interaction size** is $\gamma$'s share, which measures the second kind of failure. For the
+first we report two projections: **marginal leakage**, the fraction of the item component's
+energy lying inside the category component's subspace, and **interaction overlap**, how much
+the interaction's subspace shares directions with the item subspace. Zero on both, with a
+negligible $\gamma$, is a cleanly separable representation.
 
-**Denoising and significance.** An interaction magnitude cannot be permutation-tested directly
-(shuffling structure does not reduce a sum of squares). We instead estimate $\gamma$ on two
-independent halves of the tokens and use the signed cross-product $\langle\gamma_A,\gamma_B\rangle$:
-a per-item permutation null gives a significance test, and the cross term denoises the reported size.
-We flag an interaction as present only when it is both significant and above a denoised-size floor.
+**Interpreting the interaction.** Because $\gamma$ is obtained by subtraction it invites
+reading as a residual in the regression sense, the part a model failed to capture. It is
+not. The decomposition is saturated: $\mu$, $\alpha$, $\beta$ and $\gamma$ exhaust the
+degrees of freedom of the grid, so $\gamma$ is the final term of a complete description
+rather than the leftover of an incomplete one. The residual stratum lies one level below,
+in the scatter of individual observations *within* each cell. That distinction is not free,
+however, since cell means are estimated from finitely many observations and within-cell
+error propagates upward into $\gamma$: a squared length is bounded below by its own noise
+floor and cannot read zero even when the true interaction is zero. This is the situation in
+which an analysis of variance tests an interaction against the within-cell error term, and
+it requires replication for the same reason.
 
-## Constructions and data {#sec-constructions}
+**Replication and the null.** We therefore estimate the grid **twice** from independent
+data and keep only what the two estimates agree on, reporting the signed inner product
+$\langle \gamma_A, \gamma_B \rangle$ rather than $\lVert\gamma\rVert^2$. Independent errors
+cancel in expectation, so this is unbiased at any noise level; and because it can be
+negative it supports a genuine test, which a squared length cannot. Significance comes from
+permuting which item of one estimate is paired with which item of the other, which preserves
+every magnitude while destroying the correspondence. A component's *direction* is only
+defined if the component exists, so leakage is reported only when both components it relates
+are present; otherwise it is withheld.
 
-We measure four distinctions (@tbl-constructions). Three are **same-token**: the item's surface form
-is *identical* across category levels, so the last-subword representation is read from the same token
-in every level and there is no tokenisation confound. These carry the argument. The fourth,
-morphology, is multi-token (the plural/past is spelled with an extra subword) and enters only as a
-control.
+In Experiment 1 the two estimates come from **two initialisations trained on the same
+language**. This is necessary rather than incidental: the toy has one representation per
+cell and hence no within-cell replication, so interaction and error are not identifiable, in
+exactly the way they are not identifiable in an unreplicated two-way design. Training twice
+supplies the missing replication, and what it cancels is the initialisation-dependent
+content that gradient descent leaves in the directions the loss does not constrain. Because
+two independently trained networks occupy different coordinate systems, one is rotated onto
+the other before comparison, with the rotation fitted on held-out items so that an item's
+own noise never shapes its own alignment. @sec-app-math gives the algebra.
 
-| construction | distinction | item | levels | same-token | $n$ |
-|:--|:--|:--|:--|:-:|--:|
-| POS category | noun / verb | lemma | \textsc{noun}/\textsc{verb} | ✓ | 131 |
-| POS category | noun / adjective | lemma | \textsc{noun}/\textsc{adj} | ✓ | 27 |
-| grammatical role | subject / object | surface form | \textit{nsubj}/\textit{obj} | ✓ | 49 |
-| metaphor | literal / metaphorical | surface form | lit/met | ✓ | 180 |
-| morphology | number, tense | lemma | Sing/Plur, Pres/Past | ✗ | 200 / 81 |
+## Results {#sec-exp1-results}
 
-: The four distinctions. Same-token constructions hold the surface form fixed across category
-levels. {#tbl-constructions}
+```{r}
+#| label: fig-toy
+#| fig-env: figure*
+#| fig-width: 6.3
+#| fig-height: 2.3
+#| out-width: "100%"
+#| fig-cap: "Experiment 1, all 4,800 cells. Left: the interaction's share of representational structure. Middle: leakage of the item component into the category subspace, on a log axis (it spans four orders of magnitude). Right: how much the interaction's subspace overlaps the item subspace. Points are medians. Both readouts build a substantial interaction, and it tracks the generative dial; only the ReLU readout also makes the components non-orthogonal. The two outer panels are shown for the settings where the quantities are defined: an orientation requires the components it relates to exist."
+mid <- toy_dose |> filter(int_frac %in% TOY_MID)
+pan <- function(dat, y, ylab, logy = FALSE) {
+  p <- ggplot(dat, aes(int_frac, .data[[y]], colour = act)) +
+    geom_line(linewidth = .6) + geom_point(size = 1.5) +
+    scale_colour_manual(values = c(linear = UO[["green2"]], ReLU = UO[["gold"]]), name = NULL) +
+    scale_x_continuous(breaks = c(0, .5, 1)) +
+    labs(x = NULL, y = ylab) + theme_paper(8)
+  if (logy) p + scale_y_log10(labels = scales::label_number(drop0trailing = TRUE)) else p
+}
+((pan(toy_dose, "size_med", "interaction share\nof structure") |
+  pan(filter(toy_dose, int_frac > 0), "leak_med", "item leaks into\ncategory (log)", TRUE) |
+  pan(mid, "ov_med", "interaction overlaps\nthe item subspace")) +
+  plot_layout(guides = "collect") &
+  theme(legend.position = "top", legend.margin = margin(0, 0, -6, 0)))
+```
 
-**Identifiability.** The interaction $\gamma(i,c)$ is estimable only for items attested at $\ge 2$
-levels; we require $\ge 10$ tokens per cell. For POS this restricts to *convertible* lemmas (words
-used as both noun and verb, e.g. \emph{run}, \emph{hit}); role and metaphor have no such restriction
-(any noun occurs as subject and object; any content word occurs literally and metaphorically). For
-role and metaphor we key the item on the **surface form** rather than the lemma, which guarantees an
-identical token across levels (a lemma such as \emph{thing}/\emph{things} can differ in number across
-roles, but \emph{things}-subject and \emph{things}-object are the same token).
+**The measure tracks what the language contains.** With a purely additive language the
+estimator reports a median interaction share of
+`r g(toy_dose$size_med[toy_dose$act == "linear" & toy_dose$int_frac == 0], 4)` under a linear
+readout; with a purely interactive one it reports
+`r g(pick(toy_dose, "linear", 1, "size_med"), 3)`. The instrument exercises nearly its full
+range on a task whose answer is known at both ends (@fig-toy, left).
 
-**Corpora.** POS, role, and morphology use a concatenation of six English Universal Dependencies
-treebanks [@nivre2020ud] (EWT, GUM, LinES, ParTUT, GENTLE, PUD; $\approx$706K tokens). Metaphor uses
-the VUA20 corpus [@leong2020vua; @steen2010vua], restricted to content words (\textsc{verb},
-\textsc{noun}, \textsc{adj}, \textsc{adv}).
+**Even the linear learner builds an interaction.** At every intermediate setting the linear
+readout carries an item-by-category component of
+`r g(pick(toy_dose, "linear", .25, "size_med"), 2)` to
+`r g(pick(toy_dose, "linear", .75, "size_med"), 2)` of representational structure, flagged as
+present in **100%** of cells. This is not optional. A linear readout maps the hidden layer to
+the logits, and a linear map of a purely additive representation can only produce additive
+logits; so any learner that actually fits an interactive language must carry a non-additive
+representation. The interaction is forced by the task, not chosen by the architecture.
 
-**Models.** We use two families at three matched scales each: OPT-BabyLM (trained on child-scale data
-[@warstadt2023babylm]) and Pythia (trained on the Pile [@biderman2023pythia]), at 125M/160M,
-350M/410M, and 1.3B/1.4B parameters.
+**The linear learner nonetheless keeps everything orthogonal.** Its item and category
+components stay on essentially separate axes, with leakage from
+`r g(pick(toy_dose, "linear", .25, "leak_med"), 5)` to
+`r g(pick(toy_dose, "linear", .75, "leak_med"), 4)`, and its interaction occupies its own
+axis, overlapping the item subspace at
+`r g(pick(toy_dose, "linear", .25, "ov_med"), 3)` and
+`r g(pick(toy_dose, "linear", .5, "ov_med"), 3)` at the two lower settings. So the linear
+representation fails separability in exactly one of the two senses: it contains a third
+component that is neither item nor category, while the components it does contain are
+mutually orthogonal.
 
-**Extraction.** For each token we take the last-subword hidden state at every layer (embeddings
-through the final block). Representations are extracted once and the measure is applied offline, per
-layer, per construction.
+**The nonlinearity compounds it, on both counts.** A ReLU readout carries an interaction of
+similar or slightly larger size (`r g(pick(toy_dose, "ReLU", .75, "size_med"), 2)` at the
+highest intermediate setting), but now the components are also non-orthogonal. Marginal
+leakage runs `r g(pick(toy_dose, "ReLU", .25, "leak_med"), 3)` to
+`r g(pick(toy_dose, "ReLU", .75, "leak_med"), 3)`, two orders of magnitude above the linear
+readout at matched settings, and the interaction overlaps the item subspace at
+`r g(pick(toy_dose, "ReLU", .25, "ov_med"), 2)` to
+`r g(pick(toy_dose, "ReLU", .75, "ov_med"), 2)` where the linear readout sits near zero.
+Under a nonlinearity the interaction stops being a separate module and is superposed onto the
+code that carries item and category identity.
 
-# Results
+**Capacity governs whether the entanglement was avoidable** (@tbl-toy). Where the hidden
+layer has room for every generative direction, the linear readout's interaction overlaps the
+item subspace at `r g(capget(toy_cap, "linear", "room", "ov_med"), 3)`: separation was
+achievable and it was achieved. Where dimension counting makes separation impossible, the
+same linear readout reaches `r g(capget(toy_cap, "linear", "impossible", "ov_med"), 2)`. The
+ReLU readout is entangled at `r g(capget(toy_cap, "ReLU", "room", "ov_med"), 2)` even with
+room to spare, so its entanglement is learned rather than forced. This is also why the
+additive control must be read by capacity: with an additive language and room to spare the
+linear readout flags an interaction in
+`r sprintf("%.0f%%", 100 * capget(toy_null, "linear", "room", "sig_rate"))` of cells, but
+where separation is impossible it flags one in
+`r sprintf("%.0f%%", 100 * capget(toy_null, "linear", "impossible", "sig_rate"))`, correctly,
+since a representation with nowhere to put the components cannot keep them apart.
 
-## Marginals separate, interaction remains {#sec-core}
+```{r}
+#| label: tbl-toy
+#| tbl-cap: "Experiment 1, by capacity. Medians over the intermediate settings of the dial, where both the interaction and the marginals exist. Capacity is the generative rank over the hidden width: below one, a fully separable solution is reachable. Leakage and overlap are zero for a separable representation."
+toy_cap |>
+  transmute(readout = act,
+            capacity = gsub("\n", " ", band),
+            `interaction share` = g(size_med, 3),
+            `item into category` = g(leak_med, 4),
+            `interaction into margins` = g(leakint_med, 3),
+            `interaction / item overlap` = g(ov_med, 3)) |>
+  arrange(readout, capacity) |>
+  kbl(booktabs = TRUE, align = "llrrrr", linesep = "") |>
+  kable_styling(latex_options = c("HOLD_position"), font_size = 8)
+```
 
-@tbl-core reports the two quantities at the largest scale of each family (the pattern is
-scale-invariant within family). Two things hold simultaneously in every same-token construction.
-First, **the marginals separate cleanly**: $\texttt{leak}_{i\to c}\approx 0.001$–$0.018$, so the
-reusable category/role direction is nearly orthogonal to the item direction — there is genuine,
-portable abstraction. Second, **a significant interaction remains**, and it is *built by
-contextualisation*: in every same-token construction the interaction is $\approx 0$ at layer 0
-(static embeddings) and grows monotonically with depth. Because the token is identical across levels
-*and* absolute position is already encoded at layer 0, the near-zero layer-0 interaction rules out
-both the tokenisation and the linear-position confounds; the entanglement is created by the
-transformer.
+Two conclusions carry into Experiment 2. Separability fails for a **principled** reason and
+not an accidental one: no learner that fits an interactive language can represent it as item
+plus category, because the readout would then be unable to produce the interaction the
+language requires. And the *further* failure, the components ceasing to be orthogonal, is
+specifically what a nonlinearity adds. Real language models are nonlinear and real language
+is interactive, so both mechanisms are in play before we look.
 
-A scale note for reading @tbl-core: by raw variance the *item* marginal dominates the total
-($\texttt{size}_\alpha \approx 0.9$ — a word is mostly itself), so $\texttt{size}_\gamma$ is the
-interaction's share of the **category-distinguishing** structure (what makes an item's representation
-differ across category levels), *not* a fraction of the whole representation. A value of 0.26 thus
-means roughly a quarter of what separates the categories is irreducibly joint — it does not mean a
-quarter of the representation. The defensible claim is accordingly about that structure: much of what
-makes *dog*-as-noun differ from *dog*-as-verb is joint, not a portable noun part.
+# Experiment 2: Item and Category in Language Models {#sec-exp2}
 
-| construction | model | $\texttt{leak}_{i\to c}$ | $\texttt{size}_\gamma$: L0 $\to$ mid $\to$ max |
-|:--|:--|--:|:--|
-| noun/verb | pythia-1.4b | 0.002 | 0.09 → 0.16 → **0.26** |
-| noun/verb | babylm-1.3B | 0.004 | 0.17 → 0.13 → 0.18 |
-| noun/adj | pythia-1.4b | 0.011 | 0.06 → 0.10 → **0.16** |
-| noun/adj | babylm-1.3B | 0.005 | 0.09 → 0.09 → 0.12 |
-| role | pythia-1.4b | 0.003 | **0.001** → 0.045 → 0.10 |
-| role | babylm-1.3B | 0.001 | **0.005** → 0.036 → 0.07 |
-| metaphor | pythia-1.4b | — | **0.001** → 0.051 → 0.08 |
-| metaphor | babylm-1.3B | — | **0.002** → 0.019 → 0.03 |
-| morphology | pythia-1.4b | 0.001 | *0.20* → 0.09 → *0.20* |
-| morphology | babylm-1.3B | 0.008 | *0.40* → 0.23 → *0.40* |
+<!-- Dataset: six UD English treebanks concatenated, plus VUA20 for metaphor; the four
+     constructions and the identifiability criteria; corpus and balanced-grid Ns from
+     data/methods_grid_stats.csv. Method: differences from Experiment 1 only, chiefly that
+     the two independent estimates are two halves of each cell's token contexts rather than
+     two initialisations, so no rotation is needed. Awaiting methods_grid_stats.csv. -->
 
-: Marginal leakage and interaction size (layer 0, middle layer, and maximum over layers). Bold marks
-the near-zero layer-0 interaction of the same-token constructions; italics mark the layer-0-peaked
-morphology profile (@sec-morph). Metaphor has no defined leakage (no category marginal; @sec-metaphor).
-{#tbl-core}
+# Experiment 3: Does the Interaction Carry the Category? {#sec-exp3}
 
-## Abstraction is graded across distinctions {#sec-graded}
-
-Neither "separable" nor "inseparable" describes the representations. They are **both** abstractive
-and entangling, and the balance depends on the distinction. Part-of-speech has a strong reusable
-category marginal *and* a large depth-growing interaction. Grammatical role has a smaller but real
-reusable marginal and a smaller interaction. **Metaphor has no reusable marginal at all**: the
-category main effect $\beta$ is $\approx 0$ and not significant, so $\texttt{leak}_{i\to c}$ is
-undefined — there is no shared "metaphor direction." The metaphor signal is entirely the per-lexeme
-interaction $\gamma$.
-
-## Metaphor: no shared axis, only a per-word interaction {#sec-metaphor}
-
-We confirm the metaphor result with linear probes at the top layer (pythia-410m; @tbl-probe). A
-**pooled** literal/metaphorical probe reaches 0.79 accuracy, but this is *word identity*: words differ
-in metaphor base-rate, so decoding which word predicts metaphoricity for free. Removing word identity
-by **centring each word** collapses the probe to chance (0.53) — there is no shared metaphor axis,
-consistent with $\beta\approx 0$. A **per-word** probe, however, recovers 0.69 (76% of words above
-0.6, growing with depth; e.g. *course* 0.96, *account* 0.95, *plant* 0.92): metaphoricity *is* encoded,
-but word-specifically, pointing in a different direction for each lexeme. This is exactly the
-significant, depth-growing $\gamma$, and it argues against metaphor being "literal + a uniform
-coercion operator" in the sense of a compositional generative lexicon [@pustejovsky1995generative],
-which would appear as a shared $\beta$.
-
-| probe | accuracy | interpretation |
-|:--|--:|:--|
-| pooled lit/met | 0.79 | word identity / base-rate |
-| globally word-centred | 0.53 | no shared metaphor axis ($\approx$ chance) |
-| per-word | 0.69 | word-specific signal (the interaction) |
-
-: Metaphor probes at the top layer (pythia-410m); chance = 0.50. {#tbl-probe}
-
-## The interaction carries the concept, not generic context {#sec-control}
-
-`size`$_\gamma$ shows the interaction is large and the cross-half gate shows it is real, but neither
-shows it carries the *specific* category rather than correlated context. We test this directly (the
-analog of the toy keep-only decode) at the deepest layer of the largest model in each family. Holding
-the **item fixed** (so $\alpha$ cannot contribute) and **projecting out the shared class axis**
-$\beta$, we decode the class from the residual — which is the interaction $\gamma$ — with a
-cross-validated linear probe, against a within-item label-permutation null (@tbl-control).
-
-| construction | pythia-1.4b | babylm-1.3B | perm. null |
-|:--|--:|--:|--:|
-| POS (noun/verb) | **0.95** | **0.93** | 0.50 |
-| role (nsubj/obj) | **0.84** | **0.85** | 0.50 |
-| metaphor (lit/met) | **0.70** | **0.65** | 0.49 |
-
-: Class decoded from the item-specific interaction ($\alpha$ held fixed, $\beta$ removed), vs a
-within-item permutation null; chance = 0.50. {#tbl-control}
-
-The category is decodable from $\gamma$ at 0.65–0.95 while the null sits at chance — so the interaction
-functionally encodes the specific category, item-specifically, not generic context. The effect is
-**graded like** `size`$_\gamma$ (POS $>$ role $>$ metaphor), and metaphor's value reproduces its
-independent per-word probe (@tbl-probe, 0.69). Item identity is likewise superposed in $\gamma$:
-decoding the *item* from the interaction subspace alone runs at 23–116$\times$ chance (a random
-subspace of equal dimension decodes it more — the code is distributed — but item information is
-unambiguously present in $\gamma$).
-
-## Morphology: a tokenisation confound {#sec-morph}
-
-Regular number/tense show the same marginal separability ($\texttt{leak}_{i\to c}\approx
-0.001$–$0.008$) and a real interaction, but the depth profile **inverts**: the interaction *peaks at
-layer 0* and dips with depth (@tbl-core, italics). This is the tokenisation confound — the plural/past
-is read at a *different subword* (dog vs dog-\textbf{s}), so the layer-0 interaction reflects token
-identity, not morphology. It is the mirror image of the same-token profile, which is why the
-same-token constructions carry the argument. A genuinely zero-marked control (\emph{cut}/\emph{hit},
-\emph{sheep}/\emph{fish}) is positive but underpowered ($n=3$–4 lemmas).
-
-## Family difference {#sec-family}
-
-Across POS, role, and metaphor, Pythia builds more interaction with depth than BabyLM/OPT, whose
-profile is flatter and, for the multi-token POS grid, layer-0-heavy. Part of BabyLM's layer-0 mass is
-plausibly an OPT *absolute*-positional-embedding artifact (vs Pythia's rotary embeddings), which
-appears at the embedding layer; we state the family difference as a hypothesis, not an established
-effect, as it is confounded by architecture and training-data scale together.
+<!-- Method: hold the item fixed, project out the shared category axis, decode the category
+     from the residual with a cross-validated probe against a within-item permutation null.
+     Awaiting the re-run of decode_from_interaction.py for the bootstrap intervals. -->
 
 # Discussion {#sec-discussion}
 
-The measurement reframes an old dichotomy [@houghton2024exemplars; @tomasello2003constructing].
-Rather than asking whether a model *abstracts* categories or *stores exemplars*, we quantify how much
-of a distinction is a reusable component (the marginals) versus an item-bound conjunction (the
-interaction, superposed onto the shared code [@elhage2022superposition]), and find real models sit in
-between — with a balance that shifts across linguistic dimensions. Two standard methods are
-structurally blind to the entangled part. Developmental "which is learned first" questions presuppose
-that the representation partitions into an item part and a category part; the interaction is neither,
-so for it the ordering question has no referent. Single-direction probing [@hewitt2019structural]
-recovers the category marginal but not the interaction — and for metaphor, where the marginal does not
-exist, would wrongly conclude the distinction is not represented. And the interaction genuinely
-encodes the category — it is decodable from $\gamma$ item-specifically (@sec-control) — so this is a
-blind spot, not a non-finding: the interaction is precisely where the exemplar-versus-abstraction
-tension lives, and it is exactly what those methods cannot see.
+::: {.content-visible when-format="acl-pdf"}
+<!-- PLACEHOLDER: author to write. -->
+:::
+
+# Limitations {.unnumbered}
+
+<!-- PLACEHOLDER -->
+
+::: {=latex}
+\appendix
+\floatplacement{figure}{H}
+\floatplacement{table}{H}
+\raggedbottom
+:::
+
+# The Decomposition and Its Estimator {#sec-app-math}
+
+<!-- Formal development: the tensor-product projection view, the exact size partition and
+     its invariance to grid size, leakage against its r/d null, the positive bias of a
+     squared projection norm, and the unbiasedness of the cross-estimate inner product.
+     Drawn from MATH.md. -->
