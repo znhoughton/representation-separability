@@ -1,0 +1,7 @@
+model,layer,d,n_items,n_points,min_cell,pooled,word_centred,per_word,per_word_lo,per_word_hi,per_word_null,n_words_scored,frac_words_above_0.6,chance
+EleutherAI/pythia-1.4b,24,2048,180,14871,10,0.717,0.6201,0.7052,0.6856,0.7245,0.4912,180,0.761,0.5
+EleutherAI/pythia-160m,12,768,180,14871,10,0.7225,0.6319,0.6765,0.6578,0.6943,0.4841,180,0.683,0.5
+EleutherAI/pythia-410m,24,1024,180,14871,10,0.7347,0.645,0.6842,0.6644,0.7025,0.4915,180,0.717,0.5
+znhoughton/opt-babylm-1.3B-20eps-seed964,24,2048,180,14871,10,0.6822,0.5793,0.6538,0.6359,0.6714,0.4839,180,0.639,0.5
+znhoughton/opt-babylm-125m-20eps-seed964,12,768,180,14871,10,0.7094,0.6071,0.65,0.6316,0.6696,0.4901,180,0.644,0.5
+znhoughton/opt-babylm-350m-20eps-seed964,24,1024,180,14871,10,0.7101,0.5986,0.6462,0.6275,0.6642,0.491,180,0.644,0.5
