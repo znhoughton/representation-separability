@@ -89,6 +89,44 @@ toy_null <- toy |> filter(int_frac == 0) |>
 g <- function(x, digits = 3) formatC(x, format = "f", digits = digits)
 pick <- function(tb, a, ifrac, col) tb[[col]][tb$act == a & tb$int_frac == ifrac]
 capget <- function(tb, a, b, col) tb[[col]][tb$act == a & grepl(b, tb$band)]
+cm <- function(x) format(x, big.mark = ",")
+
+# ---- Experiment 2: language model representations ----
+grid_stats <- rd("methods_grid_stats.csv")
+gs <- function(constr, col) {
+  v <- grid_stats[[col]][grid_stats$construction == constr]
+  if (is.numeric(v)) round(median(v)) else v[1]
+}
+
+MODELS <- tibble::tribble(
+  ~model,                                       ~family,  ~size,   ~d,
+  "znhoughton/opt-babylm-125m-20eps-seed964",   "BabyLM", "125M",  768,
+  "znhoughton/opt-babylm-350m-20eps-seed964",   "BabyLM", "350M",  1024,
+  "znhoughton/opt-babylm-1.3B-20eps-seed964",   "BabyLM", "1.3B",  2048,
+  "EleutherAI/pythia-160m",                     "Pythia", "160M",  768,
+  "EleutherAI/pythia-410m",                     "Pythia", "410M",  1024,
+  "EleutherAI/pythia-1.4b",                     "Pythia", "1.4B",  2048)
+
+# The three same-token constructions carried in the body. Each file reports the same measure;
+# the POS file prefixes its columns std_ because it also stores an unstandardised read.
+llm <- bind_rows(
+  rd("llm_unified.csv") |>
+    transmute(model, layer, d, n_items, construction = "POS (noun/verb)",
+              size_item = std_size_item, size_class = std_size_class,
+              size_int = std_size_interaction, sig = std_sig_interaction,
+              leak = std_leak_item_into_class),
+  rd("llm_role.csv") |>
+    transmute(model, layer, d, n_items, construction = "role (subject/object)",
+              size_item, size_class, size_int = size_interaction,
+              sig = sig_interaction, leak = leak_item_into_class),
+  rd("llm_metaphor.csv") |>
+    transmute(model, layer, d, n_items, construction = "metaphor (literal/figurative)",
+              size_item, size_class, size_int = size_interaction,
+              sig = sig_interaction, leak = leak_item_into_class)) |>
+  left_join(MODELS, by = "model") |>
+  mutate(construction = factor(construction, c("POS (noun/verb)", "role (subject/object)",
+                                               "metaphor (literal/figurative)")),
+         depth = layer / ave(layer, model, construction, FUN = max))  # 0 = embeddings, 1 = final
 ```
 
 # Introduction
@@ -346,17 +384,90 @@ is interactive, so both mechanisms are in play before we look.
 
 # Experiment 2: Item and Category in Language Models {#sec-exp2}
 
-<!-- Dataset: six UD English treebanks concatenated, plus VUA20 for metaphor; the four
-     constructions and the identifiability criteria; corpus and balanced-grid Ns from
-     data/methods_grid_stats.csv. Method: differences from Experiment 1 only, chiefly that
-     the two independent estimates are two halves of each cell's token contexts rather than
-     two initialisations, so no rotation is needed. Awaiting methods_grid_stats.csv. -->
+Experiment 1 established that a learner fitting an interactive language cannot represent it
+as item plus category, and that a nonlinearity additionally binds the components onto shared
+axes. Experiment 2 applies the same decomposition to the contextual representations of
+pretrained language models, across three linguistic distinctions chosen to span grammar and
+meaning.
+
+## Dataset {#sec-exp2-data}
+
+**Corpora.** For part of speech and grammatical role we concatenate six general-domain
+English Universal Dependencies treebanks [@nivre2020ud]: EWT, GUM, LinES, ParTUT, GENTLE and
+PUD, giving `r cm(41095)` sentences and `r cm(706323)` tokens. Concatenating rather than
+using EWT alone is what makes the analysis possible: a lemma must be attested in both
+category levels often enough to estimate a cell mean, and a single treebank yields too few
+such lemmas. For metaphor we use the VUA20 corpus [@leong2020vua; @steen2010vua], restricted
+to content words, which supplies `r cm(gs("metaphor", "n_pre_grid_tokens"))` labelled tokens.
+
+**Constructions.** All three are **same-token**: the item's surface form is identical across
+the two category levels, so the representation is read from the same token in both, and no
+part of any difference can come from tokenisation.
+
+| distinction | item | levels | eligible | analysed | tokens |
+|:--|:--|:--|--:|--:|--:|
+| part of speech | lemma | [noun]{.smallcaps} / [verb]{.smallcaps} | `r cm(gs("pos_noun_verb", "n_items_eligible"))` | `r gs("pos_noun_verb", "n_items_kept")` | `r cm(gs("pos_noun_verb", "n_grid_tokens"))` |
+| grammatical role | surface form | *nsubj* / *obj* | --- | 49 | `r cm(2150)` |
+| metaphor | surface form | literal / figurative | `r cm(gs("metaphor", "n_items_eligible"))` | `r gs("metaphor", "n_items_kept")` | `r cm(gs("metaphor", "n_grid_tokens"))` |
+
+: The three constructions. *Eligible* counts items attested at both levels anywhere in the
+corpus; *analysed* counts those attested often enough at each level to estimate a cell mean.
+{#tbl-constructions}
+
+**Identifiability.** The interaction $\gamma(i,c)$ is only estimable for an item observed at
+more than one level, since it is defined by how an item's representation shifts across
+levels. We additionally require at least 10 tokens per cell, which is what allows a cell mean
+to be estimated and then split in half for the replication the measure needs
+(@sec-exp1-method). This is a real restriction on scope: for part of speech it selects
+*convertible* lemmas, words used both as a noun and as a verb, such as *run* or *hit*. Role
+and metaphor carry no such restriction, since any noun occurs as both subject and object and
+any content word occurs both literally and figuratively, which is one reason they broaden the
+claim. The median cell holds `r gs("pos_noun_verb", "tokens_per_cell_median")` tokens for
+part of speech and `r gs("metaphor", "tokens_per_cell_median")` for metaphor.
+
+For role and metaphor the item is keyed on the **surface form** rather than the lemma, which
+guarantees the identical token across levels: a lemma like *thing* can differ in number
+across the two roles, whereas *things*-as-subject and *things*-as-object are the same string.
+
+**Models.** Two families at three matched scales: OPT-BabyLM, trained on developmentally
+plausible quantities of child-available language [@warstadt2023babylm], and Pythia, trained on
+the Pile [@biderman2023pythia], at 125M/160M, 350M/410M and 1.3B/1.4B parameters, with model
+widths of 768, 1024 and 2048.
+
+## Method {#sec-exp2-method}
+
+The decomposition, the two reported quantities and the replication logic are exactly those of
+@sec-exp1-method. Three things differ.
+
+**Representations.** For every token we take the hidden state of the word's **last subword**
+at every layer, from the embeddings through the final block, aligning subwords to
+corpus tokens with the tokenizer's word alignment. Sentences are drawn in a fixed random
+order and processed until roughly 300K tokens are extracted per model, so all models see the
+same material. Representations are extracted once and every analysis runs offline from them.
+
+**Where the two independent estimates come from.** Experiment 1 had to train the model twice,
+because a toy lexeme has a single representation and therefore no within-cell replication.
+A language model supplies replication for free: each cell is a word used at one level across
+many sentences. We therefore split each cell's **token contexts** into two disjoint halves and
+estimate the grid from each. What cancels is context noise, the variation in a word's hidden
+state across the sentences it appears in. Because both halves come from the same frozen model
+they already share a coordinate system, so the rotation step of @sec-exp1-method is
+unnecessary here.
+
+**Standardisation.** Transformer hidden states contain a few *rogue* dimensions whose variance
+exceeds the rest by two to three orders of magnitude [@timkey2021bark], and these would
+otherwise dominate any subspace estimated from the raw scatter. We divide each dimension by
+its standard deviation before decomposing. This is a diagonal rescaling, so unlike whitening
+it needs no favourable ratio of samples to dimensions; the measure is accordingly invariant to
+per-dimension rescaling but not to arbitrary linear reparametrisation, which we return to in
+@sec-app-math.
 
 # Experiment 3: Does the Interaction Carry the Category? {#sec-exp3}
 
 <!-- Method: hold the item fixed, project out the shared category axis, decode the category
-     from the residual with a cross-validated probe against a within-item permutation null.
-     Awaiting the re-run of decode_from_interaction.py for the bootstrap intervals. -->
+     from the residual with a cross-validated probe against a within-item permutation null,
+     plus the three metaphor probes. Awaiting llm_metaphor_probes.csv and the decode re-run. -->
+
 
 # Discussion {#sec-discussion}
 
