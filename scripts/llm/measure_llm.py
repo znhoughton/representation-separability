@@ -42,10 +42,34 @@ def _present_classes(class_of, wanted):
     return [c for c in wanted if c in have]
 
 
-def measure_file(path, classes=("NOUN", "VERB"), min_cell=10, layers=None):
+def _item_labels(z, item_key, conllu):
+    """Item labels for the grid. `lemma` pools every surface form of a lemma, so a cell mixes
+    run/runs (noun) with run/runs/ran/running (verb) -- different TOKENS, which the static
+    embedding layer can already tell apart, so layer 0 shows an interaction that is
+    inflectional rather than representational. `form` keys the item on the lowercased surface
+    string instead, making the construction genuinely same-token (only forms actually used at
+    both levels survive the balanced grid), at the cost of a smaller item set. The form is not
+    stored in the reps .npz, so it is re-derived from the CoNLL-U with the model's tokenizer and
+    checked against the saved upos/lemma before use."""
+    if item_key == "lemma":
+        return z["lemma"]
+    if not conllu:
+        raise SystemExit("--conllu is required with --item-key form")
+    from llm_extract import parse_conllu, derive_labels
+    upos, lemma, model = z["upos"], z["lemma"], str(z["model"])
+    n = len(upos)
+    lab = derive_labels(model, list(parse_conllu(conllu)))
+    if not (np.array_equal(lab["upos"][:n], upos) and np.array_equal(lab["lemma"][:n], lemma)):
+        raise RuntimeError(f"{model}: re-derived labels do not align with the saved reps")
+    return np.array([f.lower() for f in lab["form"][:n]])
+
+
+def measure_file(path, classes=("NOUN", "VERB"), min_cell=10, layers=None,
+                 item_key="lemma", conllu=None):
     z = np.load(path, allow_pickle=True)                      # lazy: arrays decompress on access
-    upos = z["upos"]; lemma = z["lemma"]
+    upos = z["upos"]
     model = str(z["model"]); init = str(z["init"])
+    lemma = _item_labels(z, item_key, conllu)                 # the ITEM, lemma or surface form
     layer_idxs = [int(li) for li in z["layer_idxs"]]
     use_classes = _present_classes(upos, list(classes))
     rows = []
@@ -95,6 +119,10 @@ def main():
     ap.add_argument("--reps", help="single reps .npz")
     ap.add_argument("--reps-dir", help="directory of reps .npz (measure all)")
     ap.add_argument("--classes", default="NOUN,VERB")
+    ap.add_argument("--item-key", choices=["lemma", "form"], default="lemma",
+                    help="what counts as an ITEM. 'form' makes the construction same-token "
+                         "(see _item_labels); requires --conllu")
+    ap.add_argument("--conllu", default=None, help="required with --item-key form")
     ap.add_argument("--min-cell", type=int, default=10)
     ap.add_argument("--layers", default=None, help="comma list to restrict (default all)")
     ap.add_argument("--skip-random", action="store_true", help="only measure *pretrained* reps")
@@ -141,7 +169,8 @@ def main():
         if write_header:
             w.writeheader()
         with ProcessPoolExecutor(max_workers=nworkers, mp_context=mp.get_context("spawn")) as ex:
-            futs = {ex.submit(measure_file, p, classes, args.min_cell, layers): p for p in todo}
+            futs = {ex.submit(measure_file, p, classes, args.min_cell, layers,
+                              args.item_key, args.conllu): p for p in todo}
             for fut in as_completed(futs):
                 try:
                     rows = fut.result()

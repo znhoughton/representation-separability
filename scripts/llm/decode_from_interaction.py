@@ -15,10 +15,10 @@ Method (per construction, deep layer, largest model of each family):
   encodes the specific label item-specifically, not generic context. (The random-subspace control
   answers "does ANY k-dim slice decode this?"; CV answers "does it generalize, not memorize?".)
 
-Constructions: pos (noun/verb from the saved upos/lemma), role (nsubj/obj, item=form, deprel
-re-derived like measure_llm_role), metaphor (lit/met from the VUA reps). Not circular: S_int is the
-gamma directions (beta, the shared class axis, is already subtracted in the decomposition), and the
-random-subspace + CV calibrate the read.
+Constructions: pos (noun/verb, item=form by default so the token is identical at both levels),
+role (nsubj/obj, item=form, deprel re-derived like measure_llm_role), metaphor (lit/met from the
+VUA reps). All three are therefore same-token. Not circular: S_int is the gamma directions (beta,
+the shared class axis, is already subtracted in the decomposition), and CV calibrates the read.
 
 Run (CPU, in-sandbox):
   python scripts/llm/decode_from_interaction.py --construction pos  --reps-dir data/llm_reps \
@@ -133,11 +133,25 @@ def _boot_ci(vals, rng, n_boot=2000, sig=0.05):
     return (float(np.percentile(b, 100 * sig / 2)), float(np.percentile(b, 100 * (1 - sig / 2))))
 
 
-def load(construction, path, layer, conllu):
-    """-> (model, X[layer], item_of, class_of, classes) for the construction."""
+def load(construction, path, layer, conllu, item_key="form"):
+    """-> (model, X[layer], item_of, class_of, classes) for the construction.
+
+    POS defaults to item_key='form' so the item is the same TOKEN at both levels, matching role
+    and metaphor. Keying on the lemma instead pools run/runs (noun) with run/runs/ran/running
+    (verb), which the static embedding layer can already separate -- an inflectional difference
+    rather than a representational one. Pass item_key='lemma' to reproduce the earlier read."""
     z = np.load(path, allow_pickle=True); model = str(z["model"])
     if construction == "pos":
-        X = z[f"layer_{layer}"]; item = z["lemma"]; cls = z["upos"]; classes = ("NOUN", "VERB")
+        X = z[f"layer_{layer}"]; cls = z["upos"]; classes = ("NOUN", "VERB")
+        if item_key == "lemma":
+            item = z["lemma"]
+        else:
+            from llm_extract import parse_conllu, derive_labels
+            up, lem, n = z["upos"], z["lemma"], len(z["upos"])
+            lab = derive_labels(model, list(parse_conllu(conllu)))
+            if not (np.array_equal(lab["upos"][:n], up) and np.array_equal(lab["lemma"][:n], lem)):
+                raise RuntimeError(f"{model}: alignment mismatch on POS labels")
+            item = np.array([f.lower() for f in lab["form"][:n]])
     elif construction == "role":
         from llm_extract import parse_conllu, derive_labels
         up = z["upos"]; lem = z["lemma"]; n = len(up)
@@ -157,8 +171,8 @@ def load(construction, path, layer, conllu):
     return model, X, np.asarray(item), np.asarray(cls), classes
 
 
-def decode_file(construction, path, layer, conllu, min_cell, n_rand, seed):
-    model, X, item, cls, classes = load(construction, path, layer, conllu)
+def decode_file(construction, path, layer, conllu, min_cell, n_rand, seed, item_key="form"):
+    model, X, item, cls, classes = load(construction, path, layer, conllu, item_key)
     Xs = standardize_columns(X.astype(np.float64))
     items, classes_, cells = build_balanced_grid(item, cls, min_cell=min_cell, classes=list(classes))
     if len(items) < 2:
@@ -208,13 +222,15 @@ def main():
     ap.add_argument("--models", nargs="*", default=["pythia-1.4b", "opt-babylm-1.3B"],
                     help="substrings; default = the largest of each family")
     ap.add_argument("--layer", type=int, default=None, help="default = deepest layer")
+    ap.add_argument("--item-key", choices=["lemma", "form"], default="form",
+                    help="POS only: what counts as an item (see load()). Default form = same-token.")
     ap.add_argument("--min-cell", type=int, default=10)
     ap.add_argument("--n-rand", type=int, default=8)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--out", default=str(REPO_ROOT / "data" / "llm_decode_interaction.csv"))
     args = ap.parse_args()
-    if args.construction == "role" and not args.conllu:
-        raise SystemExit("--conllu is required for construction=role")
+    if args.construction in ("role", "pos") and not args.conllu and args.item_key == "form":
+        raise SystemExit("--conllu is required for role, and for pos with --item-key form")
 
     files = sorted(Path(args.reps_dir).glob("*.npz"))
     files = [p for p in files if "__random" not in p.name
@@ -231,7 +247,7 @@ def main():
             print(f"=== {p.name} L{layer} ({args.construction}) ===", flush=True)
             try:
                 r = decode_file(args.construction, str(p), layer, args.conllu, args.min_cell,
-                                args.n_rand, args.seed)
+                                args.n_rand, args.seed, args.item_key)
             except Exception as e:
                 print(f"  !! failed: {type(e).__name__}: {e}", flush=True); continue
             if r is None:
