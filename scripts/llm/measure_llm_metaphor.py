@@ -13,10 +13,18 @@ Run (CPU, in-sandbox, after extract_vua.py has produced the reps on GPU):
 """
 import argparse
 import csv
+import os
 import sys
 from pathlib import Path
 
-import numpy as np
+# Pin BLAS to one thread per process, BEFORE numpy is imported (these are read at load time).
+# This script parallelizes across FILES, and each worker's linear algebra would otherwise spawn
+# as many threads as the machine has cores: N workers on an N-core box puts N*N threads on N
+# cores. Thread count does not change any result, only how long it takes.
+for _v in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
+    os.environ.setdefault(_v, "1")
+
+import numpy as np  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 for _sub in ("lib", "llm", "toy"):
