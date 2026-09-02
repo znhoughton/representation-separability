@@ -32,6 +32,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 for _sub in ("lib", "llm", "toy"):
     sys.path.insert(0, str(REPO_ROOT / "scripts" / _sub))
 from run_llm_sweep import PAIRS, _resolve_layers  # noqa: E402
+from llm_extract import (init_tag, zero_position_embeddings,  # noqa: E402
+                         verify_position_ablation)
 
 CONTENT = {"VERB", "NOUN", "ADJ", "ADV"}
 
@@ -60,7 +62,8 @@ def load_vua_sentences():
     return out, n_tgt
 
 
-def extract_model(model_name, out_path, sents, n_tgt, device, batch_size, max_length):
+def extract_model(model_name, out_path, sents, n_tgt, device, batch_size, max_length,
+                  ablate_positions=False):
     """Forward each sentence, grab each target word's LAST-subword hidden state across all layers,
     stream to per-layer memmaps, save one compressed .npz. Targets whose word is truncated away
     (very long sentences) are dropped and logged."""
@@ -75,6 +78,10 @@ def extract_model(model_name, out_path, sents, n_tgt, device, batch_size, max_le
     if not tok.is_fast:
         raise RuntimeError(f"{model_name} lacks a fast tokenizer; word_ids() alignment needs one.")
     model = AutoModel.from_pretrained(model_name, output_hidden_states=True).eval().to(device)
+    if ablate_positions:
+        z = zero_position_embeddings(model)
+        drift = verify_position_ablation(model, tok, device)
+        print(f"    position ablation: zeroed {z or None}; same token at two offsets differs by {drift:.2e} at layer 0", flush=True)
     d = int(model.config.hidden_size)
 
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
@@ -111,7 +118,8 @@ def extract_model(model_name, out_path, sents, n_tgt, device, batch_size, max_le
         arrs = {f"layer_{li}": mm[li][:n] for li in layer_idxs}
         np.savez_compressed(out_path, form=np.array(forms), pos=np.array(poss),
                             label=np.array(labels, dtype=np.int64),
-                            layer_idxs=np.array(sorted(layer_idxs)), model=model_name, init="pretrained",
+                            layer_idxs=np.array(sorted(layer_idxs)), model=model_name,
+                            init=init_tag(False, ablate_positions),
                             **arrs)
     finally:
         del mm
@@ -125,6 +133,8 @@ def main():
     ap.add_argument("--device", default="cuda")
     ap.add_argument("--batch-size", type=int, default=16)
     ap.add_argument("--max-length", type=int, default=256)
+    ap.add_argument("--ablate-positions", action="store_true",
+                    help="zero learned absolute position embeddings before extracting")
     ap.add_argument("--models", nargs="*", default=None, help="override; default = both families, all sizes")
     args = ap.parse_args()
 
@@ -132,11 +142,13 @@ def main():
     sents, n_tgt = load_vua_sentences()
     out_dir = Path(args.out_dir)
     for model_name in models:
-        out_path = out_dir / f"{model_name.replace('/', '__')}__pretrained.npz"
+        tag = init_tag(False, args.ablate_positions)
+        out_path = out_dir / f"{model_name.replace('/', '__')}__{tag}.npz"
         if _reps_complete_vua(out_path):
             print(f"SKIP {model_name}: reps complete -> {out_path}", flush=True); continue
         print(f"=== {model_name} ===", flush=True)
-        extract_model(model_name, str(out_path), sents, n_tgt, args.device, args.batch_size, args.max_length)
+        extract_model(model_name, str(out_path), sents, n_tgt, args.device,
+                      args.batch_size, args.max_length, args.ablate_positions)
     print(f"Done -> {out_dir}")
 
 

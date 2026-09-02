@@ -53,13 +53,15 @@ def run_one(model_name, family, size_bin, init, sentences, args, writer=None):
     in-sandbox, via measure_llm on the saved file. Resumable: complete files are skipped."""
     if not args.reps_dir:
         raise SystemExit("--reps-dir is required: extraction streams reps to disk; measure via measure_llm.py")
-    p = Path(args.reps_dir) / f"{model_name.replace('/', '__')}__{init}.npz"
+    tag = L.init_tag(init == "random", args.ablate_positions)
+    p = Path(args.reps_dir) / f"{model_name.replace('/', '__')}__{tag}.npz"
     if _reps_complete(p):
         print(f"  [{init:>10}] {model_name}: reps already complete, skipping -> {p}", flush=True)
         return
     upos, lemma, n_tok = L.extract_stream_to_npz(
         str(p), model_name, sentences, _resolve_layers(model_name), args.max_tokens,
-        args.device, args.seed, random_init=(init == "random"), batch_size=args.batch_size)
+        args.device, args.seed, random_init=(init == "random"), batch_size=args.batch_size,
+        ablate_positions=args.ablate_positions)
     print(f"  [{init:>10}] {model_name} ({family}/{size_bin}): streamed {n_tok} tokens -> {p}", flush=True)
 
 
@@ -72,6 +74,10 @@ def main():
     ap.add_argument("--min-item", type=int, default=20)
     ap.add_argument("--device", default="cuda")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--ablate-positions", action="store_true",
+                    help="zero learned absolute position embeddings before extracting "
+                         "(see llm_extract.zero_position_embeddings). Writes to a separate "
+                         "__*_noposemb.npz so the unablated reps are untouched.")
     ap.add_argument("--batch-size", type=int, default=32, help="sentences per forward batch")
     ap.add_argument("--reps-dir", default=None,
                     help="if set, save per-(model,init) reps .npz here for in-sandbox re-measurement")

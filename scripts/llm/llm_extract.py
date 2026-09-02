@@ -174,7 +174,8 @@ def extract(model_name, sentences, layer_idxs, max_tokens, device, seed=0, max_l
 
 
 def extract_stream_to_npz(out_path, model_name, sentences, layer_idxs, max_tokens, device, seed=0,
-                          max_length=256, random_init=False, batch_size=32, scratch_dir=None):
+                          max_length=256, random_init=False, batch_size=32, scratch_dir=None,
+                          ablate_positions=False):
     """MEMORY-FLAT extraction for LARGE models: identical logic to extract() but each layer's
     per-token vectors stream straight into a disk-backed np.memmap (never a growing in-RAM list),
     then compress to `out_path` one layer at a time. Peak host RAM ~= one forward batch + one
@@ -201,6 +202,10 @@ def extract_stream_to_npz(out_path, model_name, sentences, layer_idxs, max_token
     model.eval().to(device)
     if not tok.is_fast:
         raise RuntimeError(f"{model_name} lacks a fast tokenizer; word_ids() alignment needs one.")
+    if ablate_positions:
+        z = zero_position_embeddings(model)
+        drift = verify_position_ablation(model, tok, device)
+        print(f"    position ablation: zeroed {z or None}; same token at two offsets differs by {drift:.2e} at layer 0", flush=True)
     d = int(model.config.hidden_size)
 
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
@@ -243,7 +248,8 @@ def extract_stream_to_npz(out_path, model_name, sentences, layer_idxs, max_token
         upos = np.array(upos_all); lemma = np.array(lemma_all)
         arrs = {f"layer_{li}": mm[li][:n_tok] for li in layer_idxs}   # views; compressed one at a time
         np.savez_compressed(out_path, upos=upos, lemma=lemma,
-                            layer_idxs=np.array(sorted(layer_idxs)), model=model_name, init=init_tag(random_init),
+                            layer_idxs=np.array(sorted(layer_idxs)), model=model_name,
+                            init=init_tag(random_init, ablate_positions),
                             **arrs)
     finally:
         del mm
@@ -251,8 +257,60 @@ def extract_stream_to_npz(out_path, model_name, sentences, layer_idxs, max_token
     return upos, lemma, n_tok
 
 
-def init_tag(random_init):
-    return "random" if random_init else "pretrained"
+def init_tag(random_init, ablate_positions=False):
+    tag = "random" if random_init else "pretrained"
+    return tag + "_noposemb" if ablate_positions else tag
+
+
+# --------------------------------------------------- learned-position ablation
+def zero_position_embeddings(model):
+    """Zero every LEARNED ABSOLUTE position embedding in place; return what was zeroed.
+
+    Why this exists. OPT adds a learned absolute position embedding at the input, and that
+    embedding is position-dependent from initialization onward: an untrained OPT already
+    represents position, and the two levels of a linguistic distinction are rarely
+    positionally interchangeable (subjects precede objects, and nouns and verbs sit in
+    different places). An item-by-class interaction therefore appears in an untrained model
+    for reasons that have nothing to do with what it learned, which is what makes the
+    before-training control unavailable for that family. Pythia uses rotary embeddings,
+    applied inside attention and contributing nothing at initialization, so it has no such
+    term and this is a no-op there -- which is itself the check that the asymmetry is
+    positional rather than something else about the two families.
+
+    WHAT THIS DOES NOT REMOVE: causal masking still makes a token's representation depend on
+    how many tokens precede it, so this ablates the explicit positional signal, not every
+    trace of position. The claim it supports is narrower than "position has been removed".
+    """
+    import torch
+    zeroed = []
+    for name, module in model.named_modules():
+        if isinstance(module, torch.nn.Embedding) and (
+                "position" in name.lower() or name.split(".")[-1] == "wpe"):
+            with torch.no_grad():
+                module.weight.zero_()
+            zeroed.append(f"{name}{tuple(module.weight.shape)}")
+    return zeroed
+
+
+def verify_position_ablation(model, tok, device):
+    """Confirm the ablation actually bit, rather than silently matching nothing.
+
+    With the learned position embedding zeroed, the EMBEDDING layer's output for a given token
+    must not depend on where that token sits, so the same token at two different offsets should
+    give identical layer-0 states. Without this check a helper that matched no module would look
+    exactly like a successful ablation that changed nothing, and we would read the wrong
+    conclusion off an unchanged result."""
+    import torch
+    a = tok([["the", "cat", "sat"]], is_split_into_words=True, return_tensors="pt")
+    b = tok([["and", "then", "the", "cat", "sat"]], is_split_into_words=True, return_tensors="pt")
+    with torch.no_grad():
+        ha = model(**{k: v.to(device) for k, v in a.items()}).hidden_states[0]
+        hb = model(**{k: v.to(device) for k, v in b.items()}).hidden_states[0]
+    wa = [i for i, w in enumerate(a.word_ids(0)) if w == 1]      # "cat" in the first
+    wb = [i for i, w in enumerate(b.word_ids(0)) if w == 3]      # "cat" in the second
+    if not wa or not wb:
+        return float("nan")
+    return float((ha[0, wa[-1]] - hb[0, wb[-1]]).abs().max())
 
 
 def save_reps(path, reps, upos, lemma, model_name, init):
