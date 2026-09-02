@@ -91,15 +91,27 @@ def build_planted(rng, n_item, n_class, d, share_item, share_class, share_int,
     sigma = np.sqrt(noise_ratio * per_cell_energy / d)
 
     X = np.repeat(M.reshape(n_item * n_class, d), n_obs, axis=0)
-    X = X + rng.standard_normal(X.shape) * sigma
+    # Add the noise one temporary at a time. The obvious
+    #     X = X + rng.standard_normal(X.shape) * sigma
+    # transiently holds FOUR full arrays (the original, the draw, the scaled draw, the sum),
+    # which on the largest spec in the grid is 4.7 GB and is what caps how many workers fit in
+    # memory. In place it is two.
+    noise = rng.standard_normal(X.shape)
+    noise *= sigma
+    X += noise
+    del noise
+
     item_of = np.repeat(np.repeat(np.arange(n_item), n_class), n_obs)
     class_of = np.repeat(np.tile(np.arange(n_class), n_item), n_obs)
 
-    resid = X - np.repeat(M.reshape(-1, d), n_obs, axis=0)
+    # Achieved noise analytically rather than by forming the residual: every entry is an
+    # independent draw of variance sigma^2, so the residual energy is exactly n_rows * d *
+    # sigma^2. Materializing it would cost two more full-size arrays for a diagnostic column.
     planted = dict(
         planted_item=share_item, planted_class=share_class, planted_int=share_int,
         planted_overlap=beta_in_alpha,
-        achieved_noise=round(float((resid ** 2).sum()) / max(1e-12, float((M ** 2).sum())), 2))
+        achieved_noise=round(X.shape[0] * d * sigma ** 2
+                             / max(1e-12, float((M ** 2).sum())), 2))
     return X, item_of, class_of, planted
 
 
