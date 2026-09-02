@@ -27,7 +27,10 @@ hdr "latest progress per log"
 for f in "$LOGDIR"/*.log; do
   [ -e "$f" ] || { echo "  no logs yet in $LOGDIR"; break; }
   last=$(grep -E "tokens |targets" "$f" 2>/dev/null | tail -1 | sed 's/^ *//')
-  printf '  %-16s %s\n' "$(basename "$f" .log)" "${last:-(no progress lines yet)}"
+  # A run started before per-batch logging existed prints nothing until a model finishes, so
+  # fall back to whatever it last said rather than showing an empty line for hours.
+  [ -z "$last" ] && last=$(tail -1 "$f" 2>/dev/null | sed 's/^ *//' | cut -c1-100)
+  printf '  %-16s %s\n' "$(basename "$f" .log)" "${last:-(nothing yet)}"
 done
 
 hdr "models finished"
@@ -38,8 +41,10 @@ grep -h "streamed" "$LOGDIR"/*.log 2>/dev/null \
   | sed 's/.*\] //; s/ (.*streamed/  /; s/tokens ->.*//' | sed 's/^/    /'
 
 hdr "ablation check"
-grep -h "^POSABL" "$LOGDIR"/*.log 2>/dev/null \
-  | sed 's/POSABL\t//; s/\t/  /g; s/model=//; s/init=//; s/zeroed=//; s/drift=/drift /' \
+# matches both the POSABL record and the older human-readable message, so this works on a run
+# that started before the format changed
+grep -hE "^POSABL|position ablation" "$LOGDIR"/*.log 2>/dev/null \
+  | sed 's/POSABL\t//; s/\t/  /g; s/model=//; s/init=//; s/zeroed=//; s/drift=/drift /; s/^ *//' \
   | sort -u | sed 's/^/  /' || echo "  none yet"
 echo "  (OPT must show a zeroed module and drift 0; Pythia showing NONE is expected)"
 
@@ -47,8 +52,12 @@ hdr "output files"
 n=$(ls -1 "$REPS_DIR"/*_noposemb.npz "$VUA_DIR"/*_noposemb.npz 2>/dev/null | wc -l | tr -d ' ')
 sz=$(du -ch "$REPS_DIR"/*_noposemb.npz "$VUA_DIR"/*_noposemb.npz 2>/dev/null | tail -1 | cut -f1)
 echo "  ${n:-0} ablated .npz written, ${sz:-0} total"
+# The scratch memmap is preallocated but written progressively, so on a filesystem that reports
+# allocated blocks this GROWS -- which makes it the one progress signal available on a run that
+# predates per-batch logging. Full size is width * layers * max_tokens * 4 bytes: ~61 GB for a
+# 1.4B model, ~31 GB at 1024 wide, ~12 GB for the small pair.
 scr=$(du -sh "$REPS_DIR"/repscratch_* "$VUA_DIR"/vuascratch_* 2>/dev/null | tail -1 | cut -f1)
-[ -n "${scr:-}" ] && echo "  scratch in flight: $scr (an uncompressed memmap for the model being written)"
+[ -n "${scr:-}" ] && echo "  scratch in flight: $scr  (grows as the current model fills)"
 echo "  free space: $(df -h . | tail -1 | awk '{print $4}')"
 
 hdr "errors"
