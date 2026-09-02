@@ -13,6 +13,27 @@ VUA_DIR="${VUA_DIR:-data/vua_reps}"
 
 hdr() { printf '\n\033[1m%s\033[0m\n' "$*"; }
 
+# One-word verdict first, from the status file and heartbeat the control script maintains.
+# A hard kill (SIGKILL, OOM) runs no exit trap, so absence of a status file cannot mean failure
+# on its own -- it is the STALE HEARTBEAT that distinguishes "died without a word" from "running".
+st=$(cat "$LOGDIR/control.status" 2>/dev/null || true)
+hb=$(cat "$LOGDIR/control.heartbeat" 2>/dev/null || echo 0)
+age=$(( $(date +%s) - hb ))
+if [ -n "$st" ]; then
+  case "$st" in
+    OK*) printf '\n\033[1;32m  FINISHED OK\033[0m  %s\n' "${st#OK }" ;;
+    *)   printf '\n\033[1;31m  FAILED\033[0m  %s\n' "$st"
+         echo "  -> see the tail of $LOGDIR/*.log below" ;;
+  esac
+elif [ "$hb" -eq 0 ]; then
+  printf '\n\033[1;33m  NOT STARTED\033[0m  (no heartbeat; this run predates liveness tracking, or never launched)\n'
+elif [ "$age" -lt 120 ]; then
+  printf '\n\033[1;32m  RUNNING\033[0m  (heartbeat %ss ago)\n' "$age"
+else
+  printf '\n\033[1;31m  DEAD\033[0m  (heartbeat %ss stale, no exit status -- killed, likely OOM or SIGHUP)\n' "$age"
+  echo "  check: dmesg -T | grep -i 'killed process' | tail"
+fi
+
 hdr "processes"
 if pgrep -fa "run_llm_sweep.py|extract_vua.py|measure_llm" 2>/dev/null | grep -q .; then
   pgrep -fa "run_llm_sweep.py|extract_vua.py|measure_llm" 2>/dev/null \

@@ -71,7 +71,7 @@ stage_gate() {
   } > "$CHECK_CSV"
   column -s, -t "$CHECK_CSV" 2>/dev/null | sed 's/^/  /' || cat "$CHECK_CSV"
 
-  N_ROWS=$(awk 'NR>1' "$CHECK_CSV" | wc -l | tr -d ' ')
+  N_ROWS=$(awk 'NR>1' "$CHECK_CSV" | wc -l | tr -d ' ') || true
   [ "$N_ROWS" -gt 0 ] || die "no ablation records found in $LOGDIR/*.log. Either the run has not
        reached a model yet, or the logs were truncated."
   N_ABLATED=$(awk -F, 'NR>1 && $3 != "\"NONE\"" && $3 != "\"None\"" {c++} END{print c+0}' "$CHECK_CSV")
@@ -148,7 +148,7 @@ stage_cleanup() {
     return
   fi
   say "Deleting ablated representations"
-  N_DEL=$(ls -1 "$REPS_DIR"/*_noposemb.npz "$VUA_DIR"/*_noposemb.npz 2>/dev/null | wc -l | tr -d ' ')
+  N_DEL=$(ls -1 "$REPS_DIR"/*_noposemb.npz "$VUA_DIR"/*_noposemb.npz 2>/dev/null | wc -l | tr -d ' ') || true
   if [ "$N_DEL" -eq 0 ]; then
     echo "  none present (already deleted, or KEEP_REPS was never needed)"
     return
@@ -157,7 +157,7 @@ stage_cleanup() {
   # that the CSVs preserve the result, so if the CSVs are missing the reps are the only copy.
   [ -f data/position_ablation_2x2.csv ] || die "data/position_ablation_2x2.csv does not exist, so
        nothing has preserved these results. Run the summary stage before cleanup."
-  FREED=$(du -ch "$REPS_DIR"/*_noposemb.npz "$VUA_DIR"/*_noposemb.npz 2>/dev/null | tail -1 | cut -f1)
+  FREED=$(du -ch "$REPS_DIR"/*_noposemb.npz "$VUA_DIR"/*_noposemb.npz 2>/dev/null | tail -1 | cut -f1) || true
   rm -f "$REPS_DIR"/*_noposemb.npz "$VUA_DIR"/*_noposemb.npz
   echo "  removed $N_DEL file(s), reclaimed ${FREED:-0}"
   echo "  (KEEP_REPS=1 to retain them; positions_zeroed_control.sh regenerates them)"

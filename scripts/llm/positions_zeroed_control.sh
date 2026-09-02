@@ -54,6 +54,22 @@ mkdir -p "$LOGDIR" "$SCRATCH_DIR"
 say() { printf '\n\033[1m== %s\033[0m\n' "$*"; }
 die() { printf '\n\033[31mFAILED: %s\033[0m\n' "$*" >&2; exit 1; }
 
+# Liveness, so "did it die?" is answerable without reading logs. Two files:
+#   control.status     written on ANY exit, clean or failed, by the EXIT trap
+#   control.heartbeat  touched every 30s while alive
+# The heartbeat is what catches a hard kill: SIGKILL runs no trap, so a missing status file
+# proves nothing on its own, but a stale heartbeat with no status file means the script died
+# without being able to say so. ablation_status.sh turns the pair into one verdict.
+STATUS_FILE="$LOGDIR/control.status"
+HEARTBEAT="$LOGDIR/control.heartbeat"
+rm -f "$STATUS_FILE"
+date +%s > "$HEARTBEAT"
+( while :; do date +%s > "$HEARTBEAT"; sleep 30; done ) &
+HB_PID=$!
+trap 'rc=$?; kill "$HB_PID" 2>/dev/null || true;
+      if [ "$rc" -eq 0 ]; then printf "OK %s\n" "$(date)" > "$STATUS_FILE";
+      else printf "FAILED rc=%s %s\n" "$rc" "$(date)" > "$STATUS_FILE"; fi' EXIT
+
 # The post-processing stages (gate, summary, cleanup) live in finalize_ablation.sh so they can be
 # run on their own. Sourced HERE, in preflight, rather than at the point of first use: a missing
 # or broken file should fail in the first second, not after three hours of extraction.
@@ -76,9 +92,9 @@ if pgrep -f "run_llm_sweep.py|extract_vua.py" >/dev/null 2>&1; then
   die "another extraction is in progress. Let it finish, or stop it before starting this run --
        two sweeps writing the same reps dir would race on the same output files."
 fi
-STALE=$(ls -d "$REPS_DIR"/repscratch_* "$SCRATCH_DIR"/repscratch_* "$VUA_DIR"/vuascratch_* 2>/dev/null | wc -l | tr -d ' ')
+STALE=$(ls -d "$REPS_DIR"/repscratch_* "$SCRATCH_DIR"/repscratch_* "$VUA_DIR"/vuascratch_* 2>/dev/null | wc -l | tr -d ' ') || true
 if [ "$STALE" -gt 0 ]; then
-  FREED=$(du -ch -d0 "$REPS_DIR"/repscratch_* "$SCRATCH_DIR"/repscratch_* "$VUA_DIR"/vuascratch_* 2>/dev/null | tail -1 | cut -f1)
+  FREED=$(du -ch -d0 "$REPS_DIR"/repscratch_* "$SCRATCH_DIR"/repscratch_* "$VUA_DIR"/vuascratch_* 2>/dev/null | tail -1 | cut -f1) || true
   rm -rf "$REPS_DIR"/repscratch_* "$SCRATCH_DIR"/repscratch_* "$VUA_DIR"/vuascratch_*
   echo "  scratch:     removed $STALE orphaned dir(s) from an interrupted run, reclaimed ${FREED:-0}"
 fi
@@ -87,7 +103,7 @@ fi
 # max_tokens * width * layers * 4 bytes. That is ~61 GB for a 1.4B model, and three concurrent
 # processes peak around 105 GB of scratch on top of the compressed output. Running out of space
 # three hours in wastes the whole run, so check first.
-AVAIL_GB=$(df -BG --output=avail . | tail -1 | tr -dc '0-9')
+AVAIL_GB=$(df -BG --output=avail . | tail -1 | tr -dc '0-9') || true
 echo "  free space:  ${AVAIL_GB} GB   (need roughly ${REQUIRED_GB} GB)"
 if [ "$AVAIL_GB" -lt "$REQUIRED_GB" ]; then
   die "not enough disk. Either free space, lower REQUIRED_GB if you know better, or run the
