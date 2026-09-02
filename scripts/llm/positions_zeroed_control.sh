@@ -52,11 +52,34 @@ mkdir -p "$LOGDIR"
 say() { printf '\n\033[1m== %s\033[0m\n' "$*"; }
 die() { printf '\n\033[31mFAILED: %s\033[0m\n' "$*" >&2; exit 1; }
 
+# The post-processing stages (gate, summary, cleanup) live in finalize_ablation.sh so they can be
+# run on their own. Sourced HERE, in preflight, rather than at the point of first use: a missing
+# or broken file should fail in the first second, not after three hours of extraction.
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+[ -f "$HERE/finalize_ablation.sh" ] || die "missing $HERE/finalize_ablation.sh"
+. "$HERE/finalize_ablation.sh"
+
 # ---------------------------------------------------------------- preflight
 say "Preflight"
 
 [ -f "$CONLLU" ]   || die "corpus not found: $CONLLU  (build it with build_concat_ud.py)"
 [ -d "$REPS_DIR" ] || die "reps dir not found: $REPS_DIR"
+
+# A killed extraction leaves its uncompressed scratch memmap behind -- three interrupted
+# processes can orphan ~105 GB that nothing will ever reclaim, and the disk check below would
+# then fail on space held by a run that no longer exists. Only safe while nothing is extracting,
+# so this refuses to touch anything if a sweep is live.
+if pgrep -f "run_llm_sweep.py|extract_vua.py" >/dev/null 2>&1; then
+  echo "  scratch:     an extraction is already running; not touching scratch dirs"
+  die "another extraction is in progress. Let it finish, or stop it before starting this run --
+       two sweeps writing the same reps dir would race on the same output files."
+fi
+STALE=$(ls -d "$REPS_DIR"/repscratch_* "$VUA_DIR"/vuascratch_* 2>/dev/null | wc -l | tr -d ' ')
+if [ "$STALE" -gt 0 ]; then
+  FREED=$(du -ch -d0 "$REPS_DIR"/repscratch_* "$VUA_DIR"/vuascratch_* 2>/dev/null | tail -1 | cut -f1)
+  rm -rf "$REPS_DIR"/repscratch_* "$VUA_DIR"/vuascratch_*
+  echo "  scratch:     removed $STALE orphaned dir(s) from an interrupted run, reclaimed ${FREED:-0}"
+fi
 
 # Extraction streams each model to an UNCOMPRESSED scratch memmap before compressing:
 # max_tokens * width * layers * 4 bytes. That is ~61 GB for a 1.4B model, and three concurrent
@@ -105,47 +128,9 @@ for pid in $PID_L $PID_M $PID_S; do wait "$pid" || FAILED=1; done
 [ "$FAILED" -eq 0 ] || die "an extraction process exited non-zero; see $LOGDIR/ud_*.log"
 
 # ------------------------------------------------------------- verification gate
-# A helper that matched no module would look EXACTLY like a successful ablation that changed
-# nothing, and we would read the wrong conclusion off an unchanged result. So this is a hard
-# gate rather than something to notice afterwards.
-#
-# Expected: every OPT model reports a zeroed module and zero drift (the same token at two
-# offsets must give identical layer-0 states once the position embedding is gone). Every Pythia
-# model reports nothing zeroed, because rotary embeddings live inside attention -- that is the
-# no-op we want, and it is also the evidence that the family asymmetry is positional.
-say "Verifying the ablation actually applied"
-
-# The check is written to a CSV, not just printed. The representations it describes are deleted
-# at the end of this script, so a terminal message would be the only surviving record of whether
-# the ablation ever happened -- and that record has to outlive the scrollback.
-CHECK_CSV="${CHECK_CSV:-data/position_ablation_check.csv}"
-{
-  echo "model,init,zeroed,drift"
-  grep -hE "^POSABL|position ablation:" "$LOGDIR"/*.log 2>/dev/null \
-    | awk -F'\t' '{ m=z=i=d="";
-        for (j=2; j<=NF; j++) { split($j, kv, "=");
-          if (kv[1]=="model") m=substr($j,7);
-          else if (kv[1]=="init") i=substr($j,6);
-          else if (kv[1]=="zeroed") z=substr($j,8);
-          else if (kv[1]=="drift") d=substr($j,7) }
-        printf "%s,%s,\"%s\",%s\n", m, i, z, d }' \
-    | sort -u
-} > "$CHECK_CSV"
-column -s, -t "$CHECK_CSV" 2>/dev/null | sed 's/^/  /' || cat "$CHECK_CSV"
-
-# wc -l rather than grep -c: across several files grep -c prints one count per file, and bc is
-# not installed everywhere.
-N_ABLATED=$(awk -F, 'NR>1 && $3 != "\"NONE\"" {c++} END{print c+0}' "$CHECK_CSV")
-N_NOOP=$(awk -F, 'NR>1 && $3 == "\"NONE\"" {c++} END{print c+0}' "$CHECK_CSV")
-if [ "$N_ABLATED" -eq 0 ]; then
-  die "no model reported a zeroed position embedding. The ablation matched nothing, so these
-       representations are identical to the unablated ones and the run is meaningless."
-fi
-DRIFT_BAD=$(awk -F, 'NR>1 && $3 != "\"NONE\"" && $4+0 > 1e-5 {c++} END{print c+0}' "$CHECK_CSV")
-[ "$DRIFT_BAD" -eq 0 ] || die "$DRIFT_BAD ablated model(s) still show position-dependent layer-0
-       states. The embedding was zeroed but something else is carrying position."
-echo "  OK: $N_ABLATED ablated with zero drift, $N_NOOP had nothing to zero (expected for rotary)"
-echo "  -> $CHECK_CSV"
+# Sourced in preflight. Run here rather than at the end so we abort before spending an hour
+# measuring representations that were never actually ablated.
+stage_gate
 
 # ------------------------------------------------------------ extraction (VUA: metaphor)
 if [ "${SKIP_VUA:-0}" != "1" ]; then
@@ -171,64 +156,9 @@ if [ "${SKIP_VUA:-0}" != "1" ]; then
       --workers 6 --out data/llm_metaphor_ablation.csv
 fi
 
-# ------------------------------------------------------------------------ summary
-# Written to CSV as well as printed. Everything here is derivable from the measurement files,
-# but the 2x2 is the thing the appendix reports and it should not have to be re-derived by hand.
-say "The 2x2"
-$PY - <<'SUMMARY'
-import csv, collections, os
-
-SRC = [("POS (noun/verb)",  "data/llm_unified_form_ablation.csv", "std_size_interaction"),
-       ("role",             "data/llm_role_ablation.csv",         "size_interaction"),
-       ("metaphor",         "data/llm_metaphor_ablation.csv",     "size_interaction")]
-
-out = []
-for constr, path, col in SRC:
-    if not os.path.exists(path):
-        continue
-    deep = collections.defaultdict(dict)
-    for r in csv.DictReader(open(path)):
-        init = r.get("init", "pretrained")
-        deep[(r["model"], init)][int(r["layer"])] = float(r[col])
-    for (model, init), d in deep.items():
-        out.append(dict(construction=constr, model=model, init=init,
-                        family="BabyLM" if "babylm" in model else "Pythia",
-                        trained="no" if init.startswith("random") else "yes",
-                        positions="zeroed" if init.endswith("noposemb") else "intact",
-                        deepest_layer=max(d), interaction=round(d[max(d)], 4)))
-
-with open("data/position_ablation_2x2.csv", "w", newline="") as fh:
-    w = csv.DictWriter(fh, fieldnames=["construction", "family", "model", "init", "trained",
-                                       "positions", "deepest_layer", "interaction"])
-    w.writeheader()
-    for r in sorted(out, key=lambda r: (r["construction"], r["family"], r["model"], r["init"])):
-        w.writerow(r)
-
-print(f"  {'construction':<18}{'model':<32}{'trained':<9}{'positions':<11}{'interaction':>12}")
-for r in sorted(out, key=lambda r: (r["construction"], r["family"], r["model"], r["init"])):
-    print(f"  {r['construction']:<18}{r['model'].split('/')[-1]:<32}"
-          f"{r['trained']:<9}{r['positions']:<11}{r['interaction']:>12.4f}")
-print()
-print("  Read the OPT rows with trained=no: if `zeroed` is far below `intact`, the untrained")
-print("  interaction was positional and the before-training control is repaired.")
-print("  -> data/position_ablation_2x2.csv")
-SUMMARY
-
-# --------------------------------------------------------------------- cleanup
-# The ablated representations are large and entirely regenerable from this script, and every
-# number we need has been written to CSV above. Deleting only the *_noposemb.npz files leaves the
-# originals -- which the body of the paper depends on -- untouched.
-if [ "${KEEP_REPS:-0}" = "1" ]; then
-  say "Keeping ablated representations (KEEP_REPS=1)"
-else
-  say "Deleting ablated representations"
-  FREED=$(du -ch "$REPS_DIR"/*_noposemb.npz "$VUA_DIR"/*_noposemb.npz 2>/dev/null \
-          | tail -1 | cut -f1 || echo "0")
-  N_DEL=$(ls -1 "$REPS_DIR"/*_noposemb.npz "$VUA_DIR"/*_noposemb.npz 2>/dev/null | wc -l | tr -d ' ')
-  rm -f "$REPS_DIR"/*_noposemb.npz "$VUA_DIR"/*_noposemb.npz
-  echo "  removed $N_DEL file(s), reclaimed $FREED"
-  echo "  (KEEP_REPS=1 to retain them; re-running this script regenerates them)"
-fi
+# ------------------------------------------------------------------ summary, cleanup
+stage_summary
+stage_cleanup
 
 say "Done"
 echo "  logs:    $LOGDIR/"
