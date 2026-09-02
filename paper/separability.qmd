@@ -380,7 +380,7 @@ We test it by decoding. If $\gamma$ encodes the class, then the class should be 
 
 **Project out the shared class direction.** We estimate $\beta$ as the difference between the two class means pooled over all items, normalize it, and remove that component from every token. Whatever separates the classes afterwards is not the direction they share.
 
-What remains is the item-specific class signal, which is $\gamma$. We decode it with a cross-validated logistic probe, five folds, classes balanced by subsampling within each word so that chance is 0.50, and average the resulting accuracies over words. Words contribute only if they have at least eight tokens at each level.
+What remains is the interaction, $\gamma$: the part of a word-at-a-level that is neither a fact about the word nor a fact about the level. We decode it with a cross-validated logistic probe, five folds, classes balanced by subsampling within each word so that chance is 0.50, and average the resulting accuracies over words. Words contribute only if they have at least eight tokens at each level.
 
 Two guards. Accuracies are averaged **unweighted** over words and some words rest on few tokens, so the mean carries a percentile bootstrap interval over words rather than being reported alone. And the whole procedure is repeated with the class labels **permuted within each word**, which preserves every word's token count and class balance while destroying the labelling; that null is where a probe reading its own cross-validation folds would land.
 
@@ -390,7 +390,7 @@ This is run at the deepest layer of the largest model in each family, for all th
 
 ```{r}
 #| label: tbl-decode
-#| tbl-cap: "Class decoded from the item-specific interaction, at the deepest layer of the largest model in each family. The item is held fixed and the shared class direction is projected out, so neither the item effect nor the class effect can contribute. Brackets are percentile bootstrap intervals over words; the null permutes class labels within each word. Chance is 0.50."
+#| tbl-cap: "Class decoded from the interaction, at the deepest layer of the largest model in each family. The item is held fixed and the shared class direction is projected out, so neither the item effect nor the class effect can contribute. Brackets are percentile bootstrap intervals over words; the null permutes class labels within each word. Chance is 0.50."
 dec <- bind_rows(
   rd("llm_decode_pos_form.csv") |> mutate(construction = "POS (noun/verb)"),
   rd("llm_decode_interaction.csv") |> filter(construction != "pos") |>
@@ -414,13 +414,13 @@ dec |>
   kable_styling(latex_options = c("HOLD_position"), font_size = 8)
 ```
 
-**The interaction is about the class.** In every construction and both families the class is recoverable from the item-specific residual at well above chance, and the permuted null sits on chance (@tbl-decode). For part of speech it reaches `r g(dec$class_peritem[dec$construction == "POS (noun/verb)" & dec$family == "Pythia"], 2)`, for grammatical role `r g(dec$class_peritem[dec$construction == "role (subject/object)" & dec$family == "Pythia"], 2)`, and for metaphor `r g(dec$class_peritem[dec$construction == "metaphor (literal/figurative)" & dec$family == "Pythia"], 2)`. The bootstrap intervals exclude the nulls by a wide margin in all six cases.
+**The interaction is about the class.** In every construction and both families the class is recoverable from the interaction at well above chance, and the permuted null sits on chance (@tbl-decode). For part of speech it reaches `r g(dec$class_peritem[dec$construction == "POS (noun/verb)" & dec$family == "Pythia"], 2)`, for grammatical role `r g(dec$class_peritem[dec$construction == "role (subject/object)" & dec$family == "Pythia"], 2)`, and for metaphor `r g(dec$class_peritem[dec$construction == "metaphor (literal/figurative)" & dec$family == "Pythia"], 2)`. The bootstrap intervals exclude the nulls by a wide margin in all six cases.
 
 That the null lands on chance is the honesty check rather than a formality. It is the same probe, the same folds, the same word-level averaging and the same small per-word samples, with only the labelling destroyed. Any accuracy the procedure could manufacture from its own structure would appear there, and none does.
 
-**The effect is graded the same way the interaction's size is.** Part of speech decodes best, role next, metaphor least, which is the ordering of the portable fraction in @tbl-llm read backwards: the distinctions whose class-relevant structure is least portable are also the ones whose item-specific residual carries the class least strongly. Two measurements, one geometric and one functional, agreeing on the same ranking.
+**The effect is graded the same way the interaction's size is.** Part of speech decodes best, role next, metaphor least, which is the ordering of the portable fraction in @tbl-llm read backwards: the distinctions whose class-relevant structure is least portable are also the ones whose interaction carries the class least strongly. Two measurements, one geometric and one functional, agreeing on the same ranking.
 
-Metaphor is the case where this matters most. Its class effect never clears the threshold at which an orientation is worth reporting (@sec-exp2-results), so on the geometric evidence alone one could conclude that metaphoricity is not represented at all. It decodes from the item-specific residual at `r g(dec$class_peritem[dec$construction == "metaphor (literal/figurative)" & dec$family == "Pythia"], 2)` against a null of `r g(dec$class_peritem_null[dec$construction == "metaphor (literal/figurative)" & dec$family == "Pythia"], 2)`. It is represented; it is simply not represented as a direction shared across words. A method that looks only for a shared direction would have missed it.
+Metaphor is the case where this matters most. Its class effect never clears the threshold at which an orientation is worth reporting (@sec-exp2-results), so on the geometric evidence alone one could conclude that metaphoricity is not represented at all. It decodes from the interaction at `r g(dec$class_peritem[dec$construction == "metaphor (literal/figurative)" & dec$family == "Pythia"], 2)` against a null of `r g(dec$class_peritem_null[dec$construction == "metaphor (literal/figurative)" & dec$family == "Pythia"], 2)`. It is represented; it is simply not represented as a direction shared across words. A method that looks only for a shared direction would have missed it.
 
 **What this does and does not establish.** It shows $\gamma$ carries the specific label rather than being generic correlated context, since generic context would not survive holding the word fixed and removing the shared axis. It does not show that $\gamma$ is *only* the label. Context correlated with the class within a word survives both removals, so the interaction remains an upper bound on class-binding, and this result raises the floor rather than closing the gap.
 
@@ -545,7 +545,7 @@ $$
 
 exactly unbiased at any noise level, and able to come out negative, which is what makes $>0$ a test rather than a threshold on a positively biased quantity. Significance permutes the item index of one estimate against the other, preserving every magnitude while destroying the correspondence, over 200 draws at the 5% level.
 
-The same construction is applied to the item effect. The **class effect is not cross-denoised**: it is reported as $I\sum_c\lVert\hat\beta_c\rVert^2$ from the full grid, on the grounds that $\hat\beta_c$ averages over all $I$ items and is well estimated. That addresses variance rather than bias, and Appendix \ref{sec-appendix-validate} measures the residual floor it leaves.
+The same construction is applied to the item effect. The **class effect is not cross-denoised**: it is reported as $I\sum_c\lVert\hat\beta_c\rVert^2$ from the full grid, on the grounds that $\hat\beta_c$ averages over all $I$ items and is well estimated. That addresses variance rather than bias, and Appendix \ref{sec-appendix-validate} measures the floor it leaves.
 
 ## Invariance {#sec-appendix-math-invariance}
 
