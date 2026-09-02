@@ -23,6 +23,7 @@ Deps: torch, transformers, numpy. Example:
 import argparse
 import csv
 import sys
+import time
 from pathlib import Path
 
 import numpy as np
@@ -217,6 +218,7 @@ def extract_stream_to_npz(out_path, model_name, sentences, layer_idxs, max_token
                           dtype=np.float32, shape=(max_tokens, d)) for li in layer_idxs}
     upos_all, lemma_all = [], []
     n_tok = 0
+    t_start = time.time()
     order = np.random.default_rng(seed).permutation(len(sentences)).tolist()
     try:
         for start in range(0, len(order), batch_size):
@@ -261,6 +263,15 @@ def extract_stream_to_npz(out_path, model_name, sentences, layer_idxs, max_token
                 lemma_all.extend(w[1] for w in keep)
                 n_tok += k
             del hs
+            # Periodic progress. A model can take many minutes and the loop was otherwise silent
+            # until it finished, which makes a long run impossible to distinguish from a hung one.
+            if (start // batch_size) % 25 == 0 or n_tok >= max_tokens:
+                el = time.time() - t_start
+                rate = n_tok / el if el > 0 else 0.0
+                eta = (max_tokens - n_tok) / rate if rate > 0 else 0.0
+                print(f"    {model_name} [{init_tag(random_init, ablate_positions)}]: "
+                      f"{n_tok}/{max_tokens} tokens  {rate:.0f} tok/s  "
+                      f"eta {int(eta // 60)}m{int(eta % 60):02d}s", flush=True)
             if stop or n_tok >= max_tokens:
                 break
         for li in layer_idxs:

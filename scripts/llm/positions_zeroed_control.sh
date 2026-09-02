@@ -82,21 +82,21 @@ $PY scripts/llm/run_llm_sweep.py \
     --models pythia-1.4b opt-babylm-1.3B --ablate-positions \
     --conllu "$CONLLU" --reps-dir "$REPS_DIR" \
     --max-tokens "$MAX_TOKENS" --batch-size 128 --device cuda \
-    > "$LOGDIR/ud_large.log" 2>&1 &
+    >> "$LOGDIR/ud_large.log" 2>&1 &
 PID_L=$!
 
 $PY scripts/llm/run_llm_sweep.py \
     --models pythia-410m opt-babylm-350m --ablate-positions \
     --conllu "$CONLLU" --reps-dir "$REPS_DIR" \
     --max-tokens "$MAX_TOKENS" --batch-size 192 --device cuda \
-    > "$LOGDIR/ud_mid.log" 2>&1 &
+    >> "$LOGDIR/ud_mid.log" 2>&1 &
 PID_M=$!
 
 $PY scripts/llm/run_llm_sweep.py \
     --models pythia-160m opt-babylm-125m --ablate-positions \
     --conllu "$CONLLU" --reps-dir "$REPS_DIR" \
     --max-tokens "$MAX_TOKENS" --batch-size 256 --device cuda \
-    > "$LOGDIR/ud_small.log" 2>&1 &
+    >> "$LOGDIR/ud_small.log" 2>&1 &
 PID_S=$!
 
 echo "  three processes running (pids $PID_L $PID_M $PID_S); tailing $LOGDIR/ud_*.log"
@@ -121,7 +121,7 @@ say "Verifying the ablation actually applied"
 CHECK_CSV="${CHECK_CSV:-data/position_ablation_check.csv}"
 {
   echo "model,init,zeroed,drift"
-  grep -h "^POSABL" "$LOGDIR"/*.log 2>/dev/null \
+  grep -hE "^POSABL|position ablation:" "$LOGDIR"/*.log 2>/dev/null \
     | awk -F'\t' '{ m=z=i=d="";
         for (j=2; j<=NF; j++) { split($j, kv, "=");
           if (kv[1]=="model") m=substr($j,7);
@@ -151,7 +151,7 @@ echo "  -> $CHECK_CSV"
 if [ "${SKIP_VUA:-0}" != "1" ]; then
   say "Extracting VUA representations with positions zeroed (metaphor)"
   $PY scripts/llm/extract_vua.py --out-dir "$VUA_DIR" --device cuda --ablate-positions \
-      2>&1 | tee "$LOGDIR/vua.log"
+      2>&1 | tee -a "$LOGDIR/vua.log"
   grep -h "position ablation" "$LOGDIR/vua.log" | sed 's/^ *//' | sed 's/^/  /' || true
 fi
 
