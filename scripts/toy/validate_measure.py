@@ -29,10 +29,19 @@ Run:  python scripts/toy/validate_measure.py --probe
 """
 import argparse
 import csv
+import os
 import sys
 from pathlib import Path
 
-import numpy as np
+# Pin BLAS to one thread per process, BEFORE numpy is imported (these are read at load time).
+# Parallelism here is across specs, not within one: every run is a handful of SVDs on a tall
+# thin matrix, and letting each of N worker processes spawn N BLAS threads puts N*N threads on
+# N cores. On a 28-core machine that is 784 threads contending, and the run crawls. The toy
+# grid has always done this; this script did not, which is the difference.
+for _v in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
+    os.environ.setdefault(_v, "1")
+
+import numpy as np  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 for _sub in ("lib", "llm", "toy"):
