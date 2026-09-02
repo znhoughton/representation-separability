@@ -55,7 +55,7 @@ toy <- rd("experiment9_cross_results.csv") |>
 
 # Separability fails in two distinguishable ways, and the toy separates them: the presence
 # of an interaction term at all, and non-orthogonality among the components. `size_int` is
-# the first; `leak_marg` (item marginal inside the category subspace) and `ov_item` (the
+# the first; `leak_marg` (item effect inside the class direction) and `ov_item` (the
 # interaction's subspace overlapping the item subspace) are the second.
 toy_dose <- toy |>
   group_by(int_frac, act) |>
@@ -70,8 +70,8 @@ toy_dose <- toy |>
             ov_n = sum(!is.na(overlap_item_int)),
             .groups = "drop")
 
-# Interaction geometry is only interpretable where an interaction exists AND the marginals
-# do: at int_frac = 0 there is no gamma to orient and at int_frac = 1 no marginals to orient
+# Interaction geometry is only interpretable where an interaction exists AND the item and class effects
+# do: at int_frac = 0 there is no gamma to orient and at int_frac = 1 no the item and class effects to orient
 # against. The gate already withholds those, and they are excluded from the geometry panels.
 TOY_MID <- c(.25, .5, .75)
 toy_cap <- toy |> filter(int_frac %in% TOY_MID) |>
@@ -136,40 +136,40 @@ llm <- bind_rows(
 <!-- PLACEHOLDER: author to write. Frames the paper as an extension of Exemplars in
      Disguise: if a learner's behavior cannot distinguish exemplar storage from
      abstraction, ask instead whether its representations separate into an item part and
-     a category part. Ends with the Present Study paragraph setting up the three
+     a class part. Ends with the Present Study paragraph setting up the three
      experiments. -->
 ```
 :::
 
 # Experiment 1: Item and Category in a Hybrid Learner {#sec-exp1}
 
-Experiment 1 has two jobs, and comparing artificial learners to language models is not one of them. The first is to establish that the measure works: we build an artificial language whose structure we control, dial the amount of item-by-category structure from none to all of it, and check that the measure recovers what we put in. The second is to show that entanglement is not an exotic outcome. Even a linear readout, on a language where a fully separable solution exists and the learner has room to find it, builds a representation that does not factor into item plus category, and a nonlinearity makes it worse. That establishes the phenomenon under conditions where we know the answer. Whether it holds of real language is Experiment 2's question, and the numbers there stand on their own.
+Experiment 1 has two jobs, and comparing artificial learners to language models is not one of them. The first is to establish that the measure works: we build an artificial language whose structure we control, dial the amount of item-by-class structure from none to all of it, and check that the measure recovers what we put in. The second is to show that entanglement is not an exotic outcome. Even a linear readout, on a language where a fully separable solution exists and the learner has room to find it, builds a representation that does not factor into item plus class, and a nonlinearity makes it worse. That establishes the phenomenon under conditions where we know the answer. Whether it holds of real language is Experiment 2's question, and the numbers there stand on their own.
 
-The learner is deliberately a hybrid of the two accounts at issue. Every word-in-category pairing receives its own private embedding, with no parameter sharing between them, which is exemplar storage; those embeddings are then read out through a single network shared by every pairing, which is abstraction. This is also the architecture of the models in Experiment 2, where private token embeddings feed shared transformer blocks. The question is what such a learner does with structure that *could* be represented separably.
+The learner is deliberately a hybrid of the two accounts at issue. Every word-in-class pairing receives its own private embedding, with no parameter sharing between them, which is exemplar storage; those embeddings are then read out through a single network shared by every pairing, which is abstraction. This is also the architecture of the models in Experiment 2, where private token embeddings feed shared transformer blocks. The question is what such a learner does with structure that *could* be represented separably.
 
 ## Dataset {#sec-exp1-data}
 
-The artificial language is a next-token prediction task over a vocabulary of `r max(toy$n_lex) / 16` word types. Each **lexeme** is a (form, category) pair: 250 forms crossed with 16 categories, giving 4,000 lexemes, each with its own target distribution over the vocabulary. Forms are the items and categories are the classes, so the design is the same item-by-category layout used throughout the paper.
+The artificial language is a next-token prediction task over a vocabulary of `r max(toy$n_lex) / 16` word types. Each **lexeme** is a (form, class) pair: 250 forms crossed with 16 classes, giving 4,000 lexemes, each with its own target distribution over the vocabulary. Forms are the items and configurations are the classes, giving the same item-by-class layout used throughout the paper.
 
-Each form $i$ and category $c$ carries a latent code, and the target distribution is generated from those codes through independently drawn loadings onto the vocabulary:
+Each form $i$ and class $c$ carries a latent code, and the target distribution is generated from those codes through independently drawn loadings onto the vocabulary:
 
 $$
 \text{logits}(i,c) \;=\; s\Big[\sqrt{1-f}\;\overline{m}(i,c) \;+\; \sqrt{f}\;\overline{x}(i,c)\Big]
 $$ {#eq-toy}
 
-where $\overline{m}$ is an **additive** term, the sum of a form contribution and a category contribution, and $\overline{x}$ is a **bilinear** term formed from the elementwise product of the two codes, so it is irreducibly joint. Both are normalized to unit per-element standard deviation before mixing, and the $\sqrt{1-f}, \sqrt{f}$ weighting holds the total signal scale fixed, so the dial $f$ changes the *composition* of the language without changing how hard it is to learn.
+where $\overline{m}$ is an **additive** term, the sum of a form contribution and a class contribution, and $\overline{x}$ is a **bilinear** term formed from the elementwise product of the two codes, so it is irreducibly joint. Both are normalized to unit per-element standard deviation before mixing, and the $\sqrt{1-f}, \sqrt{f}$ weighting holds the total signal scale fixed, so the dial $f$ changes the *composition* of the language without changing how hard it is to learn.
 
-That dial, $f \in \{0, .25, .5, .75, 1\}$, is the manipulation. At $f = 0$ a word's behavior is exactly its form contribution plus its category contribution, with **no interaction whatever**. At $f = 1$ behavior is purely the form-by-category conjunction and the marginals vanish. Intermediate values mix the two.
+That dial, $f \in \{0, .25, .5, .75, 1\}$, is the manipulation. At $f = 0$ a word's behavior is exactly its form contribution plus its class contribution, with **no interaction whatever**. At $f = 1$ behavior is purely the form-by-class conjunction and the item and class effects vanish. Intermediate values mix the two.
 
 Two properties of the construction matter for what can be concluded. First, the three sets of loadings are drawn independently, so the additive and the interactive structure occupy approximately orthogonal subspaces of the output space: **a fully separable representation exists** for every value of $f$. Second, the learner's hidden layer is at least as wide as the generative rank in the cells we analyze, so it has room to place each component on its own axis. Any entanglement the measure reports is therefore something the learner did, not something the task or the architecture forced.
 
-We cross the dial with the generative ranks of the form code ($r_i \in \{1,2,4,8,16,32\}$), the category code ($r_c \in \{1,2,4,8\}$), the hidden width ($d \in \{16,32,64,128\}$), the output nonlinearity (linear or ReLU) and five random draws of the language, for `r format(nrow(toy), big.mark = ",")` cells in total, all of which are analyzed. The ratio of generative rank to hidden width, which we call **capacity**, ranges across the grid from `r g(min(toy$cap), 2)` to `r g(max(toy$cap), 1)`. Below one a fully separable solution is reachable by dimension counting and above one it is not, so capacity is reported as a variable rather than used to select cells.
+We cross the dial with the generative ranks of the form code ($r_i \in \{1,2,4,8,16,32\}$), the class code ($r_c \in \{1,2,4,8\}$), the hidden width ($d \in \{16,32,64,128\}$), the output nonlinearity (linear or ReLU) and five random draws of the language, for `r format(nrow(toy), big.mark = ",")` cells in total, all of which are analyzed. The ratio of generative rank to hidden width, which we call **capacity**, ranges across the grid from `r g(min(toy$cap), 2)` to `r g(max(toy$cap), 1)`. Below one a fully separable solution is reachable by dimension counting and above one it is not, so capacity is reported as a variable rather than used to select cells.
 
 ## Method {#sec-exp1-method}
 
 ### The learner
 
-Each lexeme has a free $d$-dimensional embedding, initialized at random and trained without any sharing across lexemes: nothing ties *dog*-as-noun to *dog*-as-verb. Those embeddings pass through one hidden layer of width $d$ with either an identity or a ReLU nonlinearity, and then a linear map to the vocabulary. We measure the hidden layer, projected onto as many leading principal components as the generative structure has dimensions. The projection is necessary because a free per-lexeme embedding leaves the directions the loss does not constrain to be filled by initialization, and that content varies across a form's categories and would otherwise be counted as interaction. It also means the measurement here happens in a space of a few dozen dimensions rather than the hundreds or thousands of Experiment 2, so the *magnitudes* of the orthogonality measures in the two experiments are not on a common scale and we do not compare them. What transfers is the mechanism, not the numbers.
+Each lexeme has a free $d$-dimensional embedding, initialized at random and trained without any sharing across lexemes: nothing ties *dog*-as-noun to *dog*-as-verb. Those embeddings pass through one hidden layer of width $d$ with either an identity or a ReLU nonlinearity, and then a linear map to the vocabulary. We measure the hidden layer, projected onto as many leading principal components as the generative structure has dimensions. The projection is necessary because a free per-lexeme embedding leaves the directions the loss does not constrain to be filled by initialization, and that content varies across a form's classes and would otherwise be counted as interaction. It also means the measurement here happens in a space of a few dozen dimensions rather than the hundreds or thousands of Experiment 2, so the *magnitudes* of the orthogonality measures in the two experiments are not on a common scale and we do not compare them. What transfers is the mechanism, not the numbers.
 
 The identity condition is the reference case. A linear map cannot destroy linear recoverability, so whatever the linear learner does to the geometry is a rotation and shear of separable structure rather than a fusion of it. Differences between the two conditions are attributable to the nonlinearity.
 
@@ -177,21 +177,21 @@ Training minimizes the exact expected cross-entropy against the true target dist
 
 ### Decomposing a representation {#sec-measure}
 
-Let $M[i,c] \in \mathbb{R}^d$ be the mean representation of item $i$ used at category level $c$. We split that grid into four geometric components,
+Let $M[i,c] \in \mathbb{R}^d$ be the mean representation of item $i$ used at class level $c$. We split that grid into four geometric components,
 
 $$
 M[i,c] \;=\; \mu + \alpha(i) + \beta(c) + \gamma(i,c),
 $$ {#eq-decomp}
 
-by centering: $\mu$ is the grand mean, $\alpha(i)$ is item $i$'s row mean minus $\mu$, $\beta(c)$ is level $c$'s column mean minus $\mu$, and $\gamma(i,c)$ is what remains. The familiar reading is the main-effects-plus-interaction partition, with the difference that the dependent variable is a vector, so each component is a *direction* in representational space rather than a number. In mixed-model terms $\alpha$ is a by-item random intercept, $\beta$ is the fixed effect of category, and $\gamma$ is the by-item random slope for category; the question of this paper is how much of the category effect is carried by $\beta$ rather than by $\gamma$. We use that mapping for intuition only. Nothing is fitted, there is no shrinkage, and no distribution is assumed over the by-item terms.
+by centering: $\mu$ is the grand mean, $\alpha(i)$ is item $i$'s row mean minus $\mu$, $\beta(c)$ is level $c$'s column mean minus $\mu$, and $\gamma(i,c)$ is what remains. The familiar reading is the main-effects-plus-interaction partition, with the difference that the dependent variable is a vector, so each component is a *direction* in representational space rather than a number. In mixed-model terms $\alpha$ is a by-item random intercept, $\beta$ is the fixed effect of class, and $\gamma$ is the by-item random slope for class; the question of this paper is how much of the class effect is carried by $\beta$ rather than by $\gamma$. We use that mapping for intuition only. Nothing is fitted, there is no shrinkage, and no distribution is assumed over the by-item terms.
 
-A representation is **separable** if a word's representation is the sum of an item part and a category part, with the two on their own axes. It can fail in two distinguishable ways, and we measure them separately. It fails if the components are **non-orthogonal**, so that projecting out the category also removes item information; and it fails if there is a **third component**, an item-by-category term that is neither an item part nor a category part, whatever its orientation. A representation with a large $\gamma$ does not factor into item plus category even if $\gamma$ sits on an axis of its own.
+A representation is **separable** if a word's representation is the sum of an item part and a class part, with the two on their own axes. It can fail in two distinguishable ways, and we measure them separately. It fails if the components are **non-orthogonal**, so that projecting out the class also removes item information; and it fails if there is a **third component**, an item-by-class term that is neither an item part nor a class part, whatever its orientation. A representation with a large $\gamma$ does not factor into item plus class even if $\gamma$ sits on an axis of its own.
 
-Because the four components are mutually orthogonal *as sources*, their squared lengths partition the structure of the grid exactly, and we report each as a share of the total. **Interaction size** is $\gamma$'s share, which measures the second kind of failure. For the first we report two projections: **marginal leakage**, the fraction of the item component's energy lying inside the category component's subspace, and **interaction overlap**, how much the interaction's subspace shares directions with the item subspace. Zero on both, with a negligible $\gamma$, is a cleanly separable representation.
+Because the four components are mutually orthogonal *as sources*, their squared lengths partition the structure of the grid exactly, and we report each as a share of the total. **Interaction size** is $\gamma$'s share, which measures the second kind of failure. For the first we report two projections: **item-class overlap**, the fraction of the item effect's energy lying inside the class effect's subspace, and **interaction overlap**, how much the interaction's subspace shares directions with the item subspace. Zero on both, with a negligible $\gamma$, is a cleanly separable representation.
 
 **Interpreting the interaction.** Because $\gamma$ is obtained by subtraction it invites reading as a residual in the regression sense, the part a model failed to capture. It is not. The decomposition is saturated: $\mu$, $\alpha$, $\beta$ and $\gamma$ exhaust the degrees of freedom of the grid, so $\gamma$ is the final term of a complete description rather than the leftover of an incomplete one. The residual stratum lies one level below, in the scatter of individual observations *within* each cell. That distinction is not free, however, since cell means are estimated from finitely many observations and within-cell error propagates upward into $\gamma$: a squared length is bounded below by its own noise floor and cannot read zero even when the true interaction is zero. This is the situation in which an analysis of variance tests an interaction against the within-cell error term, and it requires replication for the same reason.
 
-**Replication and the null.** We therefore estimate the grid **twice** from independent data and keep only what the two estimates agree on, reporting the signed inner product $\langle \gamma_A, \gamma_B \rangle$ rather than $\lVert\gamma\rVert^2$. Independent errors cancel in expectation, so this is unbiased at any noise level; and because it can be negative it supports a genuine test, which a squared length cannot. Significance comes from permuting which item of one estimate is paired with which item of the other, which preserves every magnitude while destroying the correspondence. A component's *direction* is only defined if the component exists, so leakage is reported only when both components it relates are present; otherwise it is withheld.
+**Replication and the null.** We therefore estimate the grid **twice** from independent data and keep only what the two estimates agree on, reporting the signed inner product $\langle \gamma_A, \gamma_B \rangle$ rather than $\lVert\gamma\rVert^2$. Independent errors cancel in expectation, so this is unbiased at any noise level; and because it can be negative it supports a genuine test, which a squared length cannot. Significance comes from permuting which item of one estimate is paired with which item of the other, which preserves every magnitude while destroying the correspondence. A component's *direction* is only defined if the component exists, so item-class overlap is reported only when both components it relates are present; otherwise it is withheld.
 
 In Experiment 1 the two estimates come from **two initializations trained on the same language**. This is necessary rather than incidental: the toy has one representation per cell and hence no within-cell replication, so interaction and error are not identifiable, in exactly the way they are not identifiable in an unreplicated two-way design. Training twice supplies the missing replication, and what it cancels is the initialization-dependent content that gradient descent leaves in the directions the loss does not constrain. Because two independently trained networks occupy different coordinate systems, one is rotated onto the other before comparison, with the rotation fitted on held-out items so that an item's own noise never shapes its own alignment. @sec-app-math gives the algebra.
 
@@ -203,7 +203,7 @@ In Experiment 1 the two estimates come from **two initializations trained on the
 #| fig-width: 6.3
 #| fig-height: 2.3
 #| out-width: "100%"
-#| fig-cap: "Experiment 1, all 4,800 cells. Left: the interaction's share of representational structure. Middle: leakage of the item component into the category subspace, on a log axis (it spans four orders of magnitude). Right: how much the interaction's subspace overlaps the item subspace. Points are medians. Both readouts build a substantial interaction, and it tracks the generative dial; only the ReLU readout also makes the components non-orthogonal. The two outer panels are shown for the settings where the quantities are defined: an orientation requires the components it relates to exist."
+#| fig-cap: "Experiment 1, all 4,800 cells. Left: the interaction's share of representational structure. Middle: overlap between the item effect and the class effect, on a log axis (it spans four orders of magnitude). Right: how much the interaction's subspace overlaps the item subspace. Points are medians. Both readouts build a substantial interaction, and it tracks the generative dial; only the ReLU readout also makes the components non-orthogonal. The two outer panels are shown for the settings where the quantities are defined: an orientation requires the components it relates to exist."
 mid <- toy_dose |> filter(int_frac %in% TOY_MID)
 pan <- function(dat, y, ylab, logy = FALSE) {
   p <- ggplot(dat, aes(int_frac, .data[[y]], colour = act)) +
@@ -214,7 +214,7 @@ pan <- function(dat, y, ylab, logy = FALSE) {
   if (logy) p + scale_y_log10(labels = scales::label_number(drop0trailing = TRUE)) else p
 }
 ((pan(toy_dose, "size_med", "interaction share\nof structure") |
-  pan(filter(toy_dose, int_frac > 0), "leak_med", "item leaks into\ncategory (log)", TRUE) |
+  pan(filter(toy_dose, int_frac > 0), "leak_med", "item-class\noverlap (log)", TRUE) |
   pan(mid, "ov_med", "interaction overlaps\nthe item subspace")) +
   plot_layout(guides = "collect") &
   theme(legend.position = "top", legend.margin = margin(0, 0, -6, 0)))
@@ -222,22 +222,22 @@ pan <- function(dat, y, ylab, logy = FALSE) {
 
 **The measure tracks what the language contains.** With a purely additive language the estimator reports a median interaction share of `r g(toy_dose$size_med[toy_dose$act == "linear" & toy_dose$int_frac == 0], 4)` under a linear readout; with a purely interactive one it reports `r g(pick(toy_dose, "linear", 1, "size_med"), 3)`. The instrument exercises nearly its full range on a task whose answer is known at both ends (@fig-toy, left).
 
-**Even the linear learner builds an interaction.** At every intermediate setting the linear readout carries an item-by-category component of `r g(pick(toy_dose, "linear", .25, "size_med"), 2)` to `r g(pick(toy_dose, "linear", .75, "size_med"), 2)` of representational structure, flagged as present in **100%** of cells. This is not optional. A linear readout maps the hidden layer to the logits, and a linear map of a purely additive representation can only produce additive logits; so any learner that actually fits an interactive language must carry a non-additive representation. The interaction is forced by the task, not chosen by the architecture.
+**Even the linear learner builds an interaction.** At every intermediate setting the linear readout carries an item-by-class effect of `r g(pick(toy_dose, "linear", .25, "size_med"), 2)` to `r g(pick(toy_dose, "linear", .75, "size_med"), 2)` of representational structure, flagged as present in **100%** of cells. This is not optional. A linear readout maps the hidden layer to the logits, and a linear map of a purely additive representation can only produce additive logits; so any learner that actually fits an interactive language must carry a non-additive representation. The interaction is forced by the task, not chosen by the architecture.
 
-**The linear learner nonetheless keeps everything orthogonal.** Its item and category components stay on essentially separate axes, with leakage from `r g(pick(toy_dose, "linear", .25, "leak_med"), 5)` to `r g(pick(toy_dose, "linear", .75, "leak_med"), 4)`, and its interaction occupies its own axis, overlapping the item subspace at `r g(pick(toy_dose, "linear", .25, "ov_med"), 3)` and `r g(pick(toy_dose, "linear", .5, "ov_med"), 3)` at the two lower settings. So the linear representation fails separability in exactly one of the two senses: it contains a third component that is neither item nor category, while the components it does contain are mutually orthogonal.
+**The linear learner nonetheless keeps everything orthogonal.** Its item and class effects stay on essentially separate axes, with item-class overlap from `r g(pick(toy_dose, "linear", .25, "leak_med"), 5)` to `r g(pick(toy_dose, "linear", .75, "leak_med"), 4)`, and its interaction occupies its own axis, overlapping the item subspace at `r g(pick(toy_dose, "linear", .25, "ov_med"), 3)` and `r g(pick(toy_dose, "linear", .5, "ov_med"), 3)` at the two lower settings. So the linear representation fails separability in exactly one of the two senses: it contains a third component that is neither item nor class, while the components it does contain are mutually orthogonal.
 
-**The nonlinearity compounds it, on both counts.** A ReLU readout carries an interaction of similar or slightly larger size (`r g(pick(toy_dose, "ReLU", .75, "size_med"), 2)` at the highest intermediate setting), but now the components are also non-orthogonal. Marginal leakage runs `r g(pick(toy_dose, "ReLU", .25, "leak_med"), 3)` to `r g(pick(toy_dose, "ReLU", .75, "leak_med"), 3)`, two orders of magnitude above the linear readout at matched settings, and the interaction overlaps the item subspace at `r g(pick(toy_dose, "ReLU", .25, "ov_med"), 2)` to `r g(pick(toy_dose, "ReLU", .75, "ov_med"), 2)` where the linear readout sits near zero. Under a nonlinearity the interaction stops being a separate module and is superposed onto the code that carries item and category identity.
+**The nonlinearity compounds it, on both counts.** A ReLU readout carries an interaction of similar or slightly larger size (`r g(pick(toy_dose, "ReLU", .75, "size_med"), 2)` at the highest intermediate setting), but now the components are also non-orthogonal. Item-class overlap runs `r g(pick(toy_dose, "ReLU", .25, "leak_med"), 3)` to `r g(pick(toy_dose, "ReLU", .75, "leak_med"), 3)`, two orders of magnitude above the linear readout at matched settings, and the interaction overlaps the item subspace at `r g(pick(toy_dose, "ReLU", .25, "ov_med"), 2)` to `r g(pick(toy_dose, "ReLU", .75, "ov_med"), 2)` where the linear readout sits near zero. Under a nonlinearity the interaction stops being a separate module and is superposed onto the code that carries item and class identity.
 
 **Capacity governs whether the entanglement was avoidable** (@tbl-toy). Where the hidden layer has room for every generative direction, the linear readout's interaction overlaps the item subspace at `r g(capget(toy_cap, "linear", "room", "ov_med"), 3)`: separation was achievable and it was achieved. Where dimension counting makes separation impossible, the same linear readout reaches `r g(capget(toy_cap, "linear", "impossible", "ov_med"), 2)`. The ReLU readout is entangled at `r g(capget(toy_cap, "ReLU", "room", "ov_med"), 2)` even with room to spare, so its entanglement is learned rather than forced. This is also why the additive control must be read by capacity: with an additive language and room to spare the linear readout flags an interaction in `r sprintf("%.0f%%", 100 * capget(toy_null, "linear", "room", "sig_rate"))` of cells, but where separation is impossible it flags one in `r sprintf("%.0f%%", 100 * capget(toy_null, "linear", "impossible", "sig_rate"))`, correctly, since a representation with nowhere to put the components cannot keep them apart.
 
 ```{r}
 #| label: tbl-toy
-#| tbl-cap: "Experiment 1, by capacity. Medians over the intermediate settings of the dial, where both the interaction and the marginals exist. Capacity is the generative rank over the hidden width: below one, a fully separable solution is reachable. Leakage and overlap are zero for a separable representation."
+#| tbl-cap: "Experiment 1, by capacity. Medians over the intermediate settings of the dial, where both the interaction and the item and class effects exist. Capacity is the generative rank over the hidden width: below one, a fully separable solution is reachable. Item-class overlap and overlap are zero for a separable representation."
 toy_cap |>
   transmute(readout = act,
             capacity = gsub("\n", " ", band),
             `interaction share` = g(size_med, 3),
-            `item into category` = g(leak_med, 4),
+            `item-class overlap` = g(leak_med, 4),
             `interaction into margins` = g(leakint_med, 3),
             `interaction / item overlap` = g(ov_med, 3)) |>
   arrange(readout, capacity) |>
@@ -245,17 +245,17 @@ toy_cap |>
   kable_styling(latex_options = c("HOLD_position"), font_size = 8)
 ```
 
-Two things are established, both of which are about mechanism rather than magnitude. Separability fails for a **principled** reason and not an accidental one: no learner that fits an interactive language can represent it as item plus category, because a readout of a purely additive representation could not produce the interaction the language requires. That holds for the linear learner, which has no capacity pressure, no nonlinearity, and a separable solution available to it. And the *further* failure, the components ceasing to be orthogonal to one another, is what the nonlinearity adds on top. Real language is interactive and real language models are nonlinear, so both mechanisms are present before we measure anything. Experiment 2 asks whether they leave a trace we can find.
+Two things are established, both of which are about mechanism rather than magnitude. Separability fails for a **principled** reason and not an accidental one: no learner that fits an interactive language can represent it as item plus class, because a readout of a purely additive representation could not produce the interaction the language requires. That holds for the linear learner, which has no capacity pressure, no nonlinearity, and a separable solution available to it. And the *further* failure, the components ceasing to be orthogonal to one another, is what the nonlinearity adds on top. Real language is interactive and real language models are nonlinear, so both mechanisms are present before we measure anything. Experiment 2 asks whether they leave a trace we can find.
 
 # Experiment 2: Item and Category in Language Models {#sec-exp2}
 
-Experiment 1 established that a learner fitting an interactive language cannot represent it as item plus category, and that a nonlinearity additionally binds the components onto shared axes. Experiment 2 applies the same decomposition to the contextual representations of pretrained language models, across three linguistic distinctions chosen to span grammar and meaning.
+Experiment 1 established that a learner fitting an interactive language cannot represent it as item plus class, and that a nonlinearity additionally makes the components non-orthogonal. Experiment 2 applies the same decomposition to the contextual representations of pretrained language models, across three linguistic distinctions chosen to span grammar and meaning.
 
 ## Dataset {#sec-exp2-data}
 
-**Corpora.** For part of speech and grammatical role we concatenate six general-domain English Universal Dependencies treebanks [@nivre2020ud]: EWT, GUM, LinES, ParTUT, GENTLE and PUD, giving `r cm(41095)` sentences and `r cm(706323)` tokens. Concatenating rather than using EWT alone is what makes the analysis possible: a lemma must be attested in both category levels often enough to estimate a cell mean, and a single treebank yields too few such lemmas. For metaphor we use the VUA20 corpus [@leong2020vua; @steen2010vua], restricted to content words, which supplies `r cm(gs("metaphor", "n_pre_grid_tokens"))` labeled tokens.
+**Corpora.** For part of speech and grammatical role we concatenate six general-domain English Universal Dependencies treebanks [@nivre2020ud]: EWT, GUM, LinES, ParTUT, GENTLE and PUD, giving `r cm(41095)` sentences and `r cm(706323)` tokens. Concatenating rather than using EWT alone is what makes the analysis possible: a lemma must be attested in both class levels often enough to estimate a cell mean, and a single treebank yields too few such lemmas. For metaphor we use the VUA20 corpus [@leong2020vua; @steen2010vua], restricted to content words, which supplies `r cm(gs("metaphor", "n_pre_grid_tokens"))` labeled tokens.
 
-**Constructions.** All three are **same-token**: the item's surface form is identical across the two category levels, so the representation is read from the same token in both, and no part of any difference can come from tokenisation.
+**Constructions.** All three are **same-token**: the item's surface form is identical across the two class levels, so the representation is read from the same token in both, and no part of any difference can come from tokenisation.
 
 | distinction | item | levels | eligible | analyzed | tokens |
 |:-----------|:-----------|:-----------|-----------:|-----------:|-----------:|
@@ -289,12 +289,12 @@ The decomposition, the two reported quantities and the replication logic are exa
 #| fig-width: 6.3
 #| fig-height: 2.4
 #| out-width: "100%"
-#| fig-cap: "Experiment 2. Left: the interaction's share of representational structure, by relative depth (0 = static embeddings, 1 = final block). Right: the category component's share on the same axis. Each line is one model; color distinguishes the two training corpora. Both components are built by depth, and the interaction is the larger of the two throughout."
+#| fig-cap: "Experiment 2. Left: the interaction's share of representational structure, by relative depth (0 = static embeddings, 1 = final block). Right: the class effect's share on the same axis. Each line is one model; color distinguishes the two training corpora. Both components are built by depth, and the interaction is the larger of the two throughout."
 plt <- llm |> filter(construction != "POS (noun/verb)") |>
   select(construction, family, size, depth, size_int, size_class) |>
   pivot_longer(c(size_int, size_class), names_to = "component", values_to = "share") |>
   mutate(component = factor(component, c("size_int", "size_class"),
-                            c("interaction", "category component")))
+                            c("interaction", "class effect")))
 ggplot(plt, aes(depth, share, colour = family, group = interaction(family, size))) +
   geom_line(linewidth = .55, alpha = .85) +
   facet_grid(component ~ construction, scales = "free_y", switch = "y") +
@@ -306,14 +306,14 @@ ggplot(plt, aes(depth, share, colour = family, group = interaction(family, size)
 
 ```{r}
 #| label: tbl-llm
-#| tbl-cap: "Experiment 2, at each model's deepest layer. Leakage is the fraction of the item component lying along the category direction, so 0.004 means that projecting out the category leaves 99.6% of item identity intact. The portable fraction is the category component's share of the category-relevant structure, `size_class / (size_class + size_interaction)`: it asks how much of what distinguishes the two category levels is a direction shared across words, rather than specific to each word."
+#| tbl-cap: "Experiment 2, at each model's deepest layer. Item-class overlap is the fraction of the item effect lying along the class direction, so 0.004 means that projecting out the class leaves 99.6% of item identity intact. The portable fraction is the class effect's share of the class-relevant structure, `size_class / (size_class + size_interaction)`: it asks how much of what distinguishes the two class levels is a direction shared across words, rather than specific to each word."
 llm |> filter(construction != "POS (noun/verb)") |> group_by(construction, model) |>
   filter(layer == max(layer)) |> ungroup() |>
   mutate(portable = size_class / (size_class + size_int)) |>
   group_by(construction) |>
-  summarise(`leak (item into category)` = {v <- median(leak, na.rm = TRUE)
+  summarise(`item-class overlap` = {v <- median(leak, na.rm = TRUE)
                if (is.na(v)) "---" else sprintf("%.3f", v)},
-            `category component` = sprintf("%.3f", median(size_class)),
+            `class effect` = sprintf("%.3f", median(size_class)),
             `interaction` = sprintf("%.3f", median(size_int)),
             `portable fraction` = sprintf("%.2f [%.2f, %.2f]", median(portable),
                                           min(portable), max(portable)),
@@ -323,35 +323,35 @@ llm |> filter(construction != "POS (noun/verb)") |> group_by(construction, model
   kable_styling(latex_options = c("HOLD_position"), font_size = 8)
 ```
 
-**Where the two components both exist, they sit on separate axes.** For grammatical role, leakage at the deepest layer runs `r g(0.0025, 4)` to `r g(0.0062, 4)`, so projecting out the category direction leaves better than 99% of the item component intact. These representations do not achieve category structure by borrowing the directions that carry word identity. This is the one place the answer is cleanly "separable," and it is worth saying plainly rather than straining against.
+**Where the two components both exist, they sit on separate axes.** For grammatical role, item-class overlap at the deepest layer runs `r g(0.0025, 4)` to `r g(0.0062, 4)`, so projecting out the class direction leaves better than 99% of the item effect intact. These representations do not achieve class structure by borrowing the directions that carry word identity. This is the one place the answer is cleanly "separable," and it is worth saying plainly rather than straining against.
 
-For metaphor the question does not arise. Leakage is undefined at **every** layer of every model, because the category component never rises above the level at which an orientation is worth reporting. That is the measure declining to describe the direction of something that is barely there, and it is itself the first indication of how little of metaphoricity is carried by a shared direction.
+For metaphor the question does not arise. The overlap is not reported at **every** layer of every model, because the class effect never rises above the level at which an orientation is worth reporting. That is the measure declining to describe the direction of something that is barely there, and it is itself the first indication of how little of metaphoricity is carried by a shared direction.
 
 **A substantial interaction is there, and depth builds it.** In both distinctions the interaction is
 essentially absent at layer 0 and rises monotonically with depth (@fig-llm, top row). Because the
-item is keyed on the surface form, the token is *identical* at both category levels, so the static
+item is keyed on the surface form, the token is *identical* at both class levels, so the static
 embedding layer has nothing to distinguish them with, and it does not. Everything the measure finds
 is therefore created by contextualization rather than inherited from the input. This is the component
-that breaks separability: it is neither a fact about the word nor a fact about the category, so no
+that breaks separability: it is neither a fact about the word nor a fact about the class, so no
 decomposition into those two can absorb it.
 
-**So does the category component, and that matters for the framing.** The lower row of @fig-llm shows
-the category component growing with depth as well. Models are not choosing between abstraction and
+**So does the class effect, and that matters for the framing.** The lower row of @fig-llm shows
+the class effect growing with depth as well. Models are not choosing between abstraction and
 entanglement; contextualization builds both at once. A description of these representations as either
 "abstract" or "exemplar-like" is therefore underdetermined by the data, and the useful question is not
 which one they are but what the balance is.
 
 **The balance is graded across distinctions.** @tbl-llm gives that balance as the *portable fraction*:
-of the structure that distinguishes the two category levels, how much is a direction shared across
+of the structure that distinguishes the two class levels, how much is a direction shared across
 words rather than specific to each word. Grammatical role is the most portable, and metaphor by far
-the least, with only about a fourteenth of its category-relevant structure carried by a shared
+the least, with only about a fourteenth of its class-relevant structure carried by a shared
 direction. Metaphoricity is close to being encoded word by word: what makes a use of *plant*
 figurative is largely not what makes a use of *course* figurative.
 
 # Experiment 3: Does the Interaction Carry the Category? {#sec-exp3}
 
 ```{=html}
-<!-- Method: hold the item fixed, project out the shared category axis, decode the category
+<!-- Method: hold the item fixed, project out the shared class direction, decode the class
      from the residual with a cross-validated probe against a within-item permutation null,
      plus the three metaphor probes. Awaiting llm_metaphor_probes.csv and the decode re-run. -->
 ```
@@ -377,7 +377,7 @@ figurative is largely not what makes a use of *course* figurative.
 
 ```{=html}
 <!-- Formal development: the tensor-product projection view, the exact size partition and
-     its invariance to grid size, leakage against its r/d null, the positive bias of a
+     its invariance to grid size, item-class overlap against its r/d null, the positive bias of a
      squared projection norm, and the unbiasedness of the cross-estimate inner product.
      Drawn from MATH.md. -->
 ```
