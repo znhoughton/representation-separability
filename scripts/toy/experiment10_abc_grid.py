@@ -95,6 +95,13 @@ def build_abc(rng, n_form, n_class, n_obs, ctx_pool, vocab,
     item_code = rng.standard_normal((n_form, r_item))
     class_code = rng.standard_normal((n_class, r_class))
     ctx_code = rng.standard_normal((ctx_pool, r_ctx))
+    # The 1/sqrt(r) makes a term's magnitude independent of its rank: a logit is a sum of r
+    # products of unit-variance numbers, so without it the standard deviation would grow as
+    # sqrt(r) and a higher-rank term would dominate purely by being higher-rank. That mattered
+    # in the previous generator, where the item and class contributions were summed BEFORE
+    # being normalized. Here each term is passed through unit() separately, so any constant
+    # scaling cancels and this is a no-op (verified identical to 4e-12). Kept because it states
+    # the intent, and because removing unit() later would silently reintroduce the confound.
     L_item = rng.standard_normal((vocab, r_item)) / np.sqrt(r_item)
     L_class = rng.standard_normal((vocab, r_class)) / np.sqrt(r_class)
     L_int = rng.standard_normal((vocab, r_int)) / np.sqrt(r_int)
