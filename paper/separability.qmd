@@ -117,8 +117,8 @@ MODELS <- tibble::tribble(
 # inflected form (run/runs as a noun against run/runs/ran/running as a verb), which are
 # different tokens, and the static embedding layer separates them: the layer-0 interaction is
 # 0.083-0.172 keyed on the lemma against 0.0010-0.0028 keyed on the form, a 50-100x difference
-# that is inflectional rather than representational. The random-init rows are a
-# before-training baseline the paper does not use.
+# that is inflectional rather than representational. The random-init rows in that file are the
+# before-training baseline of the corresponding appendix, and are filtered out here.
 llm <- bind_rows(
   rd("llm_unified_form.csv") |> filter(init == "pretrained") |>
     transmute(model, layer, d, n_items, construction = "POS (noun/verb)",
