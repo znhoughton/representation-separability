@@ -61,7 +61,7 @@ def run_one(model_name, family, size_bin, init, sentences, args, writer=None):
     upos, lemma, n_tok = L.extract_stream_to_npz(
         str(p), model_name, sentences, _resolve_layers(model_name), args.max_tokens,
         args.device, args.seed, random_init=(init == "random"), batch_size=args.batch_size,
-        ablate_positions=args.ablate_positions)
+        ablate_positions=args.ablate_positions, scratch_dir=args.scratch_dir)
     print(f"  [{init:>10}] {model_name} ({family}/{size_bin}): streamed {n_tok} tokens -> {p}", flush=True)
 
 
@@ -92,6 +92,12 @@ def main():
                     help="which initializations to extract (default both)")
     ap.add_argument("--reps-dir", default=None,
                     help="if set, save per-(model,init) reps .npz here for in-sandbox re-measurement")
+    ap.add_argument("--scratch-dir", default=None,
+                    help="where to put the uncompressed streaming memmap (default: alongside the "
+                         "output .npz). Extraction mmaps tens of GB here and writes it densely, "
+                         "which a network filesystem handles poorly -- point this at LOCAL disk if "
+                         "the reps dir is on NFS. Must NOT be a tmpfs: that is RAM, and the "
+                         "memmap is far larger than memory.")
     ap.add_argument("--out", default=str(REPO_ROOT / "data" / "llm_separability.csv"))
     args = ap.parse_args()
 

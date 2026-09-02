@@ -44,10 +44,12 @@ VUA_DIR="${VUA_DIR:-data/vua_reps}"
 MAX_TOKENS="${MAX_TOKENS:-300000}"
 REQUIRED_GB="${REQUIRED_GB:-400}"
 LOGDIR="${LOGDIR:-logs/positions_zeroed}"
+# Defaults to the reps dir, i.e. unchanged behavior. Set to local disk if REPS_DIR is on NFS.
+SCRATCH_DIR="${SCRATCH_DIR:-$REPS_DIR}"
 PY="${PY:-python}"
 export HF_HOME="${HF_HOME:-${TMPDIR:-/tmp}/hf}"
 
-mkdir -p "$LOGDIR"
+mkdir -p "$LOGDIR" "$SCRATCH_DIR"
 
 say() { printf '\n\033[1m== %s\033[0m\n' "$*"; }
 die() { printf '\n\033[31mFAILED: %s\033[0m\n' "$*" >&2; exit 1; }
@@ -74,10 +76,10 @@ if pgrep -f "run_llm_sweep.py|extract_vua.py" >/dev/null 2>&1; then
   die "another extraction is in progress. Let it finish, or stop it before starting this run --
        two sweeps writing the same reps dir would race on the same output files."
 fi
-STALE=$(ls -d "$REPS_DIR"/repscratch_* "$VUA_DIR"/vuascratch_* 2>/dev/null | wc -l | tr -d ' ')
+STALE=$(ls -d "$REPS_DIR"/repscratch_* "$SCRATCH_DIR"/repscratch_* "$VUA_DIR"/vuascratch_* 2>/dev/null | wc -l | tr -d ' ')
 if [ "$STALE" -gt 0 ]; then
-  FREED=$(du -ch -d0 "$REPS_DIR"/repscratch_* "$VUA_DIR"/vuascratch_* 2>/dev/null | tail -1 | cut -f1)
-  rm -rf "$REPS_DIR"/repscratch_* "$VUA_DIR"/vuascratch_*
+  FREED=$(du -ch -d0 "$REPS_DIR"/repscratch_* "$SCRATCH_DIR"/repscratch_* "$VUA_DIR"/vuascratch_* 2>/dev/null | tail -1 | cut -f1)
+  rm -rf "$REPS_DIR"/repscratch_* "$SCRATCH_DIR"/repscratch_* "$VUA_DIR"/vuascratch_*
   echo "  scratch:     removed $STALE orphaned dir(s) from an interrupted run, reclaimed ${FREED:-0}"
 fi
 
@@ -103,21 +105,21 @@ say "Extracting UD representations with positions zeroed (POS and role)"
 
 $PY scripts/llm/run_llm_sweep.py \
     --models pythia-1.4b opt-babylm-1.3B --ablate-positions \
-    --conllu "$CONLLU" --reps-dir "$REPS_DIR" \
+    --conllu "$CONLLU" --reps-dir "$REPS_DIR" --scratch-dir "$SCRATCH_DIR" \
     --max-tokens "$MAX_TOKENS" --batch-size 128 --device cuda \
     >> "$LOGDIR/ud_large.log" 2>&1 &
 PID_L=$!
 
 $PY scripts/llm/run_llm_sweep.py \
     --models pythia-410m opt-babylm-350m --ablate-positions \
-    --conllu "$CONLLU" --reps-dir "$REPS_DIR" \
+    --conllu "$CONLLU" --reps-dir "$REPS_DIR" --scratch-dir "$SCRATCH_DIR" \
     --max-tokens "$MAX_TOKENS" --batch-size 192 --device cuda \
     >> "$LOGDIR/ud_mid.log" 2>&1 &
 PID_M=$!
 
 $PY scripts/llm/run_llm_sweep.py \
     --models pythia-160m opt-babylm-125m --ablate-positions \
-    --conllu "$CONLLU" --reps-dir "$REPS_DIR" \
+    --conllu "$CONLLU" --reps-dir "$REPS_DIR" --scratch-dir "$SCRATCH_DIR" \
     --max-tokens "$MAX_TOKENS" --batch-size 256 --device cuda \
     >> "$LOGDIR/ud_small.log" 2>&1 &
 PID_S=$!
