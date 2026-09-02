@@ -205,7 +205,10 @@ def extract_stream_to_npz(out_path, model_name, sentences, layer_idxs, max_token
     if ablate_positions:
         z = zero_position_embeddings(model)
         drift = verify_position_ablation(model, tok, device)
-        print(f"    position ablation: zeroed {z or None}; same token at two offsets differs by {drift:.2e} at layer 0", flush=True)
+        # one structured line per model so the check survives as data, not just as a
+        # terminal message -- the representations themselves are deleted after measuring
+        print(f"POSABL	model={model_name}	init={init_tag(random_init, ablate_positions)}"
+              f"	zeroed={';'.join(z) if z else 'NONE'}	drift={drift:.3e}", flush=True)
     d = int(model.config.hidden_size)
 
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
@@ -305,7 +308,10 @@ def zero_position_embeddings(model):
                 "position" in name.lower() or name.split(".")[-1] == "wpe"):
             with torch.no_grad():
                 module.weight.zero_()
-            zeroed.append(f"{name}{tuple(module.weight.shape)}")
+            # shape joined with 'x' rather than as a tuple: this string is written into a CSV
+            # column downstream, and "(2050, 2048)" puts a comma inside the field, which shifts
+            # every subsequent column for anything splitting on commas.
+            zeroed.append(f"{name}[{'x'.join(str(s) for s in module.weight.shape)}]")
     return zeroed
 
 

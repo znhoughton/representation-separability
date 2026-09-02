@@ -81,7 +81,8 @@ def extract_model(model_name, out_path, sents, n_tgt, device, batch_size, max_le
     if ablate_positions:
         z = zero_position_embeddings(model)
         drift = verify_position_ablation(model, tok, device)
-        print(f"    position ablation: zeroed {z or None}; same token at two offsets differs by {drift:.2e} at layer 0", flush=True)
+        print(f"POSABL	model={model_name}	init={init_tag(False, ablate_positions)}"
+              f"	zeroed={';'.join(z) if z else 'NONE'}	drift={drift:.3e}", flush=True)
     d = int(model.config.hidden_size)
 
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)

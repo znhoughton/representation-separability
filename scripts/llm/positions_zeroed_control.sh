@@ -115,22 +115,37 @@ for pid in $PID_L $PID_M $PID_S; do wait "$pid" || FAILED=1; done
 # no-op we want, and it is also the evidence that the family asymmetry is positional.
 say "Verifying the ablation actually applied"
 
-grep -h "position ablation" "$LOGDIR"/ud_*.log | sed 's/^ *//' | sort -u | sed 's/^/  /' || true
+# The check is written to a CSV, not just printed. The representations it describes are deleted
+# at the end of this script, so a terminal message would be the only surviving record of whether
+# the ablation ever happened -- and that record has to outlive the scrollback.
+CHECK_CSV="${CHECK_CSV:-data/position_ablation_check.csv}"
+{
+  echo "model,init,zeroed,drift"
+  grep -h "^POSABL" "$LOGDIR"/*.log 2>/dev/null \
+    | awk -F'\t' '{ m=z=i=d="";
+        for (j=2; j<=NF; j++) { split($j, kv, "=");
+          if (kv[1]=="model") m=substr($j,7);
+          else if (kv[1]=="init") i=substr($j,6);
+          else if (kv[1]=="zeroed") z=substr($j,8);
+          else if (kv[1]=="drift") d=substr($j,7) }
+        printf "%s,%s,\"%s\",%s\n", m, i, z, d }' \
+    | sort -u
+} > "$CHECK_CSV"
+column -s, -t "$CHECK_CSV" 2>/dev/null | sed 's/^/  /' || cat "$CHECK_CSV"
 
-# wc -l rather than grep -c: with several files grep -c prints one count per file, and bc is not
-# on every box. Piping through wc gives a single number with no extra dependency.
-BAD_OPT=$(grep -h "position ablation" "$LOGDIR"/ud_*.log | grep -c "zeroed None" || true)
-ANY_OPT=$(grep -h "zeroed \[" "$LOGDIR"/ud_*.log | wc -l | tr -d ' ')
-if [ "${ANY_OPT:-0}" -eq 0 ]; then
+# wc -l rather than grep -c: across several files grep -c prints one count per file, and bc is
+# not installed everywhere.
+N_ABLATED=$(awk -F, 'NR>1 && $3 != "\"NONE\"" {c++} END{print c+0}' "$CHECK_CSV")
+N_NOOP=$(awk -F, 'NR>1 && $3 == "\"NONE\"" {c++} END{print c+0}' "$CHECK_CSV")
+if [ "$N_ABLATED" -eq 0 ]; then
   die "no model reported a zeroed position embedding. The ablation matched nothing, so these
        representations are identical to the unablated ones and the run is meaningless."
 fi
-DRIFT_BAD=$(grep -h "position ablation" "$LOGDIR"/ud_*.log \
-            | grep "zeroed \[" \
-            | awk '{for(i=1;i<=NF;i++) if($i=="by") if($(i+1)+0 > 1e-5) c++} END{print c+0}')
+DRIFT_BAD=$(awk -F, 'NR>1 && $3 != "\"NONE\"" && $4+0 > 1e-5 {c++} END{print c+0}' "$CHECK_CSV")
 [ "$DRIFT_BAD" -eq 0 ] || die "$DRIFT_BAD ablated model(s) still show position-dependent layer-0
        states. The embedding was zeroed but something else is carrying position."
-echo "  OK: $ANY_OPT model(s) ablated with zero positional drift; $BAD_OPT reported nothing to zero (expected for rotary)"
+echo "  OK: $N_ABLATED ablated with zero drift, $N_NOOP had nothing to zero (expected for rotary)"
+echo "  -> $CHECK_CSV"
 
 # ------------------------------------------------------------ extraction (VUA: metaphor)
 if [ "${SKIP_VUA:-0}" != "1" ]; then
@@ -157,23 +172,68 @@ if [ "${SKIP_VUA:-0}" != "1" ]; then
 fi
 
 # ------------------------------------------------------------------------ summary
-say "The 2x2, POS"
+# Written to CSV as well as printed. Everything here is derivable from the measurement files,
+# but the 2x2 is the thing the appendix reports and it should not have to be re-derived by hand.
+say "The 2x2"
 $PY - <<'SUMMARY'
-import sys, csv, collections
-rows = list(csv.DictReader(open("data/llm_unified_form_ablation.csv")))
-by = collections.defaultdict(dict)
-for r in rows:
-    key = (r["model"].split("/")[-1], r["init"])
-    layer = int(r["layer"])
-    by[key][layer] = float(r["std_size_interaction"])
-print(f"  {'model':<32}{'init':<22}{'deepest-layer interaction':>26}")
-for (m, init), d in sorted(by.items()):
-    print(f"  {m:<32}{init:<22}{d[max(d)]:>26.3f}")
+import csv, collections, os
+
+SRC = [("POS (noun/verb)",  "data/llm_unified_form_ablation.csv", "std_size_interaction"),
+       ("role",             "data/llm_role_ablation.csv",         "size_interaction"),
+       ("metaphor",         "data/llm_metaphor_ablation.csv",     "size_interaction")]
+
+out = []
+for constr, path, col in SRC:
+    if not os.path.exists(path):
+        continue
+    deep = collections.defaultdict(dict)
+    for r in csv.DictReader(open(path)):
+        init = r.get("init", "pretrained")
+        deep[(r["model"], init)][int(r["layer"])] = float(r[col])
+    for (model, init), d in deep.items():
+        out.append(dict(construction=constr, model=model, init=init,
+                        family="BabyLM" if "babylm" in model else "Pythia",
+                        trained="no" if init.startswith("random") else "yes",
+                        positions="zeroed" if init.endswith("noposemb") else "intact",
+                        deepest_layer=max(d), interaction=round(d[max(d)], 4)))
+
+with open("data/position_ablation_2x2.csv", "w", newline="") as fh:
+    w = csv.DictWriter(fh, fieldnames=["construction", "family", "model", "init", "trained",
+                                       "positions", "deepest_layer", "interaction"])
+    w.writeheader()
+    for r in sorted(out, key=lambda r: (r["construction"], r["family"], r["model"], r["init"])):
+        w.writerow(r)
+
+print(f"  {'construction':<18}{'model':<32}{'trained':<9}{'positions':<11}{'interaction':>12}")
+for r in sorted(out, key=lambda r: (r["construction"], r["family"], r["model"], r["init"])):
+    print(f"  {r['construction']:<18}{r['model'].split('/')[-1]:<32}"
+          f"{r['trained']:<9}{r['positions']:<11}{r['interaction']:>12.4f}")
 print()
-print("  Read the OPT rows: if `random_noposemb` is far below `random`, the untrained")
+print("  Read the OPT rows with trained=no: if `zeroed` is far below `intact`, the untrained")
 print("  interaction was positional and the before-training control is repaired.")
+print("  -> data/position_ablation_2x2.csv")
 SUMMARY
 
+# --------------------------------------------------------------------- cleanup
+# The ablated representations are large and entirely regenerable from this script, and every
+# number we need has been written to CSV above. Deleting only the *_noposemb.npz files leaves the
+# originals -- which the body of the paper depends on -- untouched.
+if [ "${KEEP_REPS:-0}" = "1" ]; then
+  say "Keeping ablated representations (KEEP_REPS=1)"
+else
+  say "Deleting ablated representations"
+  FREED=$(du -ch "$REPS_DIR"/*_noposemb.npz "$VUA_DIR"/*_noposemb.npz 2>/dev/null \
+          | tail -1 | cut -f1 || echo "0")
+  N_DEL=$(ls -1 "$REPS_DIR"/*_noposemb.npz "$VUA_DIR"/*_noposemb.npz 2>/dev/null | wc -l | tr -d ' ')
+  rm -f "$REPS_DIR"/*_noposemb.npz "$VUA_DIR"/*_noposemb.npz
+  echo "  removed $N_DEL file(s), reclaimed $FREED"
+  echo "  (KEEP_REPS=1 to retain them; re-running this script regenerates them)"
+fi
+
 say "Done"
-echo "  logs:  $LOGDIR/"
-echo "  data:  data/llm_unified_form_ablation.csv, data/llm_role_ablation.csv, data/llm_metaphor_ablation.csv"
+echo "  logs:    $LOGDIR/"
+echo "  results: data/llm_unified_form_ablation.csv"
+echo "           data/llm_role_ablation.csv"
+echo "           data/llm_metaphor_ablation.csv"
+echo "  summary: data/position_ablation_2x2.csv"
+echo "  check:   $CHECK_CSV"
