@@ -43,53 +43,57 @@ theme_paper <- function(base = 9) {
           axis.title = element_text(size = base))
 }
 
-# ---- Experiment 1: the toy grid, cross-denoised (two initializations per cell) ----
-# ALL 4800 cells are used. Capacity enters as a reported variable, not as a filter: whether
-# the representation has room to hold every generative direction on its own axis is part of
-# the result, so it is shown rather than assumed.
-toy <- rd("experiment9_cross_results.csv") |>
-  mutate(band = cut(cap, c(-Inf, .5, 1, Inf),
-                    labels = c("room to spare\n(rank/d < 0.5)", "tight\n(0.5-1)",
-                               "impossible\n(> 1)")),
-         act = factor(activation, c("identity", "relu"), c("linear", "ReLU")))
+# ---- Experiment 1: the artificial-language grid ----
+# 7,560 cells, measured with unified_split -- the SAME function and arguments Experiment 2
+# uses. The two independent estimates are two halves of each cell's observations, so there is
+# no alignment step and no projection. Capacity is a reported variable, never a filter.
+toy <- rd("experiment10_abc_grid.csv") |>
+  mutate(act = factor(activation, c("identity", "relu"), c("linear", "ReLU")),
+         # the share of a random vector that lands in the class direction by chance. An
+         # orthogonality reading means nothing without it, and it moves 16-fold across the
+         # widths used here, so it is carried alongside rather than argued about.
+         floor = k_class / d)
 
-# Separability fails in two distinguishable ways, and the toy separates them: the presence
-# of an interaction term at all, and non-orthogonality among the components. `size_int` is
-# the first; `leak_marg` (item effect inside the class direction) and `ov_item` (the
-# interaction's subspace overlapping the item subspace) are the second.
-toy_dose <- toy |>
-  group_by(int_frac, act) |>
-  summarise(n = n(),
-            size_med = median(size_interaction),
-            size_lo = quantile(size_interaction, .25),
-            size_hi = quantile(size_interaction, .75),
-            sig = mean(sig_interaction),
-            leak_med = median(leak_item_into_class, na.rm = TRUE),
-            leak_n = sum(!is.na(leak_item_into_class)),
-            ov_med = median(overlap_item_int, na.rm = TRUE),
-            ov_n = sum(!is.na(overlap_item_int)),
-            .groups = "drop")
+# The linear arm is a negative control by ALGEBRA, not by stipulation: with additive inputs a
+# linear map gives cell means of the form A(f)+B(c), whose interaction is identically zero
+# however much the language contains. Whatever it reports is the measure's own noise, read at
+# that exact width, sample size and context level.
+toy_null <- toy |> group_by(act, planted = w_int > 0) |>
+  summarise(n = n(), med = median(size_interaction),
+            p95 = quantile(size_interaction, .95),
+            flagged = mean(sig_interaction), .groups = "drop")
 
-# Interaction geometry is only interpretable where an interaction exists AND the item and class effects
-# do: at int_frac = 0 there is no gamma to orient and at int_frac = 1 no the item and class effects to orient
-# against. The gate already withholds those, and they are excluded from the geometry panels.
-TOY_MID <- c(.25, .5, .75)
-toy_cap <- toy |> filter(int_frac %in% TOY_MID) |>
-  group_by(act, band) |>
-  summarise(n = n(), size_med = median(size_interaction),
-            leak_med = median(leak_item_into_class, na.rm = TRUE),
-            leakint_med = median(leak_int_into_margins, na.rm = TRUE),
-            ov_med = median(overlap_item_int, na.rm = TRUE), .groups = "drop")
+# Does the measured interaction track the planted one? Binned, because the achieved share is
+# continuous (neither the softmax nor the normalisation is linear in the weights).
+toy_track <- toy |> filter(w_item > 0, w_class > 0) |>
+  mutate(bin = cut(ach_int, c(-Inf, .005, .05, .15, .30, .55, Inf),
+                   labels = c("none", ".005-.05", ".05-.15", ".15-.30", ".30-.55", ">.55"))) |>
+  group_by(act, bin) |>
+  summarise(n = n(), ach = median(ach_int), size_int = median(size_interaction),
+            lo = quantile(size_interaction, .25), hi = quantile(size_interaction, .75),
+            flagged = mean(sig_interaction), .groups = "drop")
 
-toy_null <- toy |> filter(int_frac == 0) |>
-  group_by(act, band) |>
-  summarise(n = n(), sig_rate = mean(sig_interaction),
-            size_med = median(size_interaction), .groups = "drop")
+# Capacity: below 1 every component can have its own axis, above 1 they cannot.
+toy_cap <- toy |> filter(w_int > 0, w_item > 0, w_class > 0) |>
+  group_by(act, capacity) |>
+  summarise(n = n(), size_int = median(size_interaction),
+            overlap = median(leak_item_into_class, na.rm = TRUE),
+            floor = median(floor),
+            ratio = median(leak_item_into_class / floor, na.rm = TRUE), .groups = "drop")
+
+# Context is the nuisance dial: how much of the target is about something other than the item,
+# the class and their conjunction. The high end is the regime Experiment 2 sits in.
+toy_noise <- toy |> filter(w_int > 0, w_item > 0, w_class > 0) |>
+  mutate(cbin = cut(ach_ctx, c(-Inf, .2, .5, .8, Inf),
+                    labels = c("<20%", "20-50%", "50-80%", ">80%"))) |>
+  group_by(act, cbin) |>
+  summarise(n = n(), size_int = median(size_interaction),
+            flagged = mean(sig_interaction), .groups = "drop")
 
 g <- function(x, digits = 3) formatC(x, format = "f", digits = digits)
-pick <- function(tb, a, ifrac, col) tb[[col]][tb$act == a & tb$int_frac == ifrac]
-capget <- function(tb, a, b, col) tb[[col]][tb$act == a & grepl(b, tb$band)]
 cm <- function(x) format(x, big.mark = ",")
+nullget <- function(a, pl, col) toy_null[[col]][toy_null$act == a & toy_null$planted == pl]
+capget <- function(a, cap, col) toy_cap[[col]][toy_cap$act == a & toy_cap$capacity == cap]
 
 # ---- Experiment 2: language model representations ----
 grid_stats <- rd("methods_grid_stats.csv")
@@ -141,39 +145,35 @@ llm <- bind_rows(
 ```
 :::
 
-# Experiment 1: Item and Category in a Hybrid Learner {#sec-exp1}
+# Experiment 1: What a Learner Builds from a Known Language {#sec-exp1}
 
-Experiment 1 has two jobs, and comparing artificial learners to language models is not one of them. The first is to establish that the measure works: we build an artificial language whose structure we control, dial the amount of item-by-class structure from none to all of it, and check that the measure recovers what we put in. The second is to show that entanglement is not an exotic outcome. Even a linear readout, on a language where a fully separable solution exists and the learner has room to find it, builds a representation that does not factor into item plus class, and a nonlinearity makes it worse. That establishes the phenomenon under conditions where we know the answer. Whether it holds of real language is Experiment 2's question, and the numbers there stand on their own.
-
-The learner is deliberately a hybrid of the two accounts at issue. Every word-in-class pairing receives its own private embedding, with no parameter sharing between them, which is exemplar storage; those embeddings are then read out through a single network shared by every pairing, which is abstraction. This is also the architecture of the models in Experiment 2, where private token embeddings feed shared transformer blocks. The question is what such a learner does with structure that *could* be represented separably.
+Experiment 1 has two jobs, and comparing artificial learners to language models is not one of them. The first is to establish that the measure reports what is there: we build an artificial language whose structure we control, dial each of the three effects independently from nothing to everything, and check what the measure recovers. The second is to ask what a learner *does* with that structure when a separable solution is available to it and it has room to find one. Whether any of this holds of real language is Experiment 2's question, and the numbers there stand on their own.
 
 ## Dataset {#sec-exp1-data}
 
-The artificial language is a next-token prediction task over a vocabulary of `r max(toy$n_lex) / 16` word types. Each **lexeme** is a (form, class) pair: 250 forms crossed with 16 classes, giving 4,000 lexemes, each with its own target distribution over the vocabulary. Forms are the items and configurations are the classes, giving the same item-by-class layout used throughout the paper.
+The artificial language is a next-token prediction task over a vocabulary of `r cm(600)` tokens. Every observation is a triple: a **form** (one of `r max(toy$n_form)`), a **class** (one of `r max(toy$n_class)`), and a **context** drawn from a pool of 400. Each (form, class) cell is observed `r max(toy$n_obs)` times, each time in a different context. That is what a word in a corpus looks like: one type, many occurrences, each in different company.
 
-Each form $i$ and class $c$ carries a latent code, and the target distribution is generated from those codes through independently drawn loadings onto the vocabulary:
+The target distribution for an observation is built from four independently generated terms, weighted and passed through a softmax:
 
 $$
-\text{logits}(i,c) \;=\; s\Big[\sqrt{1-f}\;\overline{m}(i,c) \;+\; \sqrt{f}\;\overline{x}(i,c)\Big]
+P(\text{next token} \mid f, c, x) = \operatorname{softmax}\Big(s\big[\,w_\alpha\,\text{item}(f) + w_\beta\,\text{class}(c) + w_\gamma\,\text{int}(f,c) + w_{\text{ctx}}\,\text{context}(x)\,\big]\Big)
 $$ {#eq-toy}
 
-where $\overline{m}$ is an **additive** term, the sum of a form contribution and a class contribution, and $\overline{x}$ is a **bilinear** term formed from the elementwise product of the two codes, so it is irreducibly joint. Both are normalized to unit per-element standard deviation before mixing, and the $\sqrt{1-f}, \sqrt{f}$ weighting holds the total signal scale fixed, so the dial $f$ changes the *composition* of the language without changing how hard it is to learn.
+The item and class terms are what those factors contribute on their own. The **interaction** term is built by multiplying the form's and the class's latent codes together elementwise before mapping them onto the vocabulary, and that product is the point: a *sum* can always be split into a form part plus a class part, and a *product* cannot, so this term is joint in a way no decomposition into the two can absorb. The **context** term is nuisance, but it is real information the model has to encode, exactly as the rest of a sentence is for a language model. Every term is normalized to unit scale before weighting, so the weights set composition and nothing else; total signal strength, and hence task difficulty, is constant across the grid.
 
-That dial, $f \in \{0, .25, .5, .75, 1\}$, is the manipulation. At $f = 0$ a word's behavior is exactly its form contribution plus its class contribution, with **no interaction whatever**. At $f = 1$ behavior is purely the form-by-class conjunction and the item and class effects vanish. Intermediate values mix the two.
+**The grid.** The three effect weights are crossed **factorially**, each over $\{0, 0.5, 1, 2\}$, giving 63 combinations. Crossing rather than choosing is what supplies the nulls: 15 combinations plant no item effect, 15 no class effect, and 15 no interaction, so the measure is asked to report zero in every case where zero is the truth. These are crossed in turn with the context weight (three levels), the hidden width, the output nonlinearity and five random draws of the language, for `r format(nrow(toy), big.mark = ",")` cells, of which `r sprintf("%.1f%%", 100 * mean(toy$converged))` trained to a loss plateau.
 
-Two properties of the construction matter for what can be concluded. First, the three sets of loadings are drawn independently, so the additive and the interactive structure occupy approximately orthogonal subspaces of the output space: **a fully separable representation exists** for every value of $f$. Second, the learner's hidden layer is at least as wide as the generative rank in the cells we analyze, so it has room to place each component on its own axis. Any entanglement the measure reports is therefore something the learner did, not something the task or the architecture forced.
-
-We cross the dial with the generative ranks of the form code ($r_i \in \{1,2,4,8,16,32\}$), the class code ($r_c \in \{1,2,4,8\}$), the hidden width ($d \in \{16,32,64,128\}$), the output nonlinearity (linear or ReLU) and five random draws of the language, for `r format(nrow(toy), big.mark = ",")` cells in total, all of which are analyzed. The ratio of generative rank to hidden width, which we call **capacity**, ranges across the grid from `r g(min(toy$cap), 2)` to `r g(max(toy$cap), 1)`. Below one a fully separable solution is reachable by dimension counting and above one it is not, so capacity is reported as a variable rather than used to select cells.
+**Capacity.** The structure needs `r max(toy$rank)` dimensions and the hidden layer has `r paste(sort(unique(toy$d)), collapse = ", ")`, so their ratio, which we call **capacity**, runs from `r g(min(toy$capacity), 3)` to `r g(max(toy$capacity), 1)`. Below one there is room to give every component its own axis, so any entanglement was chosen; above one, dimension counting makes separation impossible and entanglement is forced. Capacity is reported as a variable, never used to select cells.
 
 ## Method {#sec-exp1-method}
 
 ### The learner
 
-Each lexeme has a free $d$-dimensional embedding, initialized at random and trained without any sharing across lexemes: nothing ties *dog*-as-noun to *dog*-as-verb. Those embeddings pass through one hidden layer of width $d$ with either an identity or a ReLU nonlinearity, and then a linear map to the vocabulary. We measure the hidden layer, projected onto as many leading principal components as the generative structure has dimensions. The projection is necessary because a free per-lexeme embedding leaves the directions the loss does not constrain to be filled by initialization, and that content varies across a form's classes and would otherwise be counted as interaction. It also means the measurement here happens in a space of a few dozen dimensions rather than the hundreds or thousands of Experiment 2, so the *magnitudes* of the orthogonality measures in the two experiments are not on a common scale and we do not compare them. What transfers is the mechanism, not the numbers.
+The model has an embedding per **form**, an embedding per **class**, and an embedding per **context**. It has none per *cell*. A cell's representation is therefore **computed** from shared pieces rather than stored in a parameter of its own, which is what a transformer does with a token and its context, and it is what lets the measurement here be identical to Experiment 2's. The three embeddings are concatenated, passed through one hidden layer of width $d$ with either an identity or a ReLU nonlinearity, and read out linearly to the vocabulary. We measure the hidden layer.
 
-The identity condition is the reference case. A linear map cannot destroy linear recoverability, so whatever the linear learner does to the geometry is a rotation and shear of separable structure rather than a fusion of it. Differences between the two conditions are attributable to the nonlinearity.
+Training minimizes the exact expected cross-entropy against the true target rather than a sampled-token estimate, so there is no minibatch noise, and stops when that loss plateaus. Stopping depends on nothing derived from the measurement, but it does stop the two conditions at different points, so each cell records whether it plateaued or exhausted its budget.
 
-Training minimizes the exact expected cross-entropy against the true target distribution rather than a sampled-token estimate, so a cell is deterministic given its language and initialization, and a seed varies only the language and the starting weights. Cells are trained to a loss plateau.
+**The linear condition is a negative control by algebra, not by stipulation.** With additive inputs a linear map produces cell means of the form $A(f) + B(c)$, and such a grid has $\gamma = 0$ *identically* (@sec-app-math). The linear learner therefore cannot represent an interaction however much the language contains, and it visibly fails to fit when the language contains one. Whatever the measure reports there is its own noise, read off at that exact width, sample size and context level, which is a stronger calibration than any argument about noise floors. ReLU is the condition that can build an interaction, and the one that corresponds to a transformer: nonlinear inside, linear readout.
 
 ### Decomposing a representation {#sec-measure}
 
@@ -193,7 +193,9 @@ Because the four components are mutually orthogonal *as sources*, their squared 
 
 **Replication and the null.** We therefore estimate the grid **twice** from independent data and keep only what the two estimates agree on, reporting the signed inner product $\langle \gamma_A, \gamma_B \rangle$ rather than $\lVert\gamma\rVert^2$. Independent errors cancel in expectation, so this is unbiased at any noise level; and because it can be negative it supports a genuine test, which a squared length cannot. Significance comes from permuting which item of one estimate is paired with which item of the other, which preserves every magnitude while destroying the correspondence. A component's *direction* is only defined if the component exists, so item-class overlap is reported only when both components it relates are present; otherwise it is withheld.
 
-In Experiment 1 the two estimates come from **two initializations trained on the same language**. This is necessary rather than incidental: the toy has one representation per cell and hence no within-cell replication, so interaction and error are not identifiable, in exactly the way they are not identifiable in an unreplicated two-way design. Training twice supplies the missing replication, and what it cancels is the initialization-dependent content that gradient descent leaves in the directions the loss does not constrain. Because two independently trained networks occupy different coordinate systems, one is rotated onto the other before comparison, with the rotation fitted on held-out items so that an item's own noise never shapes its own alignment. @sec-app-math gives the algebra.
+Because every cell is observed many times, the two estimates are two disjoint halves of its observations. This is exactly what the language models supply, so the same function is called with the same arguments in both experiments; no alignment between estimates is needed and no projection is applied. What the halves cancel is the difference between the contexts one happened to average over and the contexts the other did, which is the same thing they cancel in a corpus.
+
+**What "recovers" means here.** The weights in @eq-toy describe the *target*; the measure reads the *representation*. These are different objects and their numbers do not match: a learner handed a language that is 85% interaction can build a representation in which the interaction is a far smaller share, because the representation only has to be enough to produce the answer. Validation asks that the measure **track** what was planted, read zero when zero was planted, and have a known floor. It does not ask the two to be equal, and @sec-app-validate reports the separate check in which the components are planted directly in a representation, where they are.
 
 ## Results {#sec-exp1-results}
 
@@ -201,51 +203,66 @@ In Experiment 1 the two estimates come from **two initializations trained on the
 #| label: fig-toy
 #| fig-env: figure*
 #| fig-width: 6.3
-#| fig-height: 2.3
+#| fig-height: 2.5
 #| out-width: "100%"
-#| fig-cap: "Experiment 1, all 4,800 cells. Left: the interaction's share of representational structure. Middle: overlap between the item effect and the class effect, on a log axis (it spans four orders of magnitude). Right: how much the interaction's subspace overlaps the item subspace. Points are medians. Both readouts build a substantial interaction, and it tracks the generative dial; only the ReLU readout also makes the components non-orthogonal. The two outer panels are shown for the settings where the quantities are defined: an orientation requires the components it relates to exist."
-mid <- toy_dose |> filter(int_frac %in% TOY_MID)
-pan <- function(dat, y, ylab, logy = FALSE) {
-  p <- ggplot(dat, aes(int_frac, .data[[y]], colour = act)) +
-    geom_line(linewidth = .6) + geom_point(size = 1.5) +
-    scale_colour_manual(values = c(linear = UO[["green2"]], ReLU = UO[["gold"]]), name = NULL) +
-    scale_x_continuous(breaks = c(0, .5, 1)) +
-    labs(x = NULL, y = ylab) + theme_paper(8)
-  if (logy) p + scale_y_log10(labels = scales::label_number(drop0trailing = TRUE)) else p
-}
-((pan(toy_dose, "size_med", "interaction share\nof structure") |
-  pan(filter(toy_dose, int_frac > 0), "leak_med", "item-class\noverlap (log)", TRUE) |
-  pan(mid, "ov_med", "interaction overlaps\nthe item subspace")) +
-  plot_layout(guides = "collect") &
-  theme(legend.position = "top", legend.margin = margin(0, 0, -6, 0)))
+#| fig-cap: "Experiment 1, all 7,560 cells. Left: the measured interaction against the amount planted in the language, with interquartile ranges. The linear condition cannot represent an interaction whatever the language contains, and reads zero throughout; the ReLU condition tracks what was planted. Right: overlap between the item and class effects against capacity, with the dashed line marking what a randomly oriented effect would give at that width. Below capacity the two effects are more orthogonal than chance; once dimension counting makes separation impossible they are several times chance. Note the log axis, and that the floor moves by a factor of eight across these widths."
+ACT2 <- c(linear = UO[["green2"]], ReLU = UO[["gold"]])
+# fill duplicates the colour legend, so it is suppressed rather than collected twice
+pA <- ggplot(toy_track, aes(ach, size_int, colour = act, fill = act)) +
+  geom_ribbon(aes(ymin = lo, ymax = hi), alpha = .16, colour = NA) +
+  geom_line(linewidth = .6) + geom_point(size = 1.5) +
+  scale_colour_manual(values = ACT2, name = NULL) +
+  scale_fill_manual(values = ACT2, guide = "none") +
+  labs(x = "interaction planted in the language", y = "interaction measured\nin the representation") +
+  theme_paper(8)
+
+# one chance line, not one per condition: the two differ slightly because the class subspace
+# rank is estimated, and drawing both makes a zigzag that reads as structure when it is not
+floor_line <- toy_cap |> group_by(capacity) |> summarise(floor = median(floor), .groups = "drop")
+pB <- ggplot(toy_cap, aes(capacity, overlap, colour = act)) +
+  geom_line(data = floor_line, aes(y = floor), inherit.aes = FALSE,
+            mapping = aes(capacity, floor), colour = UO[["grey"]], linetype = 2, linewidth = .5) +
+  geom_line(linewidth = .6) + geom_point(size = 1.5) +
+  annotate("text", x = 0.135, y = 0.032, label = "chance", size = 2.5,
+           colour = UO[["grey"]], hjust = 0) +
+  scale_colour_manual(values = ACT2, name = NULL) +
+  scale_x_log10(breaks = c(.125, .25, .5, 1, 2)) +
+  scale_y_log10(labels = scales::label_number(drop0trailing = TRUE)) +
+  labs(x = "capacity (structure rank / hidden width)", y = "item-class overlap (log)") +
+  theme_paper(8)
+
+(pA | pB) + plot_layout(guides = "collect") &
+  theme(legend.position = "top", legend.margin = margin(0, 0, -6, 0))
 ```
 
-**The measure tracks what the language contains.** With a purely additive language the estimator reports a median interaction share of `r g(toy_dose$size_med[toy_dose$act == "linear" & toy_dose$int_frac == 0], 4)` under a linear readout; with a purely interactive one it reports `r g(pick(toy_dose, "linear", 1, "size_med"), 3)`. The instrument exercises nearly its full range on a task whose answer is known at both ends (@fig-toy, left).
+**The measure reports zero when the answer is zero.** The linear condition cannot represent an interaction, by the algebra of @sec-exp1-method, so every reading it gives is the estimator's own noise. Across all `r cm(nullget("linear", TRUE, "n"))` cells where the language *did* contain an interaction, it reports a median share of `r g(nullget("linear", TRUE, "med"), 4)` and flags one in `r sprintf("%.1f%%", 100 * nullget("linear", TRUE, "flagged"))` of them, which is the nominal rate for a test at the 5% level. Where no interaction was planted it flags `r sprintf("%.1f%%", 100 * nullget("linear", FALSE, "flagged"))`. That is the calibration, obtained without assuming anything about noise floors: a condition whose true value is provably zero, measured at every width, sample size and noise level in the grid.
 
-**Even the linear learner builds an interaction.** At every intermediate setting the linear readout carries an item-by-class effect of `r g(pick(toy_dose, "linear", .25, "size_med"), 2)` to `r g(pick(toy_dose, "linear", .75, "size_med"), 2)` of representational structure, flagged as present in **100%** of cells. This is not optional. A linear readout maps the hidden layer to the logits, and a linear map of a purely additive representation can only produce additive logits; so any learner that actually fits an interactive language must carry a non-additive representation. The interaction is forced by the task, not chosen by the architecture.
+**And it tracks what is there.** Under ReLU the measured interaction rises monotonically with the planted one (@fig-toy, left), and the rate at which it is flagged rises with it, from `r sprintf("%.0f%%", 100 * min(toy_track$flagged[toy_track$act == "ReLU" & toy_track$bin != "none"]))` at the smallest nonzero setting to `r sprintf("%.0f%%", 100 * max(toy_track$flagged[toy_track$act == "ReLU"]))` at the largest. With no interaction planted, ReLU flags `r sprintf("%.1f%%", 100 * nullget("ReLU", FALSE, "flagged"))` of cells, *below* nominal: the nonlinearity does not manufacture an interaction out of an additive language.
 
-**The linear learner nonetheless keeps everything orthogonal.** Its item and class effects stay on essentially separate axes, with item-class overlap from `r g(pick(toy_dose, "linear", .25, "leak_med"), 5)` to `r g(pick(toy_dose, "linear", .75, "leak_med"), 4)`, and its interaction occupies its own axis, overlapping the item subspace at `r g(pick(toy_dose, "linear", .25, "ov_med"), 3)` and `r g(pick(toy_dose, "linear", .5, "ov_med"), 3)` at the two lower settings. So the linear representation fails separability in exactly one of the two senses: it contains a third component that is neither item nor class, while the components it does contain are mutually orthogonal.
+The measured shares are much smaller than the planted ones, and that is expected rather than a shortfall. The weights describe the target and the measure reads the representation, and a learner need only build enough structure to produce the answer. What matters is that the relationship is monotone and that zero maps to zero.
 
-**The nonlinearity compounds it, on both counts.** A ReLU readout carries an interaction of similar or slightly larger size (`r g(pick(toy_dose, "ReLU", .75, "size_med"), 2)` at the highest intermediate setting), but now the components are also non-orthogonal. Item-class overlap runs `r g(pick(toy_dose, "ReLU", .25, "leak_med"), 3)` to `r g(pick(toy_dose, "ReLU", .75, "leak_med"), 3)`, two orders of magnitude above the linear readout at matched settings, and the interaction overlaps the item subspace at `r g(pick(toy_dose, "ReLU", .25, "ov_med"), 2)` to `r g(pick(toy_dose, "ReLU", .75, "ov_med"), 2)` where the linear readout sits near zero. Under a nonlinearity the interaction stops being a separate module and is superposed onto the code that carries item and class identity.
+**Item and class effects entangle only when there is no room for them not to.** This is the substantive result, and it needs the chance level to be visible (@fig-toy, right; @tbl-toy). With capacity well below one, ReLU's item-class overlap is `r g(capget("ReLU", 0.125, "overlap"), 4)` against a chance level of `r g(capget("ReLU", 0.125, "floor"), 4)`: the two effects are *more* orthogonal than two arbitrary directions would be, which is what a learner that has room and uses it looks like. At capacity 1 the overlap is `r g(capget("ReLU", 1, "overlap"), 3)` against a floor of `r g(capget("ReLU", 1, "floor"), 4)`, about `r g(capget("ReLU", 1, "ratio"), 1)` times chance, and at capacity 2 it is `r g(capget("ReLU", 2, "overlap"), 3)`. The linear condition stays at or below chance throughout.
 
-**Capacity governs whether the entanglement was avoidable** (@tbl-toy). Where the hidden layer has room for every generative direction, the linear readout's interaction overlaps the item subspace at `r g(capget(toy_cap, "linear", "room", "ov_med"), 3)`: separation was achievable and it was achieved. Where dimension counting makes separation impossible, the same linear readout reaches `r g(capget(toy_cap, "linear", "impossible", "ov_med"), 2)`. The ReLU readout is entangled at `r g(capget(toy_cap, "ReLU", "room", "ov_med"), 2)` even with room to spare, so its entanglement is learned rather than forced. This is also why the additive control must be read by capacity: with an additive language and room to spare the linear readout flags an interaction in `r sprintf("%.0f%%", 100 * capget(toy_null, "linear", "room", "sig_rate"))` of cells, but where separation is impossible it flags one in `r sprintf("%.0f%%", 100 * capget(toy_null, "linear", "impossible", "sig_rate"))`, correctly, since a representation with nowhere to put the components cannot keep them apart.
+That is superposition, in the setting where we can see it happen: when the number of directions the structure needs exceeds the number available, the components stop being orthogonal because they cannot all be. Nothing about the language changed across those cells, only the room to represent it.
 
 ```{r}
 #| label: tbl-toy
-#| tbl-cap: "Experiment 1, by capacity. Medians over the intermediate settings of the dial, where both the interaction and the item and class effects exist. Capacity is the generative rank over the hidden width: below one, a fully separable solution is reachable. Item-class overlap and overlap are zero for a separable representation."
+#| tbl-cap: "Experiment 1, by capacity, over cells where all three effects were planted. Chance is the share of a randomly oriented effect that would fall in the class direction at that width, and the ratio is the observed overlap against it. Below one, a fully separable solution is reachable by dimension counting; above one it is not."
 toy_cap |>
-  transmute(readout = act,
-            capacity = gsub("\n", " ", band),
-            `interaction share` = g(size_med, 3),
-            `item-class overlap` = g(leak_med, 4),
-            `interaction into margins` = g(leakint_med, 3),
-            `interaction / item overlap` = g(ov_med, 3)) |>
-  arrange(readout, capacity) |>
-  kbl(booktabs = TRUE, align = "llrrrr", linesep = "") |>
+  transmute(condition = act, capacity = g(capacity, 3),
+            `interaction share` = g(size_int, 3),
+            `item-class overlap` = g(overlap, 4),
+            chance = g(floor, 4),
+            `ratio to chance` = g(ratio, 2)) |>
+  arrange(condition, capacity) |>
+  kbl(booktabs = TRUE, align = "lrrrrr", linesep = "") |>
   kable_styling(latex_options = c("HOLD_position"), font_size = 8)
 ```
 
-Two things are established, both of which are about mechanism rather than magnitude. Separability fails for a **principled** reason and not an accidental one: no learner that fits an interactive language can represent it as item plus class, because a readout of a purely additive representation could not produce the interaction the language requires. That holds for the linear learner, which has no capacity pressure, no nonlinearity, and a separable solution available to it. And the *further* failure, the components ceasing to be orthogonal to one another, is what the nonlinearity adds on top. Real language is interactive and real language models are nonlinear, so both mechanisms are present before we measure anything. Experiment 2 asks whether they leave a trace we can find.
+**The measurement survives the amount of nuisance variation a corpus has.** When context accounts for more than 80% of the target, so that most of what varies within a cell has nothing to do with the item or the class, ReLU's measured interaction holds at `r g(toy_noise$size_int[toy_noise$act == "ReLU" & toy_noise$cbin == ">80%"], 3)` against `r g(toy_noise$size_int[toy_noise$act == "ReLU" & toy_noise$cbin == "<20%"], 3)` when context is minor, and the flag rate falls from `r sprintf("%.0f%%", 100 * toy_noise$flagged[toy_noise$act == "ReLU" & toy_noise$cbin == "<20%"])` to `r sprintf("%.0f%%", 100 * toy_noise$flagged[toy_noise$act == "ReLU" & toy_noise$cbin == ">80%"])`. Power degrades, as it must with twenty-four observations per cell, but the estimate does not drift.
+
+Two things carry into Experiment 2. The instrument reads zero when the answer is zero and tracks the answer when it is not, at the sample size and noise level the language models will be measured at. And whether the item and class effects come out orthogonal is governed by whether the representation had room, which is a fact about capacity rather than about the language, so a finding of near-orthogonality in a wide model is uninformative on its own and has to be read against its own chance level.
+
 
 # Experiment 2: Item and Category in Language Models {#sec-exp2}
 

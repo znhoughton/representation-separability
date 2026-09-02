@@ -95,6 +95,13 @@ def build_abc(rng, n_form, n_class, n_obs, ctx_pool, vocab,
     item_code = rng.standard_normal((n_form, r_item))
     class_code = rng.standard_normal((n_class, r_class))
     ctx_code = rng.standard_normal((ctx_pool, r_ctx))
+    # The 1/sqrt(r) makes a term's magnitude independent of its rank: a logit is a sum of r
+    # products of unit-variance numbers, so without it the standard deviation would grow as
+    # sqrt(r) and a higher-rank term would dominate purely by being higher-rank. That mattered
+    # in the previous generator, where the item and class contributions were summed BEFORE
+    # being normalized. Here each term is passed through unit() separately, so any constant
+    # scaling cancels and this is a no-op (verified identical to 4e-12). Kept because it states
+    # the intent, and because removing unit() later would silently reintroduce the confound.
     L_item = rng.standard_normal((vocab, r_item)) / np.sqrt(r_item)
     L_class = rng.standard_normal((vocab, r_class)) / np.sqrt(r_class)
     L_int = rng.standard_normal((vocab, r_int)) / np.sqrt(r_int)
@@ -133,11 +140,22 @@ def build_abc(rng, n_form, n_class, n_obs, ctx_pool, vocab,
 
 # ------------------------------------------------------------------------- model
 def _build_model(n_form, n_class, n_ctx, vocab, d, act):
-    """Per-FORM and per-CLASS embeddings plus a nuisance CONTEXT embedding, concatenated, then
-    one hidden layer and a linear readout. No parameter is per-cell, which is the whole point:
-    a cell's representation is COMPUTED from shared pieces, as in a transformer, rather than
-    stored. The context carries no information about the target and exists only to give each
-    cell many distinct observations to split."""
+    """Per-FORM, per-CLASS and per-CONTEXT embeddings, concatenated, then one hidden layer and a
+    linear readout.
+
+    NO PARAMETER IS PER-CELL, which is the whole point. There is no row for "dog-as-a-noun": to
+    represent that pairing the model looks up `dog`, looks up `noun`, looks up the context and
+    combines them, so the cell is COMPUTED from shared pieces rather than stored. A transformer
+    works the same way -- one embedding per token, everything else computed from context -- and
+    it is what makes two things possible that a per-cell lookup table forbids. The
+    initialization content of `dog`'s row is the same whichever class it appears with, so it
+    lands in the item effect rather than masquerading as an interaction; and a cell is observed
+    once per context, so its observations can be split in half.
+
+    The context is nuisance for our purposes but NOT decorative: it contributes to the target
+    (see build_abc), so the model has to encode it, exactly as a language model must encode the
+    rest of the sentence. That is what makes a cell mean an estimate rather than an exact
+    quantity, which is the thing the split-half construction exists to handle."""
     import torch
     import torch.nn as nn
     import torch.nn.functional as F
