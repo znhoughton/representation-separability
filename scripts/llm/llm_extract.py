@@ -22,6 +22,7 @@ Deps: torch, transformers, numpy. Example:
 """
 import argparse
 import csv
+import os
 import sys
 import time
 from pathlib import Path
@@ -29,6 +30,9 @@ from pathlib import Path
 import numpy as np
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+# How often extraction reports progress, in seconds. PROGRESS_EVERY_S=10 to watch a short run
+# closely, or a large value to keep a long log quiet.
+PROGRESS_EVERY_S = float(os.environ.get("PROGRESS_EVERY_S", 60))
 for _sub in ("lib", "llm", "toy"):
     sys.path.insert(0, str(REPO_ROOT / "scripts" / _sub))
 from separability_measure import separability  # noqa: E402  (the canonical toy measure)
@@ -218,7 +222,7 @@ def extract_stream_to_npz(out_path, model_name, sentences, layer_idxs, max_token
                           dtype=np.float32, shape=(max_tokens, d)) for li in layer_idxs}
     upos_all, lemma_all = [], []
     n_tok = 0
-    t_start = time.time()
+    t_start = t_last = time.time()
     order = np.random.default_rng(seed).permutation(len(sentences)).tolist()
     try:
         for start in range(0, len(order), batch_size):
@@ -265,12 +269,22 @@ def extract_stream_to_npz(out_path, model_name, sentences, layer_idxs, max_token
             del hs
             # Periodic progress. A model can take many minutes and the loop was otherwise silent
             # until it finished, which makes a long run impossible to distinguish from a hung one.
-            if (start // batch_size) % 25 == 0 or n_tok >= max_tokens:
-                el = time.time() - t_start
+            #
+            # Timed rather than every N batches: this runs as three concurrent processes with
+            # different batch sizes, so a batch counter reports at three different cadences, and
+            # at the larger sizes a whole model is only a few dozen batches -- a handful of lines
+            # for an hour of work. A fixed interval gives every job the same readable heartbeat.
+            # These are lines, not a redrawn bar: output is redirected to a log file, where \r
+            # would accumulate into one unreadable line.
+            now = time.time()
+            if now - t_last >= PROGRESS_EVERY_S or n_tok >= max_tokens:
+                t_last = now
+                el = now - t_start
                 rate = n_tok / el if el > 0 else 0.0
                 eta = (max_tokens - n_tok) / rate if rate > 0 else 0.0
+                pct = 100.0 * n_tok / max_tokens
                 print(f"    {model_name} [{init_tag(random_init, ablate_positions)}]: "
-                      f"{n_tok}/{max_tokens} tokens  {rate:.0f} tok/s  "
+                      f"{pct:5.1f}%  {n_tok}/{max_tokens} tokens  {rate:.0f} tok/s  "
                       f"eta {int(eta // 60)}m{int(eta % 60):02d}s", flush=True)
             if stop or n_tok >= max_tokens:
                 break
