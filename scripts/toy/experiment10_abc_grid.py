@@ -52,6 +52,7 @@ import argparse
 import csv
 import os
 import sys
+import time
 from pathlib import Path
 
 for _v in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
@@ -188,7 +189,14 @@ def train_and_extract(P, form_of, class_of, ctx_of, ctx_pool, d, act, seed, cfg)
     x_all = torch.as_tensor(ctx_of, device=dev)
     opt = torch.optim.Adam(m.parameters(), lr=cfg["lr"])
 
-    best = float("inf"); best_it = 0
+    # Stopping is a PLATEAU on the exact expected cross-entropy (full batch, no minibatch
+    # noise), never on anything derived from the measurement, so it cannot bias the reported
+    # quantities the way stopping on a test statistic would. What it CAN do is stop different
+    # conditions at different points -- the identity arm cannot fit interactive data and so
+    # plateaus early by construction, and tight-capacity cells converge more slowly than roomy
+    # ones. `converged` records whether a cell plateaued or merely ran out of budget, so that
+    # confound can be checked in the analysis rather than assumed away.
+    best = float("inf"); best_it = 0; plateaued = False
     for it in range(1, cfg["max_iters"] + 1):
         opt.zero_grad(set_to_none=True)
         loss = -(Pt * F.log_softmax(m(f_all, c_all, x_all), -1)).sum(1).mean()
@@ -197,12 +205,13 @@ def train_and_extract(P, form_of, class_of, ctx_of, ctx_pool, d, act, seed, cfg)
         if v < best - cfg["min_delta"]:
             best, best_it = v, it
         elif it - best_it >= cfg["patience"]:
+            plateaued = True
             break
 
     with torch.no_grad():
         H = m.hid(f_all, c_all, x_all).cpu().numpy()
     ent = float(-(P * np.log(np.clip(P, 1e-12, None))).sum(1).mean())
-    return H, it, best, best - ent
+    return H, it, best, best - ent, plateaued
 
 
 # -------------------------------------------------------------------------- grid
@@ -250,12 +259,41 @@ CONFIG = dict(
     out_csv=str(REPO_ROOT / "data" / "experiment10_abc_grid.csv"),
 )
 
-FIELDS = ["w_item", "w_class", "w_int", "ach_item", "ach_class", "ach_int",
-          "d", "rank", "capacity", "activation", "seed", "n_form", "n_class", "n_ctx", "iters", "loss", "fit_gap",
-          "size_item", "size_class", "size_interaction", "sig_item", "sig_class",
-          "sig_interaction", "leak_item_into_class", "leak_int_into_margins",
-          "overlap_item_int", "overlap_class_int", "k_item", "k_class", "k_int",
-          "n_items", "n_grid_tokens"]
+FIELDS = ["key",                                          # resume identifier; must be written
+          "w_item", "w_class", "w_int", "w_ctx",          # what was asked for (normalized)
+          "ach_item", "ach_class", "ach_int", "ach_ctx",  # what the generator achieved
+          "d", "rank", "capacity", "activation", "seed",
+          "n_form", "n_class", "n_obs",
+          "iters", "loss", "fit_gap", "converged",        # convergence, for the stopping check
+          "size_item", "size_class", "size_interaction",
+          "sig_item", "sig_class", "sig_interaction",
+          "leak_item_into_class", "leak_int_into_margins",
+          "overlap_item_int", "overlap_class_int",
+          "k_item", "k_class", "k_int", "n_items"]
+
+
+def _hms(sec):
+    sec = int(max(0, sec))
+    h, m = divmod(sec, 3600)
+    m, sec = divmod(m, 60)
+    return f"{h}h{m:02d}m" if h else f"{m}m{sec:02d}s"
+
+
+def _progress(n, total, t0, fails, tty, width=28):
+    """One updating line, driven from the parent's as_completed loop so workers never contend
+    for stdout. Rewrites in place on a terminal; on a redirected stream (nohup, a log file) it
+    prints discrete lines instead, since carriage returns would make the log unreadable."""
+    frac = n / total if total else 1.0
+    el = time.time() - t0
+    rate = n / el if el > 0 else 0.0
+    filled = int(width * frac)
+    msg = (f"[{'#' * filled}{'-' * (width - filled)}] {n}/{total} ({100 * frac:5.1f}%)  "
+           f"{rate * 60:5.1f}/min  elapsed {_hms(el)}  eta {_hms((total - n) / rate if rate else 0)}"
+           + (f"  ({fails} failed)" if fails else ""))
+    if tty:
+        print(chr(13) + msg + "  ", end="", flush=True)
+    else:
+        print(msg, flush=True)
 
 
 def _key(w, w_ctx):
@@ -270,7 +308,7 @@ def run_cell(spec, cfg):
         rng, cfg["n_form"], cfg["n_class"], cfg["n_obs"], cfg["ctx_pool"], cfg["vocab"],
         cfg["r_item"], cfg["r_class"], cfg["r_int"], cfg["r_ctx"],
         w[0], w[1], w[2], w_ctx, cfg["scale"])
-    H, iters, loss, gap = train_and_extract(
+    H, iters, loss, gap, plateaued = train_and_extract(
         P, form_of, class_of, ctx_of, cfg["ctx_pool"], d, act, seed, cfg)
     r = unified_split(H, form_of, class_of, min_cell=max(2, cfg["n_obs"] // 2),
                       classes=list(range(cfg["n_class"])), standardize=True, seed=0)
@@ -281,7 +319,8 @@ def run_cell(spec, cfg):
                ach_int=round(ach[2], 4), ach_ctx=round(ach[3], 4),
                d=d, rank=rank, capacity=round(rank / d, 3),
                activation=act, seed=seed, n_form=cfg["n_form"], n_class=cfg["n_class"],
-               n_obs=cfg["n_obs"], iters=iters, loss=round(loss, 4), fit_gap=round(gap, 4))
+               n_obs=cfg["n_obs"], iters=iters, loss=round(loss, 4), fit_gap=round(gap, 4),
+               converged=bool(plateaued))
     for k in FIELDS:
         if k not in row:
             row[k] = r.get(k) if "error" not in r else ""
@@ -343,6 +382,8 @@ def main():
         w_ = csv.DictWriter(fh, fieldnames=FIELDS, extrasaction="ignore")
         if not resuming:
             w_.writeheader()
+        tty = sys.stdout.isatty()
+        fails = 0
         with ProcessPoolExecutor(max_workers=cfg["n_workers"],
                                  mp_context=mp.get_context("spawn")) as ex:
             futs = {ex.submit(run_cell, c, cfg): c for c in todo}
@@ -351,13 +392,14 @@ def main():
                 try:
                     w_.writerow(fut.result()); fh.flush()
                 except Exception as e:
-                    print(f"  !! {futs[fut]} failed: {type(e).__name__}: {e}", flush=True)
-                if n <= 5 or n % 25 == 0 or n == len(todo):
-                    el = time.time() - t0; rate = n / el if el else 0
-                    eta = (len(todo) - n) / rate if rate else 0
-                    print(f"  {n}/{len(todo)}  {el/60:5.1f}m elapsed  {rate*60:5.1f} cells/min  "
-                          f"eta {eta/60:5.1f}m", flush=True)
-    print(f"Done -> {out}")
+                    fails += 1
+                    print(f"{chr(10)}  !! {futs[fut]} failed: {type(e).__name__}: {e}", flush=True)
+                if tty or n % 25 == 0 or n == len(todo):
+                    _progress(n, len(todo), t0, fails, tty)
+        if tty:
+            print()
+    print(f"Done -> {out}"
+          + (f"   ({fails} cells failed)" if fails else ""))
 
 
 if __name__ == "__main__":
