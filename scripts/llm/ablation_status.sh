@@ -55,11 +55,14 @@ for f in "$LOGDIR"/*.log; do
 done
 
 hdr "models finished"
-# one line per completed model; 12 expected for the UD sweep (6 models x 2 inits)
-done_n=$(grep -h "streamed" "$LOGDIR"/*.log 2>/dev/null | wc -l | tr -d ' ')
-echo "  $done_n / 12 UD extractions complete"
-grep -h "streamed" "$LOGDIR"/*.log 2>/dev/null \
-  | sed 's/.*\] //; s/ (.*streamed/  /; s/tokens ->.*//' | sed 's/^/    /'
+# Counted from the FILES ON DISK, not from log lines. Logs append across runs, so grepping them
+# counts models finished by earlier attempts and reports progress that is not there. The .npz
+# files are the actual state -- they are what the sweep skips on resume -- so they cannot go
+# stale. 12 expected for the UD sweep: 6 models x 2 inits.
+done_n=$(ls -1 "$REPS_DIR"/*_noposemb.npz 2>/dev/null | wc -l | tr -d ' ') || true
+echo "  ${done_n:-0} / 12 UD extractions complete"
+ls -1 "$REPS_DIR"/*_noposemb.npz 2>/dev/null \
+  | sed 's|.*/||; s/__/  /g; s/\.npz//' | sed 's/^/    /' || true
 
 hdr "ablation check"
 # matches both the POSABL record and the older human-readable message, so this works on a run
@@ -82,9 +85,13 @@ scr=$(du -sh "$REPS_DIR"/repscratch_* "$VUA_DIR"/vuascratch_* 2>/dev/null | tail
 echo "  free space: $(df -h . | tail -1 | awk '{print $4}')"
 
 hdr "errors"
+# Logs append across runs, so anything here may belong to an EARLIER attempt. Treat it as a
+# prompt to look, not as proof this run is broken:
+#   grep -B2 -A15 Traceback "$LOGDIR"/*.log | tail -40
 if grep -hiE "Traceback|Error|CUDA out of memory|FAILED" "$LOGDIR"/*.log 2>/dev/null | grep -q .; then
   grep -hiE "Traceback|Error|CUDA out of memory|FAILED" "$LOGDIR"/*.log 2>/dev/null \
     | sort -u | tail -8 | sed 's/^/  /'
+  echo "  (logs append across runs -- these may be from an earlier attempt)"
 else
   echo "  none"
 fi
