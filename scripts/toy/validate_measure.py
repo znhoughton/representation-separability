@@ -195,12 +195,36 @@ def main():
     specs.sort(key=lambda t: -(t[0] * t[1] * t[3] * t[2]))
     peak_gb = max(t[0] * t[1] * t[3] * t[2] * 8 * 2 for t in specs) / 1e9
     out = Path(args.out); out.parent.mkdir(parents=True, exist_ok=True)
-    print(f"validate_measure: {len(specs)} runs, {args.workers} workers\n"
+
+    # Resume. A spec is identified by everything that defines it. At roughly two hours a run,
+    # losing the lot to an interruption is not worth the few lines this costs.
+    def key(t):
+        return (t[0], t[1], t[2], t[3], float(t[4]), t[5],
+                float(t[6][0]), float(t[6][1]), float(t[6][2]), float(t[7]))
+    done = set()
+    if out.exists():
+        with open(out, newline="") as fh:
+            for r in csv.DictReader(fh):
+                try:
+                    done.add((int(r["n_item"]), int(r["n_class"]), int(r["d"]), int(r["n_obs"]),
+                              float(r["noise_ratio"]), int(r["seed"]),
+                              float(r["planted_item"]), float(r["planted_class"]),
+                              float(r["planted_int"]), float(r["planted_overlap"])))
+                except (KeyError, ValueError):
+                    continue
+    todo = [t for t in specs if key(t) not in done]
+    print(f"validate_measure: {len(done):,} done, {len(todo):,} to run of {len(specs):,}; "
+          f"{args.workers} workers\n"
           f"  peak ~{peak_gb:.1f} GB per worker on the largest spec "
           f"(~{peak_gb * args.workers:.0f} GB with {args.workers} workers)", flush=True)
-    with open(out, "w", newline="") as fh:
+    if not todo:
+        print(f"All specs present in {out}."); return
+    resuming = bool(done)
+    specs = todo
+    with open(out, "a" if resuming else "w", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=FIELDS, extrasaction="ignore")
-        w.writeheader()
+        if not resuming:
+            w.writeheader()
         with ProcessPoolExecutor(max_workers=args.workers,
                                  mp_context=mp.get_context("spawn")) as ex:
             futs = [ex.submit(run_one, s) for s in specs]
