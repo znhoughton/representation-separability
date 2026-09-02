@@ -131,8 +131,16 @@ SHARES = [(0.70, 0.10, 0.20), (0.85, 0.05, 0.10), (0.50, 0.25, 0.25),
           (0.90, 0.10, 0.00),    # no interaction
           (0.90, 0.00, 0.10),    # no class effect
           (0.897, 0.003, 0.10)]  # class effect at metaphor's reported magnitude
-N_ITEMS = [27, 49, 130, 180]     # noun/adj, role, POS, metaphor
-D_VALUES = [768, 2048]
+
+# Everything is crossed with everything. The item counts and class counts span BOTH experiments
+# (27/49/130/180 with two classes are the four LLM constructions; 60 with four classes is the
+# toy), and so do the widths. Covering both matters because the quantity that decides whether a
+# reported overlap means anything is its floor, roughly k/d, and that moves by two orders of
+# magnitude across this range: about 0.375 at the toy's smallest width against 0.0005 at the
+# language models'. Reading either experiment's overlaps without its own floor is guesswork.
+N_ITEMS = [27, 49, 60, 130, 180]
+N_CLASS = [2, 4]
+D_VALUES = [8, 16, 32, 128, 768, 1024, 2048]
 N_OBS = [10, 24, 100]            # min_cell, the LLM median, and a comfortable case
 NOISE = [1.0, 10.0, 50.0]
 OVERLAPS = [0.0, 0.25]           # orthogonal by construction, and deliberately not
@@ -162,12 +170,19 @@ def main():
 
     import multiprocessing as mp
     from concurrent.futures import ProcessPoolExecutor, as_completed
-    specs = [(ni, 2, d, nb, nz, s, sh, ov)
-             for sh in SHARES for ni in N_ITEMS for d in D_VALUES
+    specs = [(ni, nc, d, nb, nz, s, sh, ov)
+             for sh in SHARES for ni in N_ITEMS for nc in N_CLASS for d in D_VALUES
              for nb in N_OBS for nz in NOISE for ov in OVERLAPS
              for s in range(N_SEEDS)]
+    # Largest first. The pool then starts the memory-hungry runs while nothing else is in
+    # flight, so if the worker count is too high for the machine it fails immediately rather
+    # than eleven hours in, and the long tail of cheap small-d runs packs in behind them.
+    specs.sort(key=lambda t: -(t[0] * t[1] * t[3] * t[2]))
+    peak_gb = max(t[0] * t[1] * t[3] * t[2] * 8 * 2 for t in specs) / 1e9
     out = Path(args.out); out.parent.mkdir(parents=True, exist_ok=True)
-    print(f"validate_measure: {len(specs)} runs, {args.workers} workers", flush=True)
+    print(f"validate_measure: {len(specs)} runs, {args.workers} workers\n"
+          f"  peak ~{peak_gb:.1f} GB per worker on the largest spec "
+          f"(~{peak_gb * args.workers:.0f} GB with {args.workers} workers)", flush=True)
     with open(out, "w", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=FIELDS, extrasaction="ignore")
         w.writeheader()
