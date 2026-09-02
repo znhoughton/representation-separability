@@ -1,0 +1,125 @@
+<mxfile host="app.diagrams.net" agent="separability-paper" version="24.0.0">
+  <diagram name="toy-setup" id="toy-setup-1">
+    <mxGraphModel dx="1400" dy="900" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1050" pageHeight="760" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- ============================ PANEL A: the task ============================ -->
+        <mxCell id="titleA" value="&lt;b&gt;A.&amp;nbsp; What the model sees and predicts&lt;/b&gt;" style="text;html=1;align=left;verticalAlign=middle;fontSize=15;fontColor=#154733;" vertex="1" parent="1">
+          <mxGeometry x="30" y="18" width="500" height="24" as="geometry" />
+        </mxCell>
+
+        <mxCell id="inForm" value="form&#10;&lt;i&gt;dog&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f0eb;strokeColor=#007030;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="30" y="66" width="110" height="38" as="geometry" />
+        </mxCell>
+        <mxCell id="inClass" value="class&#10;&lt;i&gt;noun&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fdf3dc;strokeColor=#875E00;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="30" y="114" width="110" height="38" as="geometry" />
+        </mxCell>
+        <mxCell id="inCtx" value="context&#10;&lt;i&gt;#9 of 400&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e6eef3;strokeColor=#005581;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="30" y="162" width="110" height="38" as="geometry" />
+        </mxCell>
+
+        <mxCell id="embF" value="embedding" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#007030;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="182" y="66" width="96" height="38" as="geometry" />
+        </mxCell>
+        <mxCell id="embC" value="embedding" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#875E00;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="182" y="114" width="96" height="38" as="geometry" />
+        </mxCell>
+        <mxCell id="embX" value="embedding" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#005581;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="182" y="162" width="96" height="38" as="geometry" />
+        </mxCell>
+
+        <mxCell id="eF" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#007030;endArrow=block;endSize=5;" edge="1" parent="1" source="inForm" target="embF"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="eC" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#875E00;endArrow=block;endSize=5;" edge="1" parent="1" source="inClass" target="embC"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="eX" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#005581;endArrow=block;endSize=5;" edge="1" parent="1" source="inCtx" target="embX"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <mxCell id="concat" value="c&#10;o&#10;n&#10;c&#10;a&#10;t" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#6E6E6E;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="304" y="66" width="34" height="134" as="geometry" />
+        </mxCell>
+        <mxCell id="eFc" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#007030;endArrow=none;" edge="1" parent="1" source="embF" target="concat"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="eCc" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#875E00;endArrow=none;" edge="1" parent="1" source="embC" target="concat"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="eXc" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#005581;endArrow=none;" edge="1" parent="1" source="embX" target="concat"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <mxCell id="hidden" value="&lt;b&gt;hidden layer&lt;/b&gt;&#10;&lt;i&gt;h&lt;/i&gt; = φ(W₁ · concat)&#10;φ = identity or ReLU" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#154733;strokeColor=#154733;fontColor=#ffffff;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="376" y="100" width="164" height="66" as="geometry" />
+        </mxCell>
+        <mxCell id="eCh" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#6E6E6E;endArrow=block;endSize=5;" edge="1" parent="1" source="concat" target="hidden"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <mxCell id="measured" value="&lt;b&gt;this is what we measure&lt;/b&gt;" style="text;html=1;align=center;fontSize=11;fontColor=#154733;" vertex="1" parent="1">
+          <mxGeometry x="366" y="170" width="184" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="readout" value="linear readout&#10;W₂ &lt;i&gt;h&lt;/i&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6E6E6E;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="580" y="112" width="106" height="42" as="geometry" />
+        </mxCell>
+        <mxCell id="eHr" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#6E6E6E;endArrow=block;endSize=5;" edge="1" parent="1" source="hidden" target="readout"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <mxCell id="out" value="&lt;b&gt;P(next token)&lt;/b&gt;&#10;over 600 tokens" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#154733;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="726" y="100" width="146" height="66" as="geometry" />
+        </mxCell>
+        <mxCell id="eRo" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#6E6E6E;endArrow=block;endSize=5;" edge="1" parent="1" source="readout" target="out"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <!-- target -->
+        <mxCell id="tgtBox" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fbfbfb;strokeColor=#bbbbbb;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="30" y="222" width="842" height="96" as="geometry" />
+        </mxCell>
+        <mxCell id="tgtLbl" value="&lt;b&gt;the target it is trained to match&lt;/b&gt;, for this (form, class, context):" style="text;html=1;align=left;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="44" y="230" width="500" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="tgtEq" value="softmax&amp;nbsp; &lt;i&gt;s&lt;/i&gt; [ &amp;nbsp;&lt;font color=&quot;#007030&quot;&gt;&lt;b&gt;w&lt;sub&gt;α&lt;/sub&gt; · item(dog)&lt;/b&gt;&lt;/font&gt;&amp;nbsp; + &amp;nbsp;&lt;font color=&quot;#875E00&quot;&gt;&lt;b&gt;w&lt;sub&gt;β&lt;/sub&gt; · class(noun)&lt;/b&gt;&lt;/font&gt;&amp;nbsp; + &amp;nbsp;&lt;font color=&quot;#B03A2E&quot;&gt;&lt;b&gt;w&lt;sub&gt;γ&lt;/sub&gt; · ( item(dog) ⊙ class(noun) )&lt;/b&gt;&lt;/font&gt;&amp;nbsp; + &amp;nbsp;&lt;font color=&quot;#005581&quot;&gt;&lt;b&gt;w&lt;sub&gt;ctx&lt;/sub&gt; · context(#9)&lt;/b&gt;&lt;/font&gt;&amp;nbsp; ]" style="text;html=1;align=left;fontSize=12;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="44" y="252" width="820" height="26" as="geometry" />
+        </mxCell>
+        <mxCell id="tgtNote" value="⊙ is the elementwise product. A &lt;i&gt;sum&lt;/i&gt; splits into an item part plus a class part; a &lt;i&gt;product&lt;/i&gt; does not. That is what makes γ irreducibly joint.&#10;The four weights are the grid: crossed factorially, normalised together so only their composition varies, never the total signal strength." style="text;html=1;align=left;fontSize=10.5;fontColor=#444444;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="44" y="278" width="820" height="34" as="geometry" />
+        </mxCell>
+
+        <!-- ========================= PANEL B: the measurement ========================= -->
+        <mxCell id="titleB" value="&lt;b&gt;B.&amp;nbsp; How the representation is decomposed&lt;/b&gt;" style="text;html=1;align=left;verticalAlign=middle;fontSize=15;fontColor=#154733;" vertex="1" parent="1">
+          <mxGeometry x="30" y="346" width="560" height="24" as="geometry" />
+        </mxCell>
+
+        <mxCell id="obs" value="&lt;b&gt;1. collect&lt;/b&gt;&#10;&#10;24 hidden states per&#10;(form, class) cell, one&#10;per context it occurs in" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6E6E6E;fontSize=11;verticalAlign=top;spacingTop=6;" vertex="1" parent="1">
+          <mxGeometry x="30" y="396" width="176" height="112" as="geometry" />
+        </mxCell>
+
+        <mxCell id="grid" value="&lt;b&gt;2. average within cells&lt;/b&gt;&#10;&#10;a 60 × 4 grid, one vector&#10;per cell: &lt;i&gt;M&lt;/i&gt;[form, class]" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6E6E6E;fontSize=11;verticalAlign=top;spacingTop=6;" vertex="1" parent="1">
+          <mxGeometry x="248" y="396" width="184" height="112" as="geometry" />
+        </mxCell>
+
+        <mxCell id="decomp" value="&lt;b&gt;3. row and column means&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6E6E6E;fontSize=11;verticalAlign=top;spacingTop=6;" vertex="1" parent="1">
+          <mxGeometry x="474" y="396" width="288" height="112" as="geometry" />
+        </mxCell>
+        <mxCell id="decompEq" value="&lt;i&gt;M&lt;/i&gt;[i,c] = μ + &lt;font color=&quot;#007030&quot;&gt;&lt;b&gt;α(i)&lt;/b&gt;&lt;/font&gt; + &lt;font color=&quot;#875E00&quot;&gt;&lt;b&gt;β(c)&lt;/b&gt;&lt;/font&gt; + &lt;font color=&quot;#B03A2E&quot;&gt;&lt;b&gt;γ(i,c)&lt;/b&gt;&lt;/font&gt;" style="text;html=1;align=center;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="480" y="424" width="276" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="decompKey" value="&lt;font color=&quot;#007030&quot;&gt;α&lt;/font&gt; what the form is, whatever its class&#10;&lt;font color=&quot;#875E00&quot;&gt;β&lt;/font&gt; what the class is, whatever the form&#10;&lt;font color=&quot;#B03A2E&quot;&gt;γ&lt;/font&gt; what is left: specific to this pairing" style="text;html=1;align=left;fontSize=10.5;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="486" y="448" width="270" height="52" as="geometry" />
+        </mxCell>
+
+        <mxCell id="split" value="&lt;b&gt;4. denoise&lt;/b&gt;&#10;&#10;do steps 2–3 twice, on&#10;disjoint halves of each&#10;cell's observations" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6E6E6E;fontSize=11;verticalAlign=top;spacingTop=6;" vertex="1" parent="1">
+          <mxGeometry x="804" y="396" width="180" height="112" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#6E6E6E;endArrow=block;endSize=5;" edge="1" parent="1" source="obs" target="grid"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e2" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#6E6E6E;endArrow=block;endSize=5;" edge="1" parent="1" source="grid" target="decomp"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e3" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#6E6E6E;endArrow=block;endSize=5;" edge="1" parent="1" source="decomp" target="split"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <mxCell id="reportBox" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f4f7f5;strokeColor=#154733;" vertex="1" parent="1">
+          <mxGeometry x="30" y="534" width="954" height="94" as="geometry" />
+        </mxCell>
+        <mxCell id="reportLbl" value="&lt;b&gt;what is reported&lt;/b&gt;" style="text;html=1;align=left;fontSize=12;fontColor=#154733;" vertex="1" parent="1">
+          <mxGeometry x="44" y="542" width="300" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="reportTxt" value="&lt;b&gt;size&lt;/b&gt; of each effect — its share of the structure across cells, with the interaction reported as the &lt;b&gt;dot product of the two half-estimates&lt;/b&gt;, &lt;i&gt;γ&lt;/i&gt;&lt;sub&gt;A&lt;/sub&gt; · &lt;i&gt;γ&lt;/i&gt;&lt;sub&gt;B&lt;/sub&gt;, rather than the squared length of one.&#10;Estimation error is independent between the halves and cancels; a squared length could never read zero even with no interaction present.&#10;&#10;&lt;b&gt;item–class overlap&lt;/b&gt; — the share of α that lies along β's direction. Zero means the two sit on separate axes." style="text;html=1;align=left;fontSize=10.5;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="44" y="562" width="926" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="footnote" value="Identical to the measurement applied to the language models in Experiment 2, which is the point: there, the observations are the sentences a word occurs in.&#10;The weights above are in &lt;i&gt;logit&lt;/i&gt; space and the reported sizes are in &lt;i&gt;representation&lt;/i&gt; space, so they track one another rather than matching numerically." style="text;html=1;align=left;fontSize=10.5;fontColor=#444444;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="30" y="644" width="954" height="40" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
