@@ -98,7 +98,12 @@ def extract_model(model_name, out_path, sents, n_tgt, device, batch_size, max_le
                       padding=True, truncation=True, max_length=max_length)
             with torch.no_grad():
                 hs = model(**{k: v.to(device) for k, v in enc.items()}).hidden_states
-            hs = [h.float().cpu().numpy() for h in hs]          # one host copy per batch
+
+            # Gather the batch's target coordinates first, then one indexed read per layer on the
+            # device. See llm_extract.extract_stream_to_npz for why: the per-token, per-layer
+            # Python loop is interpreter-bound, and copying every position to the host wastes the
+            # transfer on subwords that are never kept. Target order is unchanged.
+            rows, subs, meta = [], [], []
             for row, (words, targets) in enumerate(chunk):
                 last_sub = {}
                 for pos, wid in enumerate(enc.word_ids(batch_index=row)):
@@ -108,9 +113,16 @@ def extract_model(model_name, out_path, sents, n_tgt, device, batch_size, max_le
                     sub = last_sub.get(wi)
                     if sub is None:                             # target truncated away -> drop
                         n_drop += 1; continue
-                    for li in layer_idxs:
-                        mm[li][n] = hs[li][row, sub]
-                    forms.append(form); poss.append(pos_tag); labels.append(label); n += 1
+                    rows.append(row); subs.append(sub); meta.append((form, pos_tag, label))
+            if rows:
+                k = len(rows)
+                ridx = torch.as_tensor(rows, device=device)
+                sidx = torch.as_tensor(subs, device=device)
+                for li in layer_idxs:
+                    mm[li][n:n + k] = hs[li][ridx, sidx].float().cpu().numpy()
+                forms.extend(m[0] for m in meta); poss.extend(m[1] for m in meta)
+                labels.extend(m[2] for m in meta); n += k
+            del hs
             if (start // batch_size) % 20 == 0:
                 print(f"    {model_name}: {n}/{n_tgt} targets", flush=True)
         for li in layer_idxs:

@@ -224,7 +224,16 @@ def extract_stream_to_npz(out_path, model_name, sentences, layer_idxs, max_token
                       padding=True, truncation=True, max_length=max_length)
             with torch.no_grad():
                 hs = model(**{k: v.to(device) for k, v in enc.items()}).hidden_states
-            hs = [h.float().cpu().numpy() for h in hs]
+
+            # Collect the (row, subword) coordinates for the WHOLE batch first, then gather them
+            # in one indexed read per layer. The obvious loop -- a Python-level assignment per
+            # token per layer -- is 300K x n_layers scalar operations for a full sweep and is
+            # interpreter-bound rather than GPU-bound. It also copies every position to the host
+            # when only one subword per word is kept, so indexing ON THE DEVICE first cuts the
+            # transfer by the padding-and-subword factor as well. Token order is unchanged:
+            # rows are visited in chunk order and subwords in ascending word id, exactly as
+            # before, which matters because derive_labels reproduces this order without a model.
+            rows, subs, keep = [], [], []
             stop = False
             for row, si in enumerate(chunk):
                 sent = sentences[si]
@@ -233,15 +242,23 @@ def extract_stream_to_npz(out_path, model_name, sentences, layer_idxs, max_token
                     if wid is not None:
                         last_sub[wid] = pos
                 for wid, sub in sorted(last_sub.items()):
-                    if n_tok >= max_tokens:                        # STRICT cap -> memmap can't overflow
+                    if n_tok + len(rows) >= max_tokens:            # STRICT cap, memmap can't overflow
                         stop = True; break
-                    for li in layer_idxs:
-                        mm[li][n_tok] = hs[li][row, sub]
-                    upos_all.append(sent[wid][2]); lemma_all.append(sent[wid][1])
-                    n_tok += 1
+                    rows.append(row); subs.append(sub); keep.append(sent[wid])
                 if stop:
                     break
-            if n_tok >= max_tokens:
+
+            if rows:
+                k = len(rows)
+                ridx = torch.as_tensor(rows, device=device)
+                sidx = torch.as_tensor(subs, device=device)
+                for li in layer_idxs:
+                    mm[li][n_tok:n_tok + k] = hs[li][ridx, sidx].float().cpu().numpy()
+                upos_all.extend(w[2] for w in keep)
+                lemma_all.extend(w[1] for w in keep)
+                n_tok += k
+            del hs
+            if stop or n_tok >= max_tokens:
                 break
         for li in layer_idxs:
             mm[li].flush()

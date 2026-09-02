@@ -78,7 +78,18 @@ def main():
                     help="zero learned absolute position embeddings before extracting "
                          "(see llm_extract.zero_position_embeddings). Writes to a separate "
                          "__*_noposemb.npz so the unablated reps are untouched.")
-    ap.add_argument("--batch-size", type=int, default=32, help="sentences per forward batch")
+    ap.add_argument("--batch-size", type=int, default=32,
+                    help="sentences per forward batch. With output_hidden_states every layer's "
+                         "activations are retained, so this is the main VRAM knob: roughly "
+                         "batch * seqlen * width * layers * 4 bytes. On a large card 128-256 is "
+                         "comfortable and cuts the number of forward passes proportionally.")
+    ap.add_argument("--models", nargs="*", default=None,
+                    help="substrings to filter the model set. Extraction runs one model at a "
+                         "time, so splitting the set across several concurrent invocations is "
+                         "how to keep a large GPU busy, or to overlap a big model with small ones.")
+    ap.add_argument("--inits", nargs="*", default=["pretrained", "random"],
+                    choices=["pretrained", "random"],
+                    help="which initializations to extract (default both)")
     ap.add_argument("--reps-dir", default=None,
                     help="if set, save per-(model,init) reps .npz here for in-sandbox re-measurement")
     ap.add_argument("--out", default=str(REPO_ROOT / "data" / "llm_separability.csv"))
@@ -95,7 +106,9 @@ def main():
             w.writeheader()
         for bin_i, (baby, pyth) in enumerate(PAIRS):
             for family, name in (("babylm", baby), ("pythia", pyth)):
-                for init in ("pretrained", "random"):
+                if args.models and not any(m in name for m in args.models):
+                    continue
+                for init in args.inits:
                     try:
                         run_one(name, family, ["125m", "350m", "1.3b"][bin_i], init, sentences, args, w)
                         fh.flush()
