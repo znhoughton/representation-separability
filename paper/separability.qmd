@@ -434,19 +434,15 @@ Metaphor is the case where this matters most. Its class effect never clears the 
 
 # Limitations {.unnumbered}
 
-```{=html}
-<!-- PLACEHOLDER: author to write. Points worth covering, from the results as they stand:
-     - the measure is orthogonally invariant only (no whitening), so overlap is
-       basis-relative; sizes and their depth trend are the robust part
-     - gamma is an upper bound on class-binding (see the end of Experiment 3)
-     - the class effect's estimate is not cross-denoised, so it carries a floor that
-       Appendix \ref{sec-appendix-validate} measures at 0.0036 at 24 observations
-     - subspace geometry is not denoised the way magnitudes are, so overlap is attenuated
-       toward chance and the reported values are a lower bound on departure from orthogonality
-     - POS is restricted to forms used both ways; role and metaphor are not
-     - no causal claim: trained representations are described as they are, with no
-       checkpoint sweep -->
-```
+The interaction is an upper bound on class-binding rather than a measurement of it. Experiment 3 shows that the class is recoverable from $\gamma$ once the item effect and the shared class direction are both removed, which rules out the interaction being generic context. It does not rule out context correlated with the class *within* a word. If a word's figurative uses systematically occur in longer sentences or in a narrower range of topics than its literal ones, that difference survives holding the word fixed, survives projecting out the shared axis, and predicts the label, and our probe would use it. Experiment 3 therefore raises the floor on how much of $\gamma$ is the distinction itself without establishing a ceiling, and the honest reading of every interaction size in this paper is "at most this much."
+
+Two properties of the measure bound what the orthogonality results can say. It is invariant to per-dimension rescaling and to rotation but not to arbitrary linear reparameterization, because we do not whiten; overlap is therefore relative to the model's own basis. We take that basis to be the one of interest, since LayerNorm and the feed-forward nonlinearities act coordinate-wise and a downstream readout operates on the unwhitened space, but a reader who wants a fully gauge-free quantity will not find one here. Separately, the component *magnitudes* are corrected for estimation error by the split-half construction while the subspace *geometry* is not, so overlap is attenuated toward its chance level and the values we report are a lower bound on the true departure from orthogonality. That the marginals look close to orthogonal is therefore the conservative reading, which is the useful direction to be wrong in, but it is a reason not to treat the exact figures as estimates.
+
+The class effect is the one quantity we do not cross-denoise, and it carries a floor. Appendix \ref{sec-appendix-validate} measures that floor at `r g(0.0036, 4)` for the sample size these constructions supply, and metaphor's observed class effect, `r g(0.0016, 4)` to `r g(0.0062, 4)`, sits at it. The claim that metaphoricity has no shared direction across words is therefore properly stated as an inability to distinguish one from zero at this sample size, not as a demonstration that none exists. A larger corpus, or a construction with more tokens per word, could resolve a small shared component that we cannot.
+
+The item samples are small and selected. Identifiability requires a form attested at both levels with at least ten tokens each, which leaves `r max(llm$n_items[llm$construction == "POS (noun/verb)"])` forms for part of speech, 49 for role and `r gs("metaphor", "n_items_kept")` for metaphor. Keying part of speech on the surface form removes the inflectional confound but restricts it further, to forms genuinely used both ways, and those are not a random sample of the lexicon. Everything here is English, three distinctions, and two model families at three scales, so the graded pattern across distinctions is a pattern across *these* three rather than a characterization of the space of linguistic distinctions.
+
+Finally, we describe trained representations as they are and make no developmental claim. Appendix \ref{sec-appendix-random} compares each model against its own untrained initialization, and for Pythia the comparison is clean: an untrained model shows no interaction at any layer, so training built it. For the OPT-BabyLM models it is not, because their learned absolute position embeddings are position-dependent even at initialization and the two class levels are not positionally interchangeable, so an untrained model already shows an interaction. We cannot therefore say uniformly that training builds the interaction, only that it does in the family where the question is askable. A checkpoint sweep would settle it and we have not run one.
 
 ```{=latex}
 \bibliography{refs}
@@ -620,3 +616,56 @@ v_ov |>
   kbl(longtable = TRUE, booktabs = TRUE, align = "rrr", linesep = "") |>
   kable_styling(font_size = 9, latex_options = c("repeat_header"))
 ```
+
+# Before Training {#sec-appendix-random}
+
+Every model was also measured at its random initialization, on the same tokens and with the same procedure, which asks whether the interaction is something training builds or something the architecture supplies.
+
+```{r}
+#| label: tbl-random
+#| tbl-cap: "Part of speech at the deepest layer, each model against its own untrained initialization. `Flagged` is the fraction of layers at which the interaction clears the test. For Pythia the untrained model shows no interaction at any layer; for OPT-BabyLM it shows a substantial one, which we attribute to learned absolute position embeddings being position-dependent even before training."
+rd("llm_unified_form.csv") |>
+  group_by(model, init) |>
+  summarise(deep = std_size_interaction[layer == max(layer)],
+            flagged = mean(std_sig_interaction), .groups = "drop") |>
+  left_join(MODELS, by = "model") |>
+  transmute(family, model = sub(".*/", "", model), init,
+            `interaction` = g(deep, 3),
+            `flagged` = sprintf("%.0f%%", 100 * flagged)) |>
+  arrange(family, model, init) |>
+  kbl(longtable = TRUE, booktabs = TRUE, align = "lllrr", linesep = "") |>
+  kable_styling(font_size = 9, latex_options = c("repeat_header"))
+```
+
+For Pythia the comparison is decisive (Table \ref{tbl-random}). An untrained model's interaction is 0.010 to 0.014 at the deepest layer and is flagged at **no layer of any model**, against 0.232 to 0.246 flagged at 85 to 92% of layers once trained. Whatever produces the interaction in those models, training produced it.
+
+For OPT-BabyLM it is not. An untrained model already shows an interaction of 0.024 to 0.088, flagged at up to 96% of layers, which is a large fraction of what the trained model shows. The likely reason is architectural: OPT learns absolute position embeddings, and those are position-dependent from initialization onward, while Pythia's rotary embeddings enter inside attention and contribute nothing at initialization. Nouns and verbs are not positionally interchangeable in a sentence, so a representation that varies with position varies with the class, and the decomposition correctly reports an interaction that has nothing to do with what the model learned.
+
+This is worth stating as a limit on the control rather than a finding about the families. The before-training comparison is available for one architecture and confounded for the other, so it supports the developmental reading where it can be run and is silent where it cannot. A checkpoint sweep would not have this problem, since it compares a model against itself at successive points rather than against an initialization whose positional content differs by design.
+
+# A Construction That Is Not Same-Token {#sec-appendix-morph}
+
+Every construction in the body keys the item on the surface form, so the token is identical at both levels of the distinction and the embedding layer has nothing to distinguish them with. That property is what licenses reading the depth profile as contextualization. It is worth seeing what the same measure does when the property fails.
+
+Number and tense supply the test. A plural or a past tense is spelled with an extra subword, so *dog* and *dog-s* are different tokens and the distinction is present in the input before any contextualization occurs.
+
+```{r}
+#| label: tbl-morph
+#| tbl-cap: "Number and tense, which are marked by an affix and therefore read at a different subword at the two levels. Unlike every construction in the body, the interaction is large at layer 0 and does not grow, which is what a distinction visible in the input looks like."
+rd("llm_morph.csv") |>
+  filter(regularity == "regular") |>
+  group_by(model, feature) |>
+  summarise(L0 = size_interaction[layer == 0],
+            deep = size_interaction[layer == max(layer)], .groups = "drop") |>
+  left_join(MODELS, by = "model") |>
+  transmute(family, model = sub(".*/", "", model), feature,
+            `layer 0` = g(L0, 3), `deepest` = g(deep, 3),
+            `ratio` = g(deep / L0, 1)) |>
+  arrange(feature, family, model) |>
+  kbl(longtable = TRUE, booktabs = TRUE, align = "lllrrr", linesep = "") |>
+  kable_styling(font_size = 9, latex_options = c("repeat_header"))
+```
+
+The profile inverts (Table \ref{tbl-morph}). Where the same-token constructions begin near zero at layer 0 and grow by one to two orders of magnitude, number and tense begin large and grow barely or not at all. That is what a distinction carried by the input rather than built by the network looks like under this measure, and it is the pattern the body's constructions were designed to avoid.
+
+It also illustrates why the surface-form keying of part of speech mattered. Keyed on the lemma, part of speech looked like this: a large layer-0 interaction and, for the BabyLM models, no growth. Keyed on the form it looks like role and metaphor instead. The measure was reporting the tokenization correctly in both cases; what changed was which question it was being asked.
