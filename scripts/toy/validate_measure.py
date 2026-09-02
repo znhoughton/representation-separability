@@ -125,12 +125,26 @@ def run_one(spec, n_boot=200):
     return row
 
 
-# Shares are (item, class, interaction). The last three are the nulls and the metaphor-like
-# case: an effect planted far below anything the paper claims to detect.
-SHARES = [(0.70, 0.10, 0.20), (0.85, 0.05, 0.10), (0.50, 0.25, 0.25),
-          (0.90, 0.10, 0.00),    # no interaction
-          (0.90, 0.00, 0.10),    # no class effect
-          (0.897, 0.003, 0.10)]  # class effect at metaphor's reported magnitude
+# Planted shares of between-cell energy, as (item, class, interaction).
+#
+# The first set is the SAME FULL FACTORIAL the toy grid runs, mapped into share space. The toy
+# crosses weights over {0, 0.5, 1, 2}; a weight contributes its square to the energy, so each
+# weight triple becomes a share triple once normalized. That collapses 63 combinations to 37
+# distinct ones -- (1,1,1) and (2,2,2) plant the same representation -- and 18 of the 37
+# contain an exact zero, giving the nulls without anything being chosen by hand.
+_W = [0, 0.5, 1, 2]
+_FACTORIAL = sorted({
+    tuple(round(x * x / sum(y * y for y in w), 6) for x in w)
+    for w in ((a, b, c) for a in _W for b in _W for c in _W) if any(w)})
+
+# The factorial's smallest nonzero share is 0.030, and the paper reports a class effect of
+# 0.003 for metaphor -- ten times smaller. Whether an effect that small is recoverable is
+# exactly the question the metaphor claim turns on, so the compositions Experiment 2 actually
+# measured are added explicitly. These are read off its deepest layers, not invented.
+_OBSERVED = [(0.897, 0.003, 0.100),   # metaphor: class effect at its reported magnitude
+             (0.850, 0.050, 0.100),   # role
+             (0.670, 0.090, 0.240)]   # POS, noun/verb
+SHARES = _FACTORIAL + _OBSERVED
 
 # Everything is crossed with everything. The item counts and class counts span BOTH experiments
 # (27/49/130/180 with two classes are the four LLM constructions; 60 with four classes is the
@@ -144,7 +158,7 @@ D_VALUES = [8, 16, 32, 128, 768, 1024, 2048]
 N_OBS = [10, 24, 100]            # min_cell, the LLM median, and a comfortable case
 NOISE = [1.0, 10.0, 50.0]
 OVERLAPS = [0.0, 0.25]           # orthogonal by construction, and deliberately not
-N_SEEDS = 10
+N_SEEDS = 5          # override with --seeds; medians are stable at 5 given the grid size
 
 
 def main():
@@ -152,6 +166,7 @@ def main():
     ap.add_argument("--probe", action="store_true")
     ap.add_argument("--out", default=str(REPO_ROOT / "data" / "validate_measure.csv"))
     ap.add_argument("--workers", type=int, default=8)
+    ap.add_argument("--seeds", type=int, default=N_SEEDS)
     args = ap.parse_args()
 
     if args.probe:
@@ -173,7 +188,7 @@ def main():
     specs = [(ni, nc, d, nb, nz, s, sh, ov)
              for sh in SHARES for ni in N_ITEMS for nc in N_CLASS for d in D_VALUES
              for nb in N_OBS for nz in NOISE for ov in OVERLAPS
-             for s in range(N_SEEDS)]
+             for s in range(args.seeds)]
     # Largest first. The pool then starts the memory-hungry runs while nothing else is in
     # flight, so if the worker count is too high for the machine it fails immediately rather
     # than eleven hours in, and the long tail of cheap small-d runs packs in behind them.
