@@ -292,10 +292,22 @@ def extract_stream_to_npz(out_path, model_name, sentences, layer_idxs, max_token
             mm[li].flush()
         upos = np.array(upos_all); lemma = np.array(lemma_all)
         arrs = {f"layer_{li}": mm[li][:n_tok] for li in layer_idxs}   # views; compressed one at a time
+        # Announce the compression phase. zlib is single-threaded and this is tens of gigabytes,
+        # so it runs for many minutes with the GPU idle and, without this line, nothing printed
+        # between the last progress update and the finished file -- which is indistinguishable
+        # from a hang at exactly the moment the run looks most alarming.
+        raw_gb = n_tok * d * len(layer_idxs) * 4 / 1e9
+        print(f"    {model_name} [{init_tag(random_init, ablate_positions)}]: extraction done, "
+              f"compressing {raw_gb:.0f} GB to {Path(out_path).name} "
+              f"(single-threaded, GPU idle, expect many minutes)", flush=True)
+        t_z = time.time()
         np.savez_compressed(out_path, upos=upos, lemma=lemma,
                             layer_idxs=np.array(sorted(layer_idxs)), model=model_name,
                             init=init_tag(random_init, ablate_positions),
                             **arrs)
+        print(f"    {model_name} [{init_tag(random_init, ablate_positions)}]: compressed in "
+              f"{(time.time() - t_z) / 60:.1f} min -> "
+              f"{Path(out_path).stat().st_size / 1e9:.1f} GB", flush=True)
     finally:
         del mm
         shutil.rmtree(scratch, ignore_errors=True)
