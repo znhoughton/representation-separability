@@ -19,7 +19,16 @@ hdr() { printf '\n\033[1m%s\033[0m\n' "$*"; }
 st=$(cat "$LOGDIR/control.status" 2>/dev/null || true)
 hb=$(cat "$LOGDIR/control.heartbeat" 2>/dev/null || echo 0)
 age=$(( $(date +%s) - hb ))
-if [ -n "$st" ]; then
+
+# A live extraction outranks anything on disk. control.status is written only by the control
+# script, so it survives from an earlier attempt -- and if extraction is being driven directly
+# (run_llm_sweep.py invoked by hand) nothing ever overwrites it, leaving a stale FAILED that
+# describes a run that ended hours ago. Processes first, then the file.
+if pgrep -f "run_llm_sweep.py|extract_vua.py" >/dev/null 2>&1; then
+  n_live=$(pgrep -cf "run_llm_sweep.py|extract_vua.py" 2>/dev/null || echo "?")
+  printf '\n\033[1;32m  RUNNING\033[0m  (%s extraction process(es) live)\n' "$n_live"
+  [ -n "$st" ] && echo "  note: $LOGDIR/control.status says \"$st\" -- stale, from an earlier attempt"
+elif [ -n "$st" ]; then
   case "$st" in
     OK*) printf '\n\033[1;32m  FINISHED OK\033[0m  %s\n' "${st#OK }" ;;
     *)   printf '\n\033[1;31m  FAILED\033[0m  %s\n' "$st"
