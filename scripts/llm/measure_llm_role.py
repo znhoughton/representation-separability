@@ -47,7 +47,7 @@ from llm_extract import parse_conllu, derive_labels  # noqa: E402
 
 POS = "NOUN"
 CLASSES = ("nsubj", "obj")
-FIELDS = ["model", "construction", "classes", "layer", "d", "n_points", "n_items", "min_cell",
+FIELDS = ["model", "init", "construction", "classes", "layer", "d", "n_points", "n_items", "min_cell",
           "size_item", "size_class", "size_interaction", "sig_interaction",
           "leak_item_into_class", "leak_int_into_margins", "k_class", "k_int"]
 
@@ -55,6 +55,10 @@ FIELDS = ["model", "construction", "classes", "layer", "d", "n_points", "n_items
 def measure_file(path, conllu, min_cell, layers):
     z = np.load(path, allow_pickle=True)
     up = z["upos"]; lem = z["lemma"]; model = str(z["model"]); n = len(up)
+    # Which CONDITION this file is: pretrained/random, and _noposemb when position embeddings
+    # were zeroed. Without it the ablated and unablated runs of one model are indistinguishable
+    # in the output, and the resume check below treats them as the same work.
+    init = str(z["init"]) if "init" in z.files else "pretrained"
     lab = derive_labels(model, list(parse_conllu(conllu)))     # tokenizer-only re-derivation
     if len(lab["upos"]) < n:
         raise RuntimeError(f"{model}: derived {len(lab['upos'])} < saved {n} tokens")
@@ -75,7 +79,7 @@ def measure_file(path, conllu, min_cell, layers):
         if m.sum() >= 2 * min_cell:
             r = unified_split(X[m], form[m], deprel[m], min_cell=min_cell, classes=list(CLASSES))
             if "error" not in r:
-                rows.append(dict(model=model, construction="noun_role", classes="+".join(CLASSES),
+                rows.append(dict(model=model, init=init, construction="noun_role", classes="+".join(CLASSES),
                                  layer=li, d=d, n_points=int(m.sum()), n_items=r["n_items"],
                                  min_cell=min_cell, size_item=r["size_item"], size_class=r["size_class"],
                                  size_interaction=r["size_interaction"], sig_interaction=r["sig_interaction"],
@@ -86,7 +90,7 @@ def measure_file(path, conllu, min_cell, layers):
         this = [rr for rr in rows if rr["layer"] == li]
         if this:
             rr = this[0]
-            print(f"  {model.split('/')[-1]:>26} L{li:>2}: nsubj/obj sz_int={rr['size_interaction']:.3f} "
+            print(f"  {model.split('/')[-1]:>26} [{init}] L{li:>2}: nsubj/obj sz_int={rr['size_interaction']:.3f} "
                   f"leak_i>c={rr['leak_item_into_class'] or float('nan'):.4f} n_items={rr['n_items']}",
                   flush=True)
     return rows
@@ -114,14 +118,14 @@ def main():
     if out.exists():
         with open(out, newline="") as fh:
             for r in csv.DictReader(fh):
-                done.add(r["model"])
+                done.add((r["model"], r.get("init", "pretrained")))
     todo = []
     for p in files:
         try:
             z = np.load(p, allow_pickle=True)
             if "upos" not in z.files:
                 raise ValueError("incomplete")
-            if str(z["model"]) in done:
+            if (str(z["model"]), str(z["init"]) if "init" in z.files else "pretrained") in done:
                 print(f"SKIP {p.name}: already in {out.name}", flush=True); continue
         except Exception as e:
             print(f"SKIP {p.name}: {type(e).__name__}", flush=True); continue

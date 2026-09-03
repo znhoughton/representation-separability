@@ -32,7 +32,7 @@ for _sub in ("lib", "llm", "toy"):
 from unified_separability import unified_split  # noqa: E402
 
 CLASSES = ("lit", "met")
-FIELDS = ["model", "construction", "classes", "layer", "d", "n_points", "n_items", "min_cell",
+FIELDS = ["model", "init", "construction", "classes", "layer", "d", "n_points", "n_items", "min_cell",
           "size_item", "size_class", "size_interaction", "sig_interaction",
           "leak_item_into_class", "leak_int_into_margins", "k_class", "k_int"]
 
@@ -40,6 +40,9 @@ FIELDS = ["model", "construction", "classes", "layer", "d", "n_points", "n_items
 def measure_file(path, min_cell, layers):
     z = np.load(path, allow_pickle=True)
     form = np.array([f.lower() for f in z["form"]]); model = str(z["model"])
+    # Condition tag (pretrained/random, _noposemb when positions were zeroed). Without it the
+    # ablated and unablated runs of one model collide in the output and in the resume check.
+    init = str(z["init"]) if "init" in z.files else "pretrained"
     cls = np.where(z["label"].astype(int) == 1, "met", "lit")     # 1=metaphorical, 0=literal
     layer_idxs = [int(li) for li in z["layer_idxs"]]
     rows = []
@@ -52,7 +55,7 @@ def measure_file(path, min_cell, layers):
         del X
         if "error" in r:
             continue
-        rows.append(dict(model=model, construction="metaphor", classes="+".join(CLASSES),
+        rows.append(dict(model=model, init=init, construction="metaphor", classes="+".join(CLASSES),
                          layer=li, d=d, n_points=int(len(form)), n_items=r["n_items"], min_cell=min_cell,
                          size_item=r["size_item"], size_class=r["size_class"],
                          size_interaction=r["size_interaction"], sig_interaction=r["sig_interaction"],
@@ -83,14 +86,14 @@ def main():
     if out.exists():
         with open(out, newline="") as fh:
             for r in csv.DictReader(fh):
-                done.add(r["model"])
+                done.add((r["model"], r.get("init", "pretrained")))
     todo = []
     for p in files:
         try:
             z = np.load(p, allow_pickle=True)
             if "label" not in z.files:
                 raise ValueError("incomplete")
-            if str(z["model"]) in done:
+            if (str(z["model"]), str(z["init"]) if "init" in z.files else "pretrained") in done:
                 print(f"SKIP {p.name}: already in {out.name}", flush=True); continue
         except Exception as e:
             print(f"SKIP {p.name}: {type(e).__name__}", flush=True); continue

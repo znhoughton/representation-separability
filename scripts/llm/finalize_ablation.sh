@@ -153,10 +153,21 @@ stage_cleanup() {
     echo "  none present (already deleted, or KEEP_REPS was never needed)"
     return
   fi
-  # Refuse to delete representations the summary has not read: the whole point of deleting them is
-  # that the CSVs preserve the result, so if the CSVs are missing the reps are the only copy.
+  # Refuse to delete representations whose MEASUREMENTS ARE NOT IN THE CSVs. Checking that the
+  # summary file merely exists is not enough and once cost a full run: the summary is generated
+  # from the measurement CSVs moments earlier, so it exists even when those CSVs contain no
+  # ablated rows at all -- which is exactly what happens if the measurement skipped the ablated
+  # files. Cleanup then deleted tens of hours of extraction whose numbers were never recorded.
+  # The condition that actually matters is that a _noposemb row was written somewhere.
   [ -f data/position_ablation_2x2.csv ] || die "data/position_ablation_2x2.csv does not exist, so
        nothing has preserved these results. Run the summary stage before cleanup."
+  n_abl=$(grep -lc "noposemb" data/llm_unified_form_ablation.csv data/llm_role_ablation.csv \
+            data/llm_metaphor_ablation.csv 2>/dev/null | wc -l | tr -d ' ') || true
+  if [ "${n_abl:-0}" -eq 0 ]; then
+    die "the measurement CSVs contain no *_noposemb rows, so nothing has recorded what these
+       ablated representations measured. Deleting them now would throw away the run. Measure
+       first, confirm the ablated rows are present, then re-run cleanup."
+  fi
   FREED=$(du -ch "$REPS_DIR"/*_noposemb.npz "$VUA_DIR"/*_noposemb.npz 2>/dev/null | tail -1 | cut -f1) || true
   rm -f "$REPS_DIR"/*_noposemb.npz "$VUA_DIR"/*_noposemb.npz
   echo "  removed $N_DEL file(s), reclaimed ${FREED:-0}"
