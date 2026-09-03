@@ -33,7 +33,7 @@ for _sub in ("lib", "llm", "toy"):
     sys.path.insert(0, str(REPO_ROOT / "scripts" / _sub))
 from run_llm_sweep import PAIRS, _resolve_layers  # noqa: E402
 from llm_extract import (init_tag, zero_position_embeddings,  # noqa: E402
-                         verify_position_ablation)
+                         verify_position_ablation, COMPRESS_REPS)
 
 CONTENT = {"VERB", "NOUN", "ADJ", "ADV"}
 
@@ -129,7 +129,10 @@ def extract_model(model_name, out_path, sents, n_tgt, device, batch_size, max_le
         for li in layer_idxs:
             mm[li].flush()
         arrs = {f"layer_{li}": mm[li][:n] for li in layer_idxs}
-        np.savez_compressed(out_path, form=np.array(forms), pos=np.array(poss),
+        # Same trade as in llm_extract: zlib returns a few percent on float32 activations and
+        # costs more wall time than the forward passes did. COMPRESS_REPS=1 to compress anyway.
+        save = np.savez_compressed if COMPRESS_REPS else np.savez
+        save(out_path, form=np.array(forms), pos=np.array(poss),
                             label=np.array(labels, dtype=np.int64),
                             layer_idxs=np.array(sorted(layer_idxs)), model=model_name,
                             init=init_tag(False, ablate_positions),
