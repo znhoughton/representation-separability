@@ -1,10 +1,16 @@
 construction,family,model,init,trained,positions,deepest_layer,interaction
 POS (noun/verb),BabyLM,znhoughton/opt-babylm-1.3B-20eps-seed964,pretrained,yes,intact,24,0.1148
+POS (noun/verb),BabyLM,znhoughton/opt-babylm-1.3B-20eps-seed964,pretrained_noposemb,yes,zeroed,24,0.0354
 POS (noun/verb),BabyLM,znhoughton/opt-babylm-1.3B-20eps-seed964,random,no,intact,24,0.0882
+POS (noun/verb),BabyLM,znhoughton/opt-babylm-1.3B-20eps-seed964,random_noposemb,no,zeroed,24,0.0988
 POS (noun/verb),BabyLM,znhoughton/opt-babylm-125m-20eps-seed964,pretrained,yes,intact,12,0.1049
+POS (noun/verb),BabyLM,znhoughton/opt-babylm-125m-20eps-seed964,pretrained_noposemb,yes,zeroed,12,0.0337
 POS (noun/verb),BabyLM,znhoughton/opt-babylm-125m-20eps-seed964,random,no,intact,12,0.0782
+POS (noun/verb),BabyLM,znhoughton/opt-babylm-125m-20eps-seed964,random_noposemb,no,zeroed,12,0.0984
 POS (noun/verb),BabyLM,znhoughton/opt-babylm-350m-20eps-seed964,pretrained,yes,intact,24,0.0915
+POS (noun/verb),BabyLM,znhoughton/opt-babylm-350m-20eps-seed964,pretrained_noposemb,yes,zeroed,24,0.0228
 POS (noun/verb),BabyLM,znhoughton/opt-babylm-350m-20eps-seed964,random,no,intact,24,0.0237
+POS (noun/verb),BabyLM,znhoughton/opt-babylm-350m-20eps-seed964,random_noposemb,no,zeroed,24,0.0166
 POS (noun/verb),Pythia,EleutherAI/pythia-1.4b,pretrained,yes,intact,24,0.244
 POS (noun/verb),Pythia,EleutherAI/pythia-1.4b,random,no,intact,24,0.0131
 POS (noun/verb),Pythia,EleutherAI/pythia-160m,pretrained,yes,intact,12,0.232
@@ -21,11 +27,17 @@ metaphor,Pythia,EleutherAI/pythia-1.4b,pretrained,yes,intact,24,0.0776
 metaphor,Pythia,EleutherAI/pythia-160m,pretrained,yes,intact,12,0.0574
 metaphor,Pythia,EleutherAI/pythia-410m,pretrained,yes,intact,24,0.0724
 role,BabyLM,znhoughton/opt-babylm-1.3B-20eps-seed964,pretrained,yes,intact,24,0.0721
+role,BabyLM,znhoughton/opt-babylm-1.3B-20eps-seed964,pretrained_noposemb,yes,zeroed,24,0.0515
 role,BabyLM,znhoughton/opt-babylm-1.3B-20eps-seed964,random,no,intact,24,0.1189
+role,BabyLM,znhoughton/opt-babylm-1.3B-20eps-seed964,random_noposemb,no,zeroed,24,0.1064
 role,BabyLM,znhoughton/opt-babylm-125m-20eps-seed964,pretrained,yes,intact,12,0.0456
+role,BabyLM,znhoughton/opt-babylm-125m-20eps-seed964,pretrained_noposemb,yes,zeroed,12,0.0433
 role,BabyLM,znhoughton/opt-babylm-125m-20eps-seed964,random,no,intact,12,0.0923
+role,BabyLM,znhoughton/opt-babylm-125m-20eps-seed964,random_noposemb,no,zeroed,12,0.0891
 role,BabyLM,znhoughton/opt-babylm-350m-20eps-seed964,pretrained,yes,intact,24,0.0443
+role,BabyLM,znhoughton/opt-babylm-350m-20eps-seed964,pretrained_noposemb,yes,zeroed,24,0.0216
 role,BabyLM,znhoughton/opt-babylm-350m-20eps-seed964,random,no,intact,24,0.048
+role,BabyLM,znhoughton/opt-babylm-350m-20eps-seed964,random_noposemb,no,zeroed,24,0.0266
 role,Pythia,EleutherAI/pythia-1.4b,pretrained,yes,intact,24,0.0944
 role,Pythia,EleutherAI/pythia-1.4b,random,no,intact,24,0.021
 role,Pythia,EleutherAI/pythia-160m,pretrained,yes,intact,12,0.0934
