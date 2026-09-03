@@ -1,0 +1,106 @@
+Loaded 41095 sentences from data/ud/en_all-ud.conllu
+POSABL	model=znhoughton/opt-babylm-350m-20eps-seed964	init=pretrained_noposemb	zeroed=decoder.embed_positions[1026x1024]	drift=0.000e+00
+Loaded 41095 sentences from data/ud/en_all-ud.conllu
+POSABL	model=znhoughton/opt-babylm-350m-20eps-seed964	init=pretrained_noposemb	zeroed=decoder.embed_positions[1026x1024]	drift=0.000e+00
+    znhoughton/opt-babylm-350m-20eps-seed964 [pretrained_noposemb]:   4.3%  12840/300000 tokens  144 tok/s  eta 33m11s
+    znhoughton/opt-babylm-350m-20eps-seed964 [pretrained_noposemb]:   7.5%  22642/300000 tokens  147 tok/s  eta 31m21s
+    znhoughton/opt-babylm-350m-20eps-seed964 [pretrained_noposemb]:  11.9%  35559/300000 tokens  161 tok/s  eta 27m20s
+    znhoughton/opt-babylm-350m-20eps-seed964 [pretrained_noposemb]:  16.1%  48188/300000 tokens  165 tok/s  eta 25m25s
+    znhoughton/opt-babylm-350m-20eps-seed964 [pretrained_noposemb]:  20.6%  61709/300000 tokens  169 tok/s  eta 23m30s
+    znhoughton/opt-babylm-350m-20eps-seed964 [pretrained_noposemb]:  24.2%  72531/300000 tokens  170 tok/s  eta 22m17s
+    znhoughton/opt-babylm-350m-20eps-seed964 [pretrained_noposemb]:  28.6%  85688/300000 tokens  172 tok/s  eta 20m45s
+    znhoughton/opt-babylm-350m-20eps-seed964 [pretrained_noposemb]:  31.8%  95340/300000 tokens  170 tok/s  eta 20m06s
+    znhoughton/opt-babylm-350m-20eps-seed964 [pretrained_noposemb]:  36.0%  108018/300000 tokens  170 tok/s  eta 18m48s
+    znhoughton/opt-babylm-350m-20eps-seed964 [pretrained_noposemb]:  40.6%  121797/300000 tokens  173 tok/s  eta 17m08s
+    znhoughton/opt-babylm-350m-20eps-seed964 [pretrained_noposemb]:  46.1%  138220/300000 tokens  179 tok/s  eta 15m04s
+    znhoughton/opt-babylm-350m-20eps-seed964 [pretrained_noposemb]:  51.8%  155483/300000 tokens  186 tok/s  eta 12m57s
+    znhoughton/opt-babylm-350m-20eps-seed964 [pretrained_noposemb]:  57.3%  172033/300000 tokens  190 tok/s  eta 11m13s
+    znhoughton/opt-babylm-350m-20eps-seed964 [pretrained_noposemb]:  62.9%  188572/300000 tokens  191 tok/s  eta 9m42s
+    znhoughton/opt-babylm-350m-20eps-seed964 [pretrained_noposemb]:  68.4%  205079/300000 tokens  194 tok/s  eta 8m09s
+    znhoughton/opt-babylm-350m-20eps-seed964 [pretrained_noposemb]:  72.6%  217901/300000 tokens  194 tok/s  eta 7m03s
+    znhoughton/opt-babylm-350m-20eps-seed964 [pretrained_noposemb]:  77.9%  233806/300000 tokens  195 tok/s  eta 5m40s
+    znhoughton/opt-babylm-350m-20eps-seed964 [pretrained_noposemb]:  82.4%  247314/300000 tokens  195 tok/s  eta 4m30s
+    znhoughton/opt-babylm-350m-20eps-seed964 [pretrained_noposemb]:  86.7%  260086/300000 tokens  195 tok/s  eta 3m24s
+    znhoughton/opt-babylm-350m-20eps-seed964 [pretrained_noposemb]:  91.1%  273354/300000 tokens  195 tok/s  eta 2m16s
+    znhoughton/opt-babylm-350m-20eps-seed964 [pretrained_noposemb]:  95.7%  287013/300000 tokens  190 tok/s  eta 1m08s
+    znhoughton/opt-babylm-350m-20eps-seed964 [pretrained_noposemb]:  99.1%  297169/300000 tokens  189 tok/s  eta 0m15s
+    znhoughton/opt-babylm-350m-20eps-seed964 [pretrained_noposemb]: 100.0%  300000/300000 tokens  189 tok/s  eta 0m00s
+    znhoughton/opt-babylm-350m-20eps-seed964 [pretrained_noposemb]: extraction done, compressing 31 GB to znhoughton__opt-babylm-350m-20eps-seed964__pretrained_noposemb.npz (single-threaded, GPU idle, expect many minutes)
+    znhoughton/opt-babylm-350m-20eps-seed964 [pretrained_noposemb]: compressed in 34.6 min -> 28.4 GB
+  [pretrained] znhoughton/opt-babylm-350m-20eps-seed964 (babylm/350m): streamed 300000 tokens -> data/llm_reps/znhoughton__opt-babylm-350m-20eps-seed964__pretrained_noposemb.npz
+POSABL	model=znhoughton/opt-babylm-350m-20eps-seed964	init=random_noposemb	zeroed=decoder.embed_positions[1026x1024]	drift=0.000e+00
+    znhoughton/opt-babylm-350m-20eps-seed964 [random_noposemb]:  10.8%  32550/300000 tokens  220 tok/s  eta 20m15s
+    znhoughton/opt-babylm-350m-20eps-seed964 [random_noposemb]:  16.1%  48188/300000 tokens  213 tok/s  eta 19m44s
+    znhoughton/opt-babylm-350m-20eps-seed964 [random_noposemb]:  23.0%  68979/300000 tokens  239 tok/s  eta 16m06s
+    znhoughton/opt-babylm-350m-20eps-seed964 [random_noposemb]:  28.6%  85688/300000 tokens  238 tok/s  eta 15m02s
+    znhoughton/opt-babylm-350m-20eps-seed964 [random_noposemb]:  36.0%  108018/300000 tokens  251 tok/s  eta 12m45s
+    znhoughton/opt-babylm-350m-20eps-seed964 [random_noposemb]:  42.8%  128511/300000 tokens  260 tok/s  eta 11m00s
+    znhoughton/opt-babylm-350m-20eps-seed964 [random_noposemb]:  48.3%  144975/300000 tokens  257 tok/s  eta 10m02s
+    znhoughton/opt-babylm-350m-20eps-seed964 [random_noposemb]:  55.1%  165160/300000 tokens  260 tok/s  eta 8m37s
+    znhoughton/opt-babylm-350m-20eps-seed964 [random_noposemb]:  61.7%  184990/300000 tokens  266 tok/s  eta 7m12s
+    znhoughton/opt-babylm-350m-20eps-seed964 [random_noposemb]:  68.4%  205079/300000 tokens  270 tok/s  eta 5m51s
+    znhoughton/opt-babylm-350m-20eps-seed964 [random_noposemb]:  74.6%  223904/300000 tokens  272 tok/s  eta 4m39s
+    znhoughton/opt-babylm-350m-20eps-seed964 [random_noposemb]:  81.3%  243861/300000 tokens  275 tok/s  eta 3m23s
+    znhoughton/opt-babylm-350m-20eps-seed964 [random_noposemb]:  87.9%  263672/300000 tokens  278 tok/s  eta 2m10s
+    znhoughton/opt-babylm-350m-20eps-seed964 [random_noposemb]:  94.5%  283485/300000 tokens  276 tok/s  eta 0m59s
+    znhoughton/opt-babylm-350m-20eps-seed964 [random_noposemb]: 100.0%  300000/300000 tokens  276 tok/s  eta 0m00s
+    znhoughton/opt-babylm-350m-20eps-seed964 [random_noposemb]: extraction done, compressing 31 GB to znhoughton__opt-babylm-350m-20eps-seed964__random_noposemb.npz (single-threaded, GPU idle, expect many minutes)
+    znhoughton/opt-babylm-350m-20eps-seed964 [random_noposemb]: compressed in 28.4 min -> 28.4 GB
+  [    random] znhoughton/opt-babylm-350m-20eps-seed964 (babylm/350m): streamed 300000 tokens -> data/llm_reps/znhoughton__opt-babylm-350m-20eps-seed964__random_noposemb.npz
+POSABL	model=EleutherAI/pythia-410m	init=pretrained_noposemb	zeroed=NONE	drift=0.000e+00
+    EleutherAI/pythia-410m [pretrained_noposemb]:   4.3%  12840/300000 tokens  148 tok/s  eta 32m22s
+    EleutherAI/pythia-410m [pretrained_noposemb]:   9.7%  29071/300000 tokens  190 tok/s  eta 23m42s
+    EleutherAI/pythia-410m [pretrained_noposemb]:  11.9%  35559/300000 tokens  151 tok/s  eta 29m08s
+    EleutherAI/pythia-410m [pretrained_noposemb]:  15.0%  44960/300000 tokens  145 tok/s  eta 29m19s
+    EleutherAI/pythia-410m [pretrained_noposemb]:  19.5%  58486/300000 tokens  155 tok/s  eta 25m55s
+    EleutherAI/pythia-410m [pretrained_noposemb]:  24.2%  72531/300000 tokens  155 tok/s  eta 24m23s
+    EleutherAI/pythia-410m [pretrained_noposemb]:  27.4%  82068/300000 tokens  155 tok/s  eta 23m22s
+    EleutherAI/pythia-410m [pretrained_noposemb]:  31.8%  95340/300000 tokens  155 tok/s  eta 21m57s
+    EleutherAI/pythia-410m [pretrained_noposemb]:  33.9%  101743/300000 tokens  148 tok/s  eta 22m22s
+    EleutherAI/pythia-410m [pretrained_noposemb]:  37.2%  111581/300000 tokens  148 tok/s  eta 21m10s
+    EleutherAI/pythia-410m [pretrained_noposemb]:  40.6%  121811/300000 tokens  148 tok/s  eta 20m06s
+    EleutherAI/pythia-410m [pretrained_noposemb]:  44.9%  134742/300000 tokens  150 tok/s  eta 18m18s
+    EleutherAI/pythia-410m [pretrained_noposemb]:  49.6%  148850/300000 tokens  154 tok/s  eta 16m20s
+    EleutherAI/pythia-410m [pretrained_noposemb]:  53.9%  161839/300000 tokens  155 tok/s  eta 14m51s
+    EleutherAI/pythia-410m [pretrained_noposemb]:  58.4%  175320/300000 tokens  158 tok/s  eta 13m10s
+    EleutherAI/pythia-410m [pretrained_noposemb]:  63.9%  191739/300000 tokens  162 tok/s  eta 11m09s
+    EleutherAI/pythia-410m [pretrained_noposemb]:  67.3%  201983/300000 tokens  161 tok/s  eta 10m09s
+    EleutherAI/pythia-410m [pretrained_noposemb]:  70.5%  211516/300000 tokens  159 tok/s  eta 9m15s
+    EleutherAI/pythia-410m [pretrained_noposemb]:  73.6%  220730/300000 tokens  157 tok/s  eta 8m25s
+    EleutherAI/pythia-410m [pretrained_noposemb]:  77.9%  233820/300000 tokens  156 tok/s  eta 7m03s
+    EleutherAI/pythia-410m [pretrained_noposemb]:  83.6%  250676/300000 tokens  159 tok/s  eta 5m10s
+    EleutherAI/pythia-410m [pretrained_noposemb]:  89.0%  266960/300000 tokens  162 tok/s  eta 3m24s
+    EleutherAI/pythia-410m [pretrained_noposemb]:  92.2%  276643/300000 tokens  162 tok/s  eta 2m24s
+    EleutherAI/pythia-410m [pretrained_noposemb]:  96.8%  290363/300000 tokens  164 tok/s  eta 0m58s
+    EleutherAI/pythia-410m [pretrained_noposemb]: 100.0%  300000/300000 tokens  165 tok/s  eta 0m00s
+    EleutherAI/pythia-410m [pretrained_noposemb]: extraction done, compressing 31 GB to EleutherAI__pythia-410m__pretrained_noposemb.npz (single-threaded, GPU idle, expect many minutes)
+    EleutherAI/pythia-410m [pretrained_noposemb]: compressed in 44.2 min -> 28.1 GB
+  [pretrained] EleutherAI/pythia-410m (pythia/350m): streamed 300000 tokens -> data/llm_reps/EleutherAI__pythia-410m__pretrained_noposemb.npz
+POSABL	model=EleutherAI/pythia-410m	init=random_noposemb	zeroed=NONE	drift=0.000e+00
+    EleutherAI/pythia-410m [random_noposemb]:   6.6%  19671/300000 tokens  121 tok/s  eta 38m32s
+    EleutherAI/pythia-410m [random_noposemb]:  10.8%  32550/300000 tokens  139 tok/s  eta 32m08s
+    EleutherAI/pythia-410m [random_noposemb]:  15.0%  44960/300000 tokens  149 tok/s  eta 28m28s
+    EleutherAI/pythia-410m [random_noposemb]:  18.4%  55197/300000 tokens  152 tok/s  eta 26m47s
+    EleutherAI/pythia-410m [random_noposemb]:  23.0%  68979/300000 tokens  152 tok/s  eta 25m24s
+    EleutherAI/pythia-410m [random_noposemb]:  28.6%  85688/300000 tokens  161 tok/s  eta 22m10s
+    EleutherAI/pythia-410m [random_noposemb]:  32.8%  98284/300000 tokens  160 tok/s  eta 21m00s
+    EleutherAI/pythia-410m [random_noposemb]:  37.2%  111581/300000 tokens  162 tok/s  eta 19m23s
+    EleutherAI/pythia-410m [random_noposemb]:  42.8%  128525/300000 tokens  171 tok/s  eta 16m43s
+    EleutherAI/pythia-410m [random_noposemb]:  46.1%  138234/300000 tokens  169 tok/s  eta 15m58s
+    EleutherAI/pythia-410m [random_noposemb]:  49.6%  148850/300000 tokens  169 tok/s  eta 14m54s
+    EleutherAI/pythia-410m [random_noposemb]:  53.9%  161839/300000 tokens  171 tok/s  eta 13m26s
+    EleutherAI/pythia-410m [random_noposemb]:  55.1%  165174/300000 tokens  163 tok/s  eta 13m49s
+    EleutherAI/pythia-410m [random_noposemb]:  59.5%  178469/300000 tokens  164 tok/s  eta 12m19s
+    EleutherAI/pythia-410m [random_noposemb]:  62.9%  188586/300000 tokens  164 tok/s  eta 11m21s
+    EleutherAI/pythia-410m [random_noposemb]:  67.3%  201983/300000 tokens  165 tok/s  eta 9m53s
+    EleutherAI/pythia-410m [random_noposemb]:  72.6%  217915/300000 tokens  170 tok/s  eta 8m03s
+    EleutherAI/pythia-410m [random_noposemb]:  76.8%  230499/300000 tokens  172 tok/s  eta 6m44s
+    EleutherAI/pythia-410m [random_noposemb]:  82.4%  247328/300000 tokens  175 tok/s  eta 5m00s
+    EleutherAI/pythia-410m [random_noposemb]:  86.7%  260100/300000 tokens  177 tok/s  eta 3m46s
+    EleutherAI/pythia-410m [random_noposemb]:  89.0%  266960/300000 tokens  174 tok/s  eta 3m09s
+    EleutherAI/pythia-410m [random_noposemb]:  90.0%  270052/300000 tokens  168 tok/s  eta 2m58s
+    EleutherAI/pythia-410m [random_noposemb]:  91.1%  273368/300000 tokens  160 tok/s  eta 2m46s
+    EleutherAI/pythia-410m [random_noposemb]:  93.3%  279970/300000 tokens  158 tok/s  eta 2m07s
+    EleutherAI/pythia-410m [random_noposemb]:  96.8%  290363/300000 tokens  158 tok/s  eta 1m01s
+    EleutherAI/pythia-410m [random_noposemb]: 100.0%  300000/300000 tokens  159 tok/s  eta 0m00s
+    EleutherAI/pythia-410m [random_noposemb]: extraction done, compressing 31 GB to EleutherAI__pythia-410m__random_noposemb.npz (single-threaded, GPU idle, expect many minutes)

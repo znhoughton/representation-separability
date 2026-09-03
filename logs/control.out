@@ -1,0 +1,8 @@
+nohup: ignoring input
+
+[1m== Preflight[0m
+  free space:  69356 GB   (need roughly 400 GB)
+  gpu:         NVIDIA A100 80GB PCIe, 81920 MiB, 0 MiB
+
+[1m== Extracting UD representations with positions zeroed (POS and role)[0m
+  three processes running (pids 26519 26520 26521); tailing logs/positions_zeroed/ud_*.log

@@ -1,0 +1,11 @@
+model,init,zeroed,drift
+EleutherAI/pythia-160m,pretrained_noposemb,"NONE",0.000e+00
+EleutherAI/pythia-160m,random_noposemb,"NONE",0.000e+00
+EleutherAI/pythia-410m,pretrained_noposemb,"NONE",0.000e+00
+EleutherAI/pythia-410m,random_noposemb,"NONE",0.000e+00
+znhoughton/opt-babylm-1.3B-20eps-seed964,pretrained_noposemb,"decoder.embed_positions[1026x2048]",0.000e+00
+znhoughton/opt-babylm-1.3B-20eps-seed964,random_noposemb,"decoder.embed_positions[1026x2048]",0.000e+00
+znhoughton/opt-babylm-125m-20eps-seed964,pretrained_noposemb,"decoder.embed_positions[1026x768]",0.000e+00
+znhoughton/opt-babylm-125m-20eps-seed964,random_noposemb,"decoder.embed_positions[1026x768]",0.000e+00
+znhoughton/opt-babylm-350m-20eps-seed964,pretrained_noposemb,"decoder.embed_positions[1026x1024]",0.000e+00
+znhoughton/opt-babylm-350m-20eps-seed964,random_noposemb,"decoder.embed_positions[1026x1024]",0.000e+00
