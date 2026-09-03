@@ -1,5 +1,9 @@
 # Representation Separability — Method
 
+> **Note.** This document records earlier work. The scripts it names now live under
+> `archive/scripts/` (gitignored, kept on disk and in git history); the scripts that
+> produce the paper's results are listed in the README.
+
 Follow-up to *Exemplars in Disguise* (Houghton & Kapatsinski). This document is the
 canonical reference for the current pipeline. (It supersedes an earlier version that
 described a linear α-knob experiment with Models A/B/C and a raw variance ratio; that

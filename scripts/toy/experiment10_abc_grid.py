@@ -1,6 +1,6 @@
 """Experiment 1 (rebuilt): grid over the three effect sizes, measured with the LLM code path.
 
-WHY THIS REPLACES experiment9_unified_grid.py
+WHY THIS REPLACES experiment9_unified_grid.py (archived)
 The old toy gave every (form, class) LEXEME its own free embedding, which made it a lookup
 table rather than anything like a language model, and forced two workarounds that the LLM
 analysis does not use:

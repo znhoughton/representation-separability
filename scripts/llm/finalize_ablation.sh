@@ -4,10 +4,9 @@
 # deleting the ablated representations. Everything here reads logs and measurement CSVs -- it
 # never touches a GPU and never re-extracts, so it takes seconds and is safe to re-run.
 #
-# It lives apart from positions_zeroed_control.sh because the expensive part of that script
-# (extraction, then measurement) can complete under a version that lacked these stages, and the
-# fix should not be "run the multi-hour script again". The control script calls into this file so
-# there is only one implementation of each stage.
+# It lives apart from run_ablation.sh so the post-processing can be redone on its own: the
+# expensive stages (extraction, then measurement) can succeed while the summary does not, and
+# the fix should not be "run the multi-hour script again". These stages read CSVs and logs only.
 #
 #   bash scripts/llm/finalize_ablation.sh            # gate, summary, cleanup
 #   bash scripts/llm/finalize_ablation.sh gate       # just the verification gate (+ its CSV)
@@ -19,7 +18,7 @@ set -euo pipefail
 
 REPS_DIR="${REPS_DIR:-data/llm_reps}"
 VUA_DIR="${VUA_DIR:-data/vua_reps}"
-LOGDIR="${LOGDIR:-logs/positions_zeroed}"
+LOGDIR="${LOGDIR:-logs/ablation}"
 CHECK_CSV="${CHECK_CSV:-data/position_ablation_check.csv}"
 PY="${PY:-python}"
 
@@ -132,8 +131,8 @@ for r in sorted(out, key=lambda r: (r["construction"], r["family"], r["model"], 
 print()
 for p in missing:
     print(f"  (not measured: {p})")
-print("  Read the OPT rows with trained=no: if `zeroed` is far below `intact`, the untrained")
-print("  interaction was positional and the before-training control is repaired.")
+print("  Compare intact against zeroed within each model. The paper reads this as the portable")
+print("  fraction, class / (class + interaction), not as the interaction's raw size.")
 print("  -> data/position_ablation_2x2.csv")
 SUMMARY
 }
@@ -171,11 +170,11 @@ stage_cleanup() {
   FREED=$(du -ch "$REPS_DIR"/*_noposemb.npz "$VUA_DIR"/*_noposemb.npz 2>/dev/null | tail -1 | cut -f1) || true
   rm -f "$REPS_DIR"/*_noposemb.npz "$VUA_DIR"/*_noposemb.npz
   echo "  removed $N_DEL file(s), reclaimed ${FREED:-0}"
-  echo "  (KEEP_REPS=1 to retain them; positions_zeroed_control.sh regenerates them)"
+  echo "  (KEEP_REPS=1 to retain them; run_ablation.sh regenerates them)"
 }
 
-# Sourced by positions_zeroed_control.sh, which calls the stages at its own points -- the gate has
-# to run before measurement, cleanup after. Only dispatch when executed directly.
+# Can also be sourced, so a caller can run the stages at its own points -- a gate belongs before
+# measurement, cleanup after. Only dispatch when executed directly.
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
   case "${1:-all}" in
     gate)     stage_gate ;;

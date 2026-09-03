@@ -124,15 +124,17 @@ llm <- bind_rows(
     transmute(model, layer, d, n_items, construction = "POS (noun/verb)",
               size_item = std_size_item, size_class = std_size_class,
               size_int = std_size_interaction, sig = std_sig_interaction,
-              leak = std_leak_item_into_class),
+              leak = std_leak_item_into_class, leak_int = std_leak_int_into_margins),
   rd("llm_role.csv") |>
     transmute(model, layer, d, n_items, construction = "role (subject/object)",
               size_item, size_class, size_int = size_interaction,
-              sig = sig_interaction, leak = leak_item_into_class),
+              sig = sig_interaction, leak = leak_item_into_class,
+              leak_int = leak_int_into_margins),
   rd("llm_metaphor.csv") |>
     transmute(model, layer, d, n_items, construction = "metaphor (literal/figurative)",
               size_item, size_class, size_int = size_interaction,
-              sig = sig_interaction, leak = leak_item_into_class)) |>
+              sig = sig_interaction, leak = leak_item_into_class,
+              leak_int = leak_int_into_margins)) |>
   left_join(MODELS, by = "model") |>
   mutate(construction = factor(construction, c("POS (noun/verb)", "role (subject/object)",
                                                "metaphor (literal/figurative)")),
@@ -331,24 +333,33 @@ ggplot(plt, aes(depth, share, colour = family, group = interaction(family, size)
 
 ```{r}
 #| label: tbl-llm
-#| tbl-cap: "Experiment 2, at each model's deepest layer. Item-class overlap is the fraction of the item effect lying along the class direction, so 0.004 means that projecting out the class leaves 99.6% of item identity intact. The portable fraction is the class effect's share of the class-relevant structure, `size_class / (size_class + size_interaction)`: it asks how much of what distinguishes the two class levels is a direction shared across words, rather than specific to each word."
+#| tbl-cap: "Experiment 2, at each model's deepest layer. The two overlaps are the two ways separability can fail by orientation, each with its own chance level in parentheses: item-class overlap is the fraction of the item effect lying in the class subspace (chance $= r_{\\text{class}}/d$), and interaction overlap is the fraction of the interaction lying in the span of the two main effects (chance $= r_{\\text{margin}}/d$, much higher because that subspace has rank of order the item count). The portable fraction is the class effect's share of the class-relevant structure, `size_class / (size_class + size_interaction)`: how much of what distinguishes the two class levels is a direction shared across words rather than specific to each word."
 llm |> group_by(construction, model) |>
   filter(layer == max(layer)) |> ungroup() |>
-  mutate(portable = size_class / (size_class + size_int)) |>
+  mutate(portable = size_class / (size_class + size_int),
+         # chance for each overlap is the target subspace's rank over the width: the class
+         # subspace has rank C-1 = 1, the marginal subspace (C-1) + (I-1).
+         ch_leak = 1 / d, ch_int = (1 + n_items - 1) / d) |>
   group_by(construction) |>
   summarise(`item-class overlap` = {v <- median(leak, na.rm = TRUE)
-               if (is.na(v)) "---" else sprintf("%.3f", v)},
+               if (is.na(v)) "---" else sprintf("%.3f (%.3f)", v, median(ch_leak))},
+            `interaction overlap` = {v <- median(leak_int, na.rm = TRUE)
+               if (is.na(v)) "---" else sprintf("%.3f (%.3f)", v, median(ch_int))},
             `class effect` = sprintf("%.3f", median(size_class)),
             `interaction` = sprintf("%.3f", median(size_int)),
             `portable fraction` = sprintf("%.2f [%.2f, %.2f]", median(portable),
                                           min(portable), max(portable)),
             .groups = "drop") |>
   rename(distinction = construction) |>
-  kbl(booktabs = TRUE, align = "lrrrr", linesep = "") |>
+  kbl(booktabs = TRUE, align = "lrrrrr", linesep = "") |>
   kable_styling(latex_options = c("HOLD_position"), font_size = 8)
 ```
 
-**Where the two components both exist, they sit on separate axes.** At the deepest layer, item-class overlap runs `r g(0.0032, 4)` to `r g(0.0067, 4)` for part of speech and `r g(0.0025, 4)` to `r g(0.0062, 4)` for grammatical role, so projecting out the class direction leaves better than 99% of the item effect intact. Those values are two to seven times what a randomly oriented effect would give at these widths, which Appendix \ref{sec-appendix-validate} measures directly rather than deriving, so they are not exactly zero. But they are small enough that these representations plainly do not achieve class structure by borrowing the directions that carry word identity. This is the one place the answer is cleanly "separable," and it is worth saying so rather than straining against it.
+**The two main effects sit on separate axes.** At the deepest layer, item-class overlap runs `r g(0.0032, 4)` to `r g(0.0067, 4)` for part of speech and `r g(0.0025, 4)` to `r g(0.0062, 4)` for grammatical role, so projecting out the class direction leaves better than 99% of the item effect intact. Those values are two to seven times what a randomly oriented effect would give at these widths, which Appendix \ref{sec-appendix-validate} measures directly rather than deriving, so they are not exactly zero. But they are small enough that these representations plainly do not achieve class structure by borrowing the directions that carry word identity. Where a shared class direction exists, it is its own direction.
+
+**The interaction does not have axes of its own, however.** This is the second way orientation can fail, and it is the one that matters for whether a third component could simply be added to the description and separability recovered in a wider sense. It cannot: `r g(0.191, 3)` of the interaction lies in the span of the two main effects for part of speech, `r g(0.131, 3)` for role and `r g(0.227, 3)` for metaphor, against chance levels of `r g(0.076, 3)`, `r g(0.048, 3)` and `r g(0.176, 3)` (@tbl-llm). The components are orthogonal *as sources* by construction, so this is not guaranteed by the decomposition and is not a restatement of it: it says the item-by-class term reuses the very directions that carry item identity and class membership. A representation in which the third component occupied a subspace of its own would be entangled in an accounting sense but not a geometric one. These are entangled in both.
+
+Read together, the two overlaps say something more specific than "not separable." The failure is not that item and class have been collapsed onto shared axes; those remain distinct. It is that the part of class structure which is specific to each word is written in the same directions as everything else.
 
 For metaphor the question does not arise. The overlap is not reported at **every** layer of every model, because the class effect never rises above the level at which an orientation is worth reporting. That is the measure declining to describe the direction of something that is barely there, and it is itself the first indication of how little of metaphoricity is carried by a shared direction.
 

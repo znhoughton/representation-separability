@@ -456,7 +456,7 @@ per-lexeme embedding into $h = \phi(W_1 e)$, $\text{logits} = W_2 h$, trained on
 cross-entropy rather than sampled tokens. The measured representation is $h$, PCA-projected to the
 top `rank` components.
 
-Grid (`experiment9_unified_grid.py`): $r_c \in \{1,2,4,8\} \times r_i \in \{1,2,4,8,16,32\} \times
+Grid (`archive/scripts/toy/experiment9_unified_grid.py`, superseded by `experiment10_abc_grid.py`): $r_c \in \{1,2,4,8\} \times r_i \in \{1,2,4,8,16,32\} \times
 d \in \{16,32,64,128\} \times f \in \{0,.25,.5,.75,1\} \times \{\text{identity},\text{relu}\} \times
 5$ seeds $= 4800$ cells, at $I = 250$, $C = 16$, $V = 1000$.
 

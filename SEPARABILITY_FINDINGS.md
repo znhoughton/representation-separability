@@ -1,5 +1,9 @@
 # Separability of class from item in learned distributed representations
 
+> **Note.** This document records earlier work. The scripts it names now live under
+> `archive/scripts/` (gitignored, kept on disk and in git history); the scripts that
+> produce the paper's results are listed in the README.
+
 *Follow-up to "Exemplars in Disguise" (Houghton & Kapatsinski). Updated 2026-08-24.*
 
 **Question.** When a model learns a distributed representation of a lexeme, does it keep

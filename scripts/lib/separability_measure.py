@@ -5,7 +5,7 @@ validation suite, llm_extract) so there are never divergent copies to drift out 
 Class subspace = top directions of the RAW between-class scatter (participation-ratio rank).
 No whitening (whitening amplifies low-variance incidental directions -> over-counts). Uses
 labels only, so it generalizes to LLM POS. Validated against ground truth on the toy AND by
-an independent functional method (see validate_separability.py) before it is trusted.
+an independent functional method (see archive/scripts/toy/validate_separability.py) before it is trusted.
 
 separability(): 0 = item separable from class (item avoids the class subspace),
                 1 = chance overlap, >1 = item variance concentrated in the class subspace.
@@ -37,7 +37,7 @@ def separability(hid, cat_of, n_cat, item_of, subspace=None, mode="perdim"):
       "perdim" (default, REPORTED): frac / k -- fraction PER class dimension. This is the only
           variant that is BOTH d-invariant AND robust to k-misestimation (the participation
           ratio can find k=1 where the truth is 2; raw frac then undercounts, but frac/k does
-          not -- see validate_separability convergent test). It equals the old normalized sep
+          not -- see the archived validate_separability convergent test). It equals the old normalized sep
           with the spurious d factor removed (old_sep = frac*d/k = perdim*d).
       "raw": frac itself -- directly interpretable, but k-sensitive (undercounts when k is), so
           only comparable at fixed/known k.
