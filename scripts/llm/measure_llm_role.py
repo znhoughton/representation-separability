@@ -43,7 +43,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 for _sub in ("lib", "llm", "toy"):
     sys.path.insert(0, str(REPO_ROOT / "scripts" / _sub))
 from unified_separability import unified_split  # noqa: E402
-from llm_extract import parse_conllu, derive_labels  # noqa: E402
+from llm_extract import parse_conllu, derive_labels, aligned_labels  # noqa: E402
 
 POS = "NOUN"
 CLASSES = ("nsubj", "obj")
@@ -59,15 +59,9 @@ def measure_file(path, conllu, min_cell, layers):
     # were zeroed. Without it the ablated and unablated runs of one model are indistinguishable
     # in the output, and the resume check below treats them as the same work.
     init = str(z["init"]) if "init" in z.files else "pretrained"
-    lab = derive_labels(model, list(parse_conllu(conllu)))     # tokenizer-only re-derivation
-    if len(lab["upos"]) < n:
-        raise RuntimeError(f"{model}: derived {len(lab['upos'])} < saved {n} tokens")
-    du, dl = lab["upos"][:n], lab["lemma"][:n]
-    if not (np.array_equal(du, up) and np.array_equal(dl, lem)):
-        nmatch = int((du == up).sum())
-        raise RuntimeError(f"{model}: ALIGNMENT MISMATCH ({nmatch}/{n} upos match) -- order not reproduced")
-    form = np.array([f.lower() for f in lab["form"][:n]])      # item = surface form (same token both roles)
-    deprel = lab["deprel"][:n]                                  # class = base deprel
+    lab, _bs = aligned_labels(z, conllu)                       # reproduces the extraction order
+    form = np.array([f.lower() for f in lab["form"]])          # item = surface form (same token both roles)
+    deprel = lab["deprel"]                                      # class = base deprel
     layer_idxs = [int(li) for li in z["layer_idxs"]]
     rows = []
     b = lambda v: "" if v is None else v

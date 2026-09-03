@@ -63,13 +63,9 @@ def _item_labels(z, item_key, conllu):
         return z["lemma"]
     if not conllu:
         raise SystemExit("--conllu is required with --item-key form")
-    from llm_extract import parse_conllu, derive_labels
-    upos, lemma, model = z["upos"], z["lemma"], str(z["model"])
-    n = len(upos)
-    lab = derive_labels(model, list(parse_conllu(conllu)))
-    if not (np.array_equal(lab["upos"][:n], upos) and np.array_equal(lab["lemma"][:n], lemma)):
-        raise RuntimeError(f"{model}: re-derived labels do not align with the saved reps")
-    return np.array([f.lower() for f in lab["form"][:n]])
+    from llm_extract import aligned_labels
+    lab, _bs = aligned_labels(z, conllu)      # reproduces the extraction order, or raises
+    return np.array([f.lower() for f in lab["form"]])
 
 
 def measure_file(path, classes=("NOUN", "VERB"), min_cell=10, layers=None,

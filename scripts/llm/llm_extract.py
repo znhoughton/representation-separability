@@ -119,6 +119,31 @@ def derive_labels(model_name, sentences, seed=0, max_length=256, batch_size=32):
                 number=np.array(number), tense=np.array(tense), deprel=np.array(deprel))
 
 
+def aligned_labels(z, conllu, candidates=(32, 128, 192, 256, 64, 16, 8)):
+    """Re-derive per-token labels in the SAME order the reps were extracted in, and verify it.
+
+    Order depends on the batch size (each batch is length-sorted internally, and the max_tokens
+    cutoff therefore falls in a different place). Files written after this change record the
+    batch size; older ones do not, so their order is identified by trying the sizes actually used
+    here and keeping the one whose upos/lemma reproduce exactly. Raises if none does, rather than
+    returning labels that are silently misaligned with the representations."""
+    upos, lemma, model = z["upos"], z["lemma"], str(z["model"])
+    n = len(upos)
+    sents = list(parse_conllu(conllu))
+    seed = int(z["seed"]) if "seed" in z.files else 0
+    max_length = int(z["max_length"]) if "max_length" in z.files else 256
+    tried = []
+    order = ([int(z["batch_size"])] if "batch_size" in z.files else []) +             [b for b in candidates if "batch_size" not in z.files or b != int(z["batch_size"])]
+    for bs in order:
+        lab = derive_labels(model, sents, seed=seed, max_length=max_length, batch_size=bs)
+        if len(lab["upos"]) < n:
+            tried.append(f"{bs}:short"); continue
+        if np.array_equal(lab["upos"][:n], upos) and np.array_equal(lab["lemma"][:n], lemma):
+            return {k: v[:n] for k, v in lab.items()}, bs
+        tried.append(f"{bs}:{int((lab['upos'][:n] == upos).sum())}/{n}")
+    raise RuntimeError(f"{model}: could not reproduce the extraction order; tried {tried}")
+
+
 # ------------------------------------------------------------- representation
 def extract(model_name, sentences, layer_idxs, max_tokens, device, seed=0, max_length=256,
             random_init=False, batch_size=32):
@@ -313,6 +338,11 @@ def extract_stream_to_npz(out_path, model_name, sentences, layer_idxs, max_token
         save(out_path, upos=upos, lemma=lemma,
              layer_idxs=np.array(sorted(layer_idxs)), model=model_name,
              init=init_tag(random_init, ablate_positions),
+             # Token ORDER is a function of these three: the seed sets the sentence permutation,
+             # batch_size sets the chunks that get length-sorted inside, and max_length sets what
+             # gets truncated. derive_labels must be given the same values or it reproduces a
+             # different order, and the alignment assertion fails on reps that are perfectly good.
+             batch_size=batch_size, seed=seed, max_length=max_length,
              **arrs)
         print(f"    {model_name} [{init_tag(random_init, ablate_positions)}]: compressed in "
               f"{(time.time() - t_z) / 60:.1f} min -> "
