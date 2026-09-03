@@ -437,7 +437,7 @@ Everything here is English, and rests on three distinctions measured in two mode
 
 The one property of the measure that constrains interpretation is that it is invariant to per-dimension rescaling and to rotation but not to arbitrary linear reparameterization, because we do not whiten. Overlap between the item and class effects is therefore relative to the model's own basis. We take that to be the basis of interest, since LayerNorm and the feed-forward nonlinearities act coordinate-wise and a downstream readout operates on the unwhitened space, but a reader who wants a fully gauge-free quantity will not find one here. The component sizes, their growth with depth and their significance do not depend on that choice.
 
-Two things we would like to have done. Comparing each model against its own untrained initialization is a clean test of whether training builds the interaction, and for Pythia it is decisive (Appendix \ref{sec-appendix-random}); for the OPT-BabyLM models it is confounded by learned absolute position embeddings, which are position-dependent before training and so produce an interaction between classes that are not positionally interchangeable. Ablating those embeddings, or a checkpoint sweep, would resolve it. And the interaction captures any systematic within-word difference between the levels, so a distinction that is realized through the contexts a word appears in is measured together with those contexts. For a contextual model we take that to be what representing the distinction consists in rather than a confound, but separating them would need a construction in which the two can be varied independently.
+Two things we would like to have done. Comparing each model against its own untrained initialization is a clean test of whether training builds the interaction, and for Pythia it is decisive (Appendix \ref{sec-appendix-random}); for the OPT-BabyLM models an untrained network already shows a substantial interaction, so the comparison is uninformative there. We tested the explanation that seemed most likely, that it comes from OPT's learned absolute position embeddings, and it does not: zeroing them leaves the untrained interaction intact or larger. A checkpoint sweep would sidestep the question. And the interaction captures any systematic within-word difference between the levels, so a distinction that is realized through the contexts a word appears in is measured together with those contexts. For a contextual model we take that to be what representing the distinction consists in rather than a confound, but separating them would need a construction in which the two can be varied independently.
 
 ```{=latex}
 \bibliography{refs}
@@ -682,7 +682,41 @@ rd("llm_unified_form.csv") |>
 
 For Pythia the comparison is decisive (Table \ref{tbl-random}). An untrained model's interaction is 0.010 to 0.014 at the deepest layer and is flagged at **no layer of any model**, against 0.232 to 0.246 flagged at 85 to 92% of layers once trained. Whatever produces the interaction in those models, training produced it.
 
-For OPT-BabyLM it is not. An untrained model already shows an interaction of 0.024 to 0.088, flagged at up to 96% of layers, which is a large fraction of what the trained model shows. The likely reason is architectural: OPT learns absolute position embeddings, and those are position-dependent from initialization onward, while Pythia's rotary embeddings enter inside attention and contribute nothing at initialization. Nouns and verbs are not positionally interchangeable in a sentence, so a representation that varies with position varies with the class, and the decomposition correctly reports an interaction that has nothing to do with what the model learned.
+For OPT-BabyLM it is not. An untrained model already shows an interaction of 0.024 to 0.088, flagged at up to 96% of layers, which is a large fraction of what the trained model shows.
 
-This is worth stating as a limit on the control rather than a finding about the families. The before-training comparison is available for one architecture and confounded for the other, so it supports the developmental reading where it can be run and is silent where it cannot. A checkpoint sweep would not have this problem, since it compares a model against itself at successive points rather than against an initialization whose positional content differs by design.
+## Is the untrained OPT interaction positional? {#sec-appendix-random-pos}
+
+The natural explanation is architectural. OPT learns absolute position embeddings, which are position-dependent from initialization onward, while Pythia's rotary embeddings enter inside attention and contribute nothing at initialization. Nouns and verbs are not positionally interchangeable in a sentence, so a representation that varies with position varies with the class, and the decomposition would correctly report an interaction that has nothing to do with what the model learned.
+
+We tested this directly by re-extracting with `decoder.embed_positions` zeroed, applied to the trained and the untrained model alike, since the control is a comparison between them and ablating one side only would substitute one asymmetry for another. The ablation was verified per model rather than assumed: with the embedding zeroed, the same token at two different offsets must give identical layer-0 states, and it does, at every OPT model and both initializations (drift $0.0$ to machine precision). Pythia has no such module, so nothing is zeroed there, which is itself the evidence that the architectural difference is positional in origin.
+
+**The explanation is wrong.** Zeroing the position embeddings does not remove the untrained interaction (Table \ref{tbl-posabl}). In two of the three models it *increases* it, from 0.088 to 0.099 and from 0.078 to 0.098; in the third it falls slightly, from 0.024 to 0.017. Whatever produces an interaction in an untrained OPT-BabyLM, it is not the absolute position embedding. The same holds for role, where the untrained values move from 0.119, 0.092 and 0.048 to 0.106, 0.089 and 0.027. The standardized and raw sizes agree throughout, so this is not an artifact of the components being reported as shares.
+
+The trained row cannot rescue the control either. Zeroing the embeddings in a trained model does reduce the interaction sharply, from 0.115, 0.105 and 0.092 to 0.035, 0.034 and 0.023, but it reduces the class effect further: the class share falls from 0.057, 0.082 and 0.081 to 0.009, 0.012 and 0.008, and the item share rises above 0.95 in all three models. A trained OPT has learned to use those embeddings, and removing them leaves a representation that barely encodes noun from verb at all. The drop measures the damage, not a cleaner view of the same model, which is why we do not read that cell as a measurement.
+
+```{r}
+#| label: tbl-posabl
+#| tbl-cap: "Part of speech at the deepest layer, with absolute position embeddings intact and zeroed, for the untrained and trained OPT-BabyLM models. If the untrained interaction were positional, the untrained-zeroed column would fall toward zero. It does not. The trained-zeroed column is a damaged model rather than a measurement: the class share falls with it, to 0.009, 0.012 and 0.008. Pythia is omitted because it has no absolute position embedding to zero."
+rd("llm_unified_form_ablation.csv") |>
+  filter(grepl("babylm", model)) |>
+  group_by(model, init) |>
+  slice_max(layer, n = 1, with_ties = FALSE) |>
+  ungroup() |>
+  transmute(model = sub(".*/", "", sub("-20eps-seed964", "", model)),
+            trained = ifelse(grepl("^random", init), "untrained", "trained"),
+            positions = ifelse(grepl("noposemb$", init), "zeroed", "intact"),
+            interaction = std_size_interaction) |>
+  pivot_wider(names_from = c(trained, positions), values_from = interaction) |>
+  left_join(MODELS |> transmute(model = sub(".*/", "", sub("-20eps-seed964", "", model)), size),
+            by = "model") |>
+  arrange(match(size, c("125M", "350M", "1.3B"))) |>
+  transmute(model, `untrained, intact` = g(untrained_intact, 3),
+            `untrained, zeroed` = g(untrained_zeroed, 3),
+            `trained, intact`   = g(trained_intact, 3),
+            `trained, zeroed`   = g(trained_zeroed, 3)) |>
+  kbl(longtable = TRUE, booktabs = TRUE, align = "lrrrr", linesep = "") |>
+  kable_styling(font_size = 9, latex_options = c("repeat_header"))
+```
+
+So the confound we suspected is not the confound we have. This is worth stating as a limit on the control rather than a finding about the families: the before-training comparison is available for one architecture and remains unavailable for the other, and we have now closed off the explanation that seemed most likely rather than leaving it as a conjecture. What does produce an interaction in an untrained OPT-BabyLM is open; the two families differ in more than their positional scheme, and identifying the responsible component was not something this experiment was designed to do. A checkpoint sweep would sidestep the question, since it compares a model against itself at successive points rather than against an initialization whose architectural content differs by design.
 
