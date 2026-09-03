@@ -38,6 +38,12 @@ OPT_13B="znhoughton/opt-babylm-1.3B-20eps-seed964"
 
 mkdir -p "$LOGDIR" "$REPS_DIR" "$VUA_DIR" data
 
+# The gate and the 2x2 live in finalize_position_ablation.sh, which is also runnable on its
+# own. Sourced here so a missing or broken file fails now rather than after the extractions.
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+[ -f "$HERE/finalize_position_ablation.sh" ] || { echo "missing finalize_position_ablation.sh" >&2; exit 1; }
+. "$HERE/finalize_position_ablation.sh"
+
 say()  { printf '\n\033[1m== %s\033[0m  (%s)\n' "$*" "$(date +%H:%M:%S)"; }
 warn() { printf '\033[33m   %s\033[0m\n' "$*"; }
 die()  { printf '\n\033[31mSTOPPED: %s\033[0m\n' "$*" >&2; exit 1; }
@@ -123,40 +129,11 @@ n_any=$(cat data/llm_*_ablation.csv 2>/dev/null | grep -c noposemb) || n_any=0
 [ "${n_any:-0}" -gt 0 ] || die "no ablated rows in any measurement CSV -- see $LOGDIR/measure.log"
 
 # ------------------------------------------------------------------ 5. the 2x2
+# Built by finalize_position_ablation.sh, sourced above, so there is ONE implementation of
+# this table. Two copies had already drifted apart -- a 33-line version here and a 44-line
+# version there -- and only one of them wrote the CSV the paper reads.
 say "5/5  Building the summary table"
-$PY - <<'SUMMARY'
-import csv, collections, os
-
-SRC = [("POS (noun/verb)", "data/llm_unified_form_ablation.csv", "std_size_interaction"),
-       ("role",            "data/llm_role_ablation.csv",         "size_interaction"),
-       ("metaphor",        "data/llm_metaphor_ablation.csv",     "size_interaction")]
-
-out = []
-for constr, path, col in SRC:
-    if not os.path.exists(path):
-        continue
-    deep = collections.defaultdict(dict)
-    for r in csv.DictReader(open(path)):
-        deep[(r["model"], r.get("init", "pretrained"))][int(r["layer"])] = float(r[col])
-    for (model, init), d in deep.items():
-        out.append(dict(construction=constr, model=model, init=init,
-                        family="BabyLM" if "babylm" in model else "Pythia",
-                        trained="no" if init.startswith("random") else "yes",
-                        positions="zeroed" if init.endswith("noposemb") else "intact",
-                        deepest_layer=max(d), interaction=round(d[max(d)], 4)))
-
-out.sort(key=lambda r: (r["construction"], r["family"], r["model"], r["init"]))
-with open("data/position_ablation_2x2.csv", "w", newline="") as fh:
-    w = csv.DictWriter(fh, fieldnames=["construction", "family", "model", "init", "trained",
-                                       "positions", "deepest_layer", "interaction"])
-    w.writeheader(); w.writerows(out)
-
-print(f"   {'construction':<18}{'model':<32}{'trained':<9}{'positions':<11}{'interaction':>12}")
-for r in out:
-    print(f"   {r['construction']:<18}{r['model'].split('/')[-1]:<32}"
-          f"{r['trained']:<9}{r['positions']:<11}{r['interaction']:>12.4f}")
-print(f"\n   {sum(1 for r in out if r['positions']=='zeroed')} zeroed row(s) written")
-SUMMARY
+stage_summary
 
 say "Done"
 cat <<'EOF'
@@ -167,8 +144,8 @@ cat <<'EOF'
    data/llm_metaphor_ablation.csv        metaphor, per layer
    logs in $LOGDIR/
 
-   The decisive rows: OPT, trained=no. If `zeroed` sits far below `intact`, the untrained
-   interaction was positional and the before-training control is repaired.
+   Compare intact against zeroed within each trained model, as the portable fraction
+   class / (class + interaction) rather than the interaction's raw size.
 
    Representations were NOT deleted. To reclaim the space when you are done:
      rm -f $REPS_DIR/*_noposemb.npz $VUA_DIR/*_noposemb.npz
