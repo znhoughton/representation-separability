@@ -1,0 +1,55 @@
+Loaded 41095 sentences from data/ud/en_all-ud.conllu
+POSABL	model=znhoughton/opt-babylm-350m-20eps-seed964	init=pretrained_noposemb	zeroed=decoder.embed_positions[1026x1024]	drift=0.000e+00
+    znhoughton/opt-babylm-350m-20eps-seed964 [pretrained_noposemb]:   4.3%  12840/300000 tokens  193 tok/s  eta 24m51s
+    znhoughton/opt-babylm-350m-20eps-seed964 [pretrained_noposemb]:   7.5%  22642/300000 tokens  168 tok/s  eta 27m27s
+    znhoughton/opt-babylm-350m-20eps-seed964 [pretrained_noposemb]:  10.8%  32550/300000 tokens  166 tok/s  eta 26m55s
+    znhoughton/opt-babylm-350m-20eps-seed964 [pretrained_noposemb]:  14.0%  41924/300000 tokens  162 tok/s  eta 26m29s
+    znhoughton/opt-babylm-350m-20eps-seed964 [pretrained_noposemb]:  18.4%  55197/300000 tokens  167 tok/s  eta 24m28s
+    znhoughton/opt-babylm-350m-20eps-seed964 [pretrained_noposemb]:  23.0%  68979/300000 tokens  169 tok/s  eta 22m47s
+    znhoughton/opt-babylm-350m-20eps-seed964 [pretrained_noposemb]:  27.4%  82068/300000 tokens  171 tok/s  eta 21m11s
+    znhoughton/opt-babylm-350m-20eps-seed964 [pretrained_noposemb]:  31.8%  95340/300000 tokens  172 tok/s  eta 19m46s
+    znhoughton/opt-babylm-350m-20eps-seed964 [pretrained_noposemb]:  36.0%  108018/300000 tokens  174 tok/s  eta 18m22s
+    znhoughton/opt-babylm-350m-20eps-seed964 [pretrained_noposemb]:  40.6%  121797/300000 tokens  176 tok/s  eta 16m53s
+    znhoughton/opt-babylm-350m-20eps-seed964 [pretrained_noposemb]:  43.9%  131615/300000 tokens  173 tok/s  eta 16m12s
+    znhoughton/opt-babylm-350m-20eps-seed964 [pretrained_noposemb]:  48.3%  144975/300000 tokens  174 tok/s  eta 14m53s
+    znhoughton/opt-babylm-350m-20eps-seed964 [pretrained_noposemb]:  51.8%  155483/300000 tokens  173 tok/s  eta 13m55s
+    znhoughton/opt-babylm-350m-20eps-seed964 [pretrained_noposemb]:  56.2%  168639/300000 tokens  174 tok/s  eta 12m35s
+    znhoughton/opt-babylm-350m-20eps-seed964 [pretrained_noposemb]:  61.7%  184990/300000 tokens  176 tok/s  eta 10m52s
+    znhoughton/opt-babylm-350m-20eps-seed964 [pretrained_noposemb]:  66.1%  198432/300000 tokens  179 tok/s  eta 9m28s
+    znhoughton/opt-babylm-350m-20eps-seed964 [pretrained_noposemb]:  71.6%  214708/300000 tokens  182 tok/s  eta 7m48s
+    znhoughton/opt-babylm-350m-20eps-seed964 [pretrained_noposemb]:  75.7%  227223/300000 tokens  182 tok/s  eta 6m38s
+    znhoughton/opt-babylm-350m-20eps-seed964 [pretrained_noposemb]:  80.2%  240500/300000 tokens  183 tok/s  eta 5m25s
+    znhoughton/opt-babylm-350m-20eps-seed964 [pretrained_noposemb]:  84.6%  253872/300000 tokens  184 tok/s  eta 4m10s
+    znhoughton/opt-babylm-350m-20eps-seed964 [pretrained_noposemb]:  90.0%  270038/300000 tokens  187 tok/s  eta 2m40s
+    znhoughton/opt-babylm-350m-20eps-seed964 [pretrained_noposemb]:  94.5%  283485/300000 tokens  187 tok/s  eta 1m28s
+    znhoughton/opt-babylm-350m-20eps-seed964 [pretrained_noposemb]:  96.8%  290349/300000 tokens  181 tok/s  eta 0m53s
+    znhoughton/opt-babylm-350m-20eps-seed964 [pretrained_noposemb]: 100.0%  300000/300000 tokens  177 tok/s  eta 0m00s
+    znhoughton/opt-babylm-350m-20eps-seed964 [pretrained_noposemb]: extraction done, compressing 31 GB to znhoughton__opt-babylm-350m-20eps-seed964__pretrained_noposemb.npz (single-threaded, GPU idle, expect many minutes)
+    znhoughton/opt-babylm-350m-20eps-seed964 [pretrained_noposemb]: compressed in 51.7 min -> 28.4 GB
+  [pretrained] znhoughton/opt-babylm-350m-20eps-seed964 (babylm/350m): streamed 300000 tokens -> data/llm_reps/znhoughton__opt-babylm-350m-20eps-seed964__pretrained_noposemb.npz
+POSABL	model=znhoughton/opt-babylm-350m-20eps-seed964	init=random_noposemb	zeroed=decoder.embed_positions[1026x1024]	drift=0.000e+00
+    znhoughton/opt-babylm-350m-20eps-seed964 [random_noposemb]:   4.3%  12840/300000 tokens  150 tok/s  eta 31m53s
+    znhoughton/opt-babylm-350m-20eps-seed964 [random_noposemb]:  10.8%  32550/300000 tokens  175 tok/s  eta 25m31s
+    znhoughton/opt-babylm-350m-20eps-seed964 [random_noposemb]:  18.4%  55197/300000 tokens  204 tok/s  eta 20m00s
+    znhoughton/opt-babylm-350m-20eps-seed964 [random_noposemb]:  23.0%  68979/300000 tokens  201 tok/s  eta 19m06s
+    znhoughton/opt-babylm-350m-20eps-seed964 [random_noposemb]:  27.4%  82068/300000 tokens  203 tok/s  eta 17m56s
+    znhoughton/opt-babylm-350m-20eps-seed964 [random_noposemb]:  32.8%  98284/300000 tokens  207 tok/s  eta 16m13s
+    znhoughton/opt-babylm-350m-20eps-seed964 [random_noposemb]:  38.3%  115032/300000 tokens  212 tok/s  eta 14m33s
+    znhoughton/opt-babylm-350m-20eps-seed964 [random_noposemb]:  43.9%  131615/300000 tokens  216 tok/s  eta 13m00s
+    znhoughton/opt-babylm-350m-20eps-seed964 [random_noposemb]:  50.7%  152198/300000 tokens  224 tok/s  eta 11m01s
+    znhoughton/opt-babylm-350m-20eps-seed964 [random_noposemb]:  56.2%  168639/300000 tokens  225 tok/s  eta 9m44s
+    znhoughton/opt-babylm-350m-20eps-seed964 [random_noposemb]:  63.9%  191725/300000 tokens  234 tok/s  eta 7m42s
+    znhoughton/opt-babylm-350m-20eps-seed964 [random_noposemb]:  70.5%  211502/300000 tokens  240 tok/s  eta 6m09s
+    znhoughton/opt-babylm-350m-20eps-seed964 [random_noposemb]:  76.8%  230485/300000 tokens  242 tok/s  eta 4m47s
+    znhoughton/opt-babylm-350m-20eps-seed964 [random_noposemb]:  82.4%  247314/300000 tokens  242 tok/s  eta 3m37s
+    znhoughton/opt-babylm-350m-20eps-seed964 [random_noposemb]:  90.0%  270038/300000 tokens  248 tok/s  eta 2m00s
+    znhoughton/opt-babylm-350m-20eps-seed964 [random_noposemb]:  96.8%  290349/300000 tokens  251 tok/s  eta 0m38s
+    znhoughton/opt-babylm-350m-20eps-seed964 [random_noposemb]: 100.0%  300000/300000 tokens  253 tok/s  eta 0m00s
+    znhoughton/opt-babylm-350m-20eps-seed964 [random_noposemb]: extraction done, compressing 31 GB to znhoughton__opt-babylm-350m-20eps-seed964__random_noposemb.npz (single-threaded, GPU idle, expect many minutes)
+    znhoughton/opt-babylm-350m-20eps-seed964 [random_noposemb]: compressed in 32.4 min -> 28.4 GB
+  [    random] znhoughton/opt-babylm-350m-20eps-seed964 (babylm/350m): streamed 300000 tokens -> data/llm_reps/znhoughton__opt-babylm-350m-20eps-seed964__random_noposemb.npz
+Done -> /opt/modeling/zhoughton/misc/representation-separability/data/llm_separability.csv
+Loaded 41095 sentences from data/ud/en_all-ud.conllu
+  [pretrained] znhoughton/opt-babylm-350m-20eps-seed964: reps already complete, skipping -> data/llm_reps/znhoughton__opt-babylm-350m-20eps-seed964__pretrained_noposemb.npz
+  [    random] znhoughton/opt-babylm-350m-20eps-seed964: reps already complete, skipping -> data/llm_reps/znhoughton__opt-babylm-350m-20eps-seed964__random_noposemb.npz
+Done -> /opt/modeling/zhoughton/misc/representation-separability/data/llm_separability.csv

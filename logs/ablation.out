@@ -1,0 +1,71 @@
+nohup: ignoring input
+
+[1m== 1/5  Extracting OPT representations with positions zeroed[0m  (07:30:06)
+   opt-babylm-1.3B  (batch 128, pid 5915, log logs/ablation/ud_large.log)
+   opt-babylm-350m  (batch 192, pid 5916, log logs/ablation/ud_mid.log)
+   opt-babylm-125m  (batch 256, pid 5917, log logs/ablation/ud_small.log)
+   6 / 6 OPT ablated files present
+
+[1m== 2/5  Extracting VUA representations (metaphor)[0m  (08:17:35)
+
+[1m== 3/5  Recording what was zeroed[0m  (09:04:15)
+   6 model(s) ablated, 0 with nonzero drift  -> data/position_ablation_check.csv
+
+[1m== 4/5  Measuring (CPU)[0m  (09:04:16)
+   llm_unified_form_ablation.csv              0 ablated row(s)
+[33m   ^ no ablated rows in this file[0m
+   llm_role_ablation.csv                      0 ablated row(s)
+[33m   ^ no ablated rows in this file[0m
+   llm_metaphor_ablation.csv                  63 ablated row(s)
+
+[1m== 5/5  Building the summary table[0m  (10:16:24)
+   construction      model                           trained  positions   interaction
+   POS (noun/verb)   opt-babylm-1.3B-20eps-seed964   yes      intact           0.1148
+   POS (noun/verb)   opt-babylm-1.3B-20eps-seed964   no       intact           0.0882
+   POS (noun/verb)   opt-babylm-125m-20eps-seed964   yes      intact           0.1049
+   POS (noun/verb)   opt-babylm-125m-20eps-seed964   no       intact           0.0782
+   POS (noun/verb)   opt-babylm-350m-20eps-seed964   yes      intact           0.0915
+   POS (noun/verb)   opt-babylm-350m-20eps-seed964   no       intact           0.0237
+   POS (noun/verb)   pythia-1.4b                     yes      intact           0.2440
+   POS (noun/verb)   pythia-1.4b                     no       intact           0.0131
+   POS (noun/verb)   pythia-160m                     yes      intact           0.2320
+   POS (noun/verb)   pythia-160m                     no       intact           0.0096
+   POS (noun/verb)   pythia-410m                     yes      intact           0.2458
+   POS (noun/verb)   pythia-410m                     no       intact           0.0136
+   metaphor          opt-babylm-1.3B-20eps-seed964   yes      intact           0.0308
+   metaphor          opt-babylm-1.3B-20eps-seed964   yes      zeroed           0.0191
+   metaphor          opt-babylm-125m-20eps-seed964   yes      intact           0.0246
+   metaphor          opt-babylm-125m-20eps-seed964   yes      zeroed           0.0161
+   metaphor          opt-babylm-350m-20eps-seed964   yes      intact           0.0228
+   metaphor          opt-babylm-350m-20eps-seed964   yes      zeroed           0.0130
+   metaphor          pythia-1.4b                     yes      intact           0.0776
+   metaphor          pythia-160m                     yes      intact           0.0574
+   metaphor          pythia-410m                     yes      intact           0.0724
+   role              opt-babylm-1.3B-20eps-seed964   yes      intact           0.0721
+   role              opt-babylm-1.3B-20eps-seed964   no       intact           0.1189
+   role              opt-babylm-125m-20eps-seed964   yes      intact           0.0456
+   role              opt-babylm-125m-20eps-seed964   no       intact           0.0923
+   role              opt-babylm-350m-20eps-seed964   yes      intact           0.0443
+   role              opt-babylm-350m-20eps-seed964   no       intact           0.0480
+   role              pythia-1.4b                     yes      intact           0.0944
+   role              pythia-1.4b                     no       intact           0.0210
+   role              pythia-160m                     yes      intact           0.0934
+   role              pythia-160m                     no       intact           0.0161
+   role              pythia-410m                     yes      intact           0.0867
+   role              pythia-410m                     no       intact           0.0215
+
+   3 zeroed row(s) written
+
+[1m== Done[0m  (10:16:24)
+   data/position_ablation_2x2.csv        the summary table
+   data/position_ablation_check.csv      what was zeroed, and the drift
+   data/llm_unified_form_ablation.csv    POS, per layer
+   data/llm_role_ablation.csv            role, per layer
+   data/llm_metaphor_ablation.csv        metaphor, per layer
+   logs in $LOGDIR/
+
+   The decisive rows: OPT, trained=no. If `zeroed` sits far below `intact`, the untrained
+   interaction was positional and the before-training control is repaired.
+
+   Representations were NOT deleted. To reclaim the space when you are done:
+     rm -f $REPS_DIR/*_noposemb.npz $VUA_DIR/*_noposemb.npz

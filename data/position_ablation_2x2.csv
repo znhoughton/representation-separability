@@ -12,14 +12,23 @@ POS (noun/verb),Pythia,EleutherAI/pythia-160m,random,no,intact,12,0.0096
 POS (noun/verb),Pythia,EleutherAI/pythia-410m,pretrained,yes,intact,24,0.2458
 POS (noun/verb),Pythia,EleutherAI/pythia-410m,random,no,intact,24,0.0136
 metaphor,BabyLM,znhoughton/opt-babylm-1.3B-20eps-seed964,pretrained,yes,intact,24,0.0308
-metaphor,BabyLM,znhoughton/opt-babylm-125m-20eps-seed964,pretrained,yes,intact,12,0.0161
-metaphor,BabyLM,znhoughton/opt-babylm-350m-20eps-seed964,pretrained,yes,intact,24,0.013
+metaphor,BabyLM,znhoughton/opt-babylm-1.3B-20eps-seed964,pretrained_noposemb,yes,zeroed,24,0.0191
+metaphor,BabyLM,znhoughton/opt-babylm-125m-20eps-seed964,pretrained,yes,intact,12,0.0246
+metaphor,BabyLM,znhoughton/opt-babylm-125m-20eps-seed964,pretrained_noposemb,yes,zeroed,12,0.0161
+metaphor,BabyLM,znhoughton/opt-babylm-350m-20eps-seed964,pretrained,yes,intact,24,0.0228
+metaphor,BabyLM,znhoughton/opt-babylm-350m-20eps-seed964,pretrained_noposemb,yes,zeroed,24,0.013
 metaphor,Pythia,EleutherAI/pythia-1.4b,pretrained,yes,intact,24,0.0776
 metaphor,Pythia,EleutherAI/pythia-160m,pretrained,yes,intact,12,0.0574
 metaphor,Pythia,EleutherAI/pythia-410m,pretrained,yes,intact,24,0.0724
-role,BabyLM,znhoughton/opt-babylm-1.3B-20eps-seed964,pretrained,yes,intact,24,0.1189
-role,BabyLM,znhoughton/opt-babylm-125m-20eps-seed964,pretrained,yes,intact,12,0.0923
-role,BabyLM,znhoughton/opt-babylm-350m-20eps-seed964,pretrained,yes,intact,24,0.048
+role,BabyLM,znhoughton/opt-babylm-1.3B-20eps-seed964,pretrained,yes,intact,24,0.0721
+role,BabyLM,znhoughton/opt-babylm-1.3B-20eps-seed964,random,no,intact,24,0.1189
+role,BabyLM,znhoughton/opt-babylm-125m-20eps-seed964,pretrained,yes,intact,12,0.0456
+role,BabyLM,znhoughton/opt-babylm-125m-20eps-seed964,random,no,intact,12,0.0923
+role,BabyLM,znhoughton/opt-babylm-350m-20eps-seed964,pretrained,yes,intact,24,0.0443
+role,BabyLM,znhoughton/opt-babylm-350m-20eps-seed964,random,no,intact,24,0.048
 role,Pythia,EleutherAI/pythia-1.4b,pretrained,yes,intact,24,0.0944
+role,Pythia,EleutherAI/pythia-1.4b,random,no,intact,24,0.021
 role,Pythia,EleutherAI/pythia-160m,pretrained,yes,intact,12,0.0934
+role,Pythia,EleutherAI/pythia-160m,random,no,intact,12,0.0161
 role,Pythia,EleutherAI/pythia-410m,pretrained,yes,intact,24,0.0867
+role,Pythia,EleutherAI/pythia-410m,random,no,intact,24,0.0215
