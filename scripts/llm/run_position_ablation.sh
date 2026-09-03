@@ -108,13 +108,13 @@ echo "   $n_z model(s) ablated, $n_bad with nonzero drift  -> data/position_abla
 say "4/5  Measuring (CPU)"
 rm -f data/llm_role_ablation.csv data/llm_metaphor_ablation.csv
 
-$PY scripts/llm/measure_pos.py --reps-dir "$REPS_DIR" --conllu "$CONLLU" \
+$PY scripts/llm/measure.py pos --reps-dir "$REPS_DIR" --conllu "$CONLLU" \
     --item-key form --workers 6 --out data/llm_unified_form_ablation.csv \
     >> "$LOGDIR/measure.log" 2>&1 || warn "POS measurement had a problem; see $LOGDIR/measure.log"
-$PY scripts/llm/measure_role.py --reps-dir "$REPS_DIR" --conllu "$CONLLU" \
+$PY scripts/llm/measure.py role --reps-dir "$REPS_DIR" --conllu "$CONLLU" \
     --workers 6 --out data/llm_role_ablation.csv \
     >> "$LOGDIR/measure.log" 2>&1 || warn "role measurement had a problem; see $LOGDIR/measure.log"
-$PY scripts/llm/measure_metaphor.py --reps-dir "$VUA_DIR" \
+$PY scripts/llm/measure.py metaphor --reps-dir "$VUA_DIR" \
     --workers 6 --out data/llm_metaphor_ablation.csv \
     >> "$LOGDIR/measure.log" 2>&1 || warn "metaphor measurement had a problem; see $LOGDIR/measure.log"
 

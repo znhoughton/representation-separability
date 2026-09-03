@@ -2,7 +2,7 @@
 Unified class/item/interaction separability on a BALANCED (item x class) grid.
 
 Motivation (see SEPARABILITY_FINDINGS.md sec 0 and the design discussion): `frac`
-(the older `frac`, now in archive/) answers only ONE of the two questions that "separable" folds
+A marginal-only measure answers just ONE of the two questions that "separable" folds
 together -- are the item(dog) and class(noun) MARGINALS on separate axes. It is silent on
 the second: how much of the representation is the irreducibly-joint INTERACTION (dog:noun),
 and whether that interaction sits on its own axis or smears into the marginals. A
@@ -20,7 +20,7 @@ no distributional assumptions):
   SIZES (how much of the representation is each component; a partition on a balanced grid):
       size_item, size_class, size_interaction  (sum to 1)
   ORTHOGONALITY (are the components on separate axes; directional projection "leaks"):
-      leak_item_into_class  = ||proj_{S_class}(alpha)||^2 / ||alpha||^2  == frac (the old measure)
+      leak_item_into_class  = ||proj_{S_class}(alpha)||^2 / ||alpha||^2
       leak_class_into_item  = ||proj_{S_item}(beta)||^2  / ||beta||^2
       leak_int_into_margins = ||proj_{S_item + S_class}(gamma)||^2 / ||gamma||^2
     plus symmetric principal-angle summaries between the three subspaces.
@@ -38,8 +38,8 @@ classes (you must vary the class holding the item fixed). Single-class items are
 clean orthogonal partition of the sizes needs a BALANCED grid (every kept item in every kept
 class); build_balanced_grid() enforces this and reports what it dropped.
 
-`frac` (the older marginal-only measure, archived) is exactly leak_item_into_class here,
-so this SUPERSETS the old measure rather than replacing it.
+`frac`, a marginal-only measure, is exactly leak_item_into_class here,
+so a marginal-only reading is recoverable from these numbers as a special case.
 """
 import sys
 from pathlib import Path

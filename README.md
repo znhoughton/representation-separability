@@ -18,8 +18,7 @@ is carried almost entirely word by word. An ACL methods/results draft is in [`pa
 
 ## Repository structure
 
-Only scripts that produce something in the paper live under `scripts/`. Everything superseded is in
-`archive/` (gitignored, kept on disk, and in git history).
+Only scripts that produce something in the paper live under `scripts/`.
 
 ```
 representation-separability/
@@ -34,17 +33,14 @@ representation-separability/
 │       ├── extraction.py                # the extraction library: forward passes, alignment, labels
 │       ├── extract_ud.py                # drive extraction over UD for the model set (GPU)
 │       ├── extract_vua.py               # the same for VUA20 metaphor (GPU)
-│       ├── measure_pos.py               # Experiment 2: part of speech
-│       ├── measure_role.py              # Experiment 2: grammatical role
-│       ├── measure_metaphor.py          # Experiment 2: metaphor
-│       ├── measure_morphology.py        # Appendix: number/tense, the not-same-token control
+│       ├── measure.py                    # all four constructions: pos, role, metaphor, morphology
 │       ├── decode_from_interaction.py   # Experiment 3
 │       ├── dataset_stats.py             # the counts quoted in the Dataset sections
 │       ├── run_position_ablation.sh     # Appendix: the ablation end to end, everything to CSV
 │       ├── finalize_position_ablation.sh  # its post-processing, runnable on its own
 │       └── test_measurement_pipeline.py # regression test for the chain (seconds, no GPU)
 ├── data/                           # result CSVs are tracked; reps and corpora are gitignored
-└── archive/                        # superseded scripts, data and notes (gitignored, on disk)
+└── archive/                        # earlier versions, gitignored (see archive/README.md)
 ```
 
 ## Which script produced which result
@@ -52,13 +48,13 @@ representation-separability/
 | paper element | data file | script |
 |:--|:--|:--|
 | Experiment 1 | `artificial_language_grid.csv` | `toy/artificial_language_grid.py` |
-| Experiment 2, part of speech | `llm_unified_form.csv` | `llm/measure_pos.py --item-key form` |
-| Experiment 2, role | `llm_role.csv` | `llm/measure_role.py` |
-| Experiment 2, metaphor | `llm_metaphor.csv` | `llm/measure_metaphor.py` |
+| Experiment 2, part of speech | `llm_unified_form.csv` | `llm/measure.py pos --item-key form` |
+| Experiment 2, role | `llm_role.csv` | `llm/measure.py role` |
+| Experiment 2, metaphor | `llm_metaphor.csv` | `llm/measure.py metaphor` |
 | Experiment 3 | `llm_decode_pos_form.csv`, `llm_decode_interaction.csv` | `llm/decode_from_interaction.py` |
 | Dataset counts | `methods_grid_stats.csv` | `llm/dataset_stats.py` |
 | Appendix: validation | `validate_measure.csv` | `toy/validate_measure.py` |
-| Appendix: morphology | `llm_morph.csv` | `llm/measure_morphology.py` |
+| Appendix: morphology | `llm_morph.csv` | `llm/measure.py morphology` |
 | Appendix: position ablation | `llm_*_ablation.csv`, `position_ablation_*.csv` | `llm/run_position_ablation.sh` |
 
 ## The measure
@@ -92,11 +88,11 @@ python scripts/llm/extract_ud.py --conllu data/ud/en_all-ud.conllu \
        --reps-dir data/llm_reps --max-tokens 300000 --device cuda
 python scripts/llm/extract_vua.py --out-dir data/vua_reps --device cuda
 
-python scripts/llm/measure_pos.py --reps-dir data/llm_reps --conllu data/ud/en_all-ud.conllu \
+python scripts/llm/measure.py pos --reps-dir data/llm_reps --conllu data/ud/en_all-ud.conllu \
        --item-key form --out data/llm_unified_form.csv
-python scripts/llm/measure_role.py  --reps-dir data/llm_reps --conllu data/ud/en_all-ud.conllu --out data/llm_role.csv
-python scripts/llm/measure_morphology.py --reps-dir data/llm_reps --conllu data/ud/en_all-ud.conllu --out data/llm_morph.csv
-python scripts/llm/measure_metaphor.py --reps-dir data/vua_reps --out data/llm_metaphor.csv
+python scripts/llm/measure.py role  --reps-dir data/llm_reps --conllu data/ud/en_all-ud.conllu --out data/llm_role.csv
+python scripts/llm/measure.py morphology --reps-dir data/llm_reps --conllu data/ud/en_all-ud.conllu --out data/llm_morph.csv
+python scripts/llm/measure.py metaphor --reps-dir data/vua_reps --out data/llm_metaphor.csv
 python scripts/llm/decode_from_interaction.py --reps-dir data/llm_reps --conllu data/ud/en_all-ud.conllu \
        --out data/llm_decode_interaction.csv
 ```

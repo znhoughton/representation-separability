@@ -1,22 +1,19 @@
-"""Experiment 1 (rebuilt): grid over the three effect sizes, measured with the LLM code path.
+"""Experiment 1: an artificial language whose structure we control, measured with the same code
+path the language models use.
 
-WHY THIS REPLACES experiment9_unified_grid.py (archived)
-The old toy gave every (form, class) LEXEME its own free embedding, which made it a lookup
-table rather than anything like a language model, and forced two workarounds that the LLM
-analysis does not use:
-  * no within-cell variation (one input per cell -> one hidden vector), so the two independent
-    estimates had to come from two TRAINING RUNS, which live in different coordinate systems
-    and therefore needed a Procrustes rotation;
-  * a free parameter per CELL, whose loss-unconstrained directions keep their initialization
-    and land in gamma, which forced a PCA projection to remove.
-Both are properties of that architecture, not of MLPs. Here the embedding is per FORM and per
-CLASS (like a token embedding: one vector per item, reused across classes) and each cell is
-observed under many nuisance CONTEXTS. That gives genuine within-cell variation, so:
-  * two estimates = two disjoint halves of a cell's contexts, exactly as in the LLM;
-  * one model, so no rotation;
-  * no per-cell parameter, so initialization content lands in the item/class effects where it
-    belongs rather than in gamma, so no projection.
-The measurement is therefore `unified_split` with the same arguments the LLM scripts pass.
+THE DESIGN THAT MATTERS
+The embedding is per FORM, per CLASS and per CONTEXT -- never per cell. A cell's representation is
+therefore COMPUTED from shared pieces rather than stored in a parameter of its own, which is what a
+transformer does with a token and its context, and it has three consequences the measurement
+depends on:
+  * each cell is observed under many nuisance CONTEXTS, so it has genuine within-cell variation and
+    the two independent estimates the measure needs are two disjoint halves of those observations,
+    exactly as in the LLM path;
+  * one training run, so the two estimates already share a coordinate system and nothing has to be
+    rotated onto anything;
+  * no per-cell parameter, so the loss-unconstrained directions that a free parameter would keep
+    from its initialization cannot land in gamma, and nothing has to be projected away.
+The measurement is `unified_split` with the same arguments the LLM scripts pass.
 
 WHAT THE GRID VARIES
 The target logits are a weighted sum of three independently generated, unit-scaled terms:

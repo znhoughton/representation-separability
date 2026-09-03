@@ -98,12 +98,12 @@ def main():
 
     # ---------------------------------------------------------------- metaphor, for real
     print("metaphor (full main(), real worker pool):")
-    import measure_metaphor
+    import measure
     out = data / "met.csv"
-    sys.argv = ["m", "--reps-dir", str(vua), "--min-cell", "2", "--workers", "2",
-                "--out", str(out)]
+    sys.argv = ["measure", "metaphor", "--reps-dir", str(vua), "--min-cell", "2",
+                "--workers", "2", "--out", str(out)]
     with contextlib.redirect_stdout(io.StringIO()):
-        measure_metaphor.main()
+        measure.main()
     rows = list(csv.DictReader(open(out)))
     inits = sorted({r.get("init", "<MISSING>") for r in rows})
     check(any("noposemb" in i for i in inits), "ablated rows present", ",".join(inits))
@@ -113,7 +113,7 @@ def main():
     # resume must not re-measure, and must not skip a condition it has not seen
     before = len(rows)
     with contextlib.redirect_stdout(io.StringIO()):
-        measure_metaphor.main()
+        measure.main()
     check(len(list(csv.DictReader(open(out)))) == before, "re-run adds nothing (resume works)")
 
     # ------------------------------------------------- POS and role: measure_file records init
@@ -123,41 +123,41 @@ def main():
     extraction.derive_labels = lambda *a, **k: stub
     extraction.parse_conllu = lambda *a, **k: []
 
-    import measure_pos, measure_role
-    measure_pos.derive_labels = extraction.derive_labels
-    measure_pos.parse_conllu = extraction.parse_conllu
-    measure_role.derive_labels = extraction.derive_labels
-    measure_role.parse_conllu = extraction.parse_conllu
+    import measure
+    measure.derive_labels = extraction.derive_labels
+    measure.parse_conllu = extraction.parse_conllu
 
     f_abl = reps / f"{MODELS[0].replace('/', '__')}__pretrained_noposemb.npz"
-    r_pos = measure_pos.measure_file(str(f_abl), min_cell=2, item_key="form", conllu="x")
+    import types
+    A = types.SimpleNamespace(min_cell=2, conllu="x", item_key="form", classes="NOUN,VERB")
+    r_pos = measure.measure_pos(str(f_abl), A, None)
     check(bool(r_pos) and all(r["init"] == "pretrained_noposemb" for r in r_pos),
-          "measure_pos.measure_file tags init", f"{len(r_pos)} rows")
-    r_role = measure_role.measure_file(str(f_abl), "x", 2, None)
+          "measure.measure_pos tags init", f"{len(r_pos)} rows")
+    r_role = measure.measure_role(str(f_abl), A, None)
     check(bool(r_role) and all(r["init"] == "pretrained_noposemb" for r in r_role),
-          "measure_role.measure_file tags init", f"{len(r_role)} rows")
+          "measure.measure_role tags init", f"{len(r_role)} rows")
 
     # ------------------------------------------- POS and role: the resume check (the real bug)
     print("\nPOS / role (resume check with intact rows already in the CSV):")
-    for name, mod, argv_extra, outname in [
-        ("POS", "measure_pos", ["--item-key", "form", "--conllu", "x"], "form.csv"),
-        ("role", "measure_role", ["--conllu", "x"], "role.csv"),
+    for name, constr, argv_extra, outname in [
+        ("POS", "pos", ["--item-key", "form", "--conllu", "x"], "form.csv"),
+        ("role", "role", ["--conllu", "x"], "role.csv"),
     ]:
         out = data / outname
         # Seed the CSV with ONLY the intact conditions, exactly as the failed run had it.
-        fields = sys.modules[mod].FIELDS
+        fields = getattr(measure, {"pos": "POS_FIELDS", "role": "ROLE_FIELDS"}[constr])
         with open(out, "w", newline="") as fh:
             w = csv.DictWriter(fh, fieldnames=fields, extrasaction="ignore")
             w.writeheader()
             for m in MODELS:
                 for init in ("pretrained", "random"):
                     w.writerow({"model": m, "init": init, "layer": 0})
-        sys.argv = ([mod, "--reps-dir", str(reps), "--min-cell", "2", "--workers", "1",
-                     "--out", str(out)] + argv_extra)
+        sys.argv = (["measure", constr, "--reps-dir", str(reps), "--min-cell", "2",
+                     "--workers", "1", "--out", str(out)] + argv_extra)
         buf = io.StringIO()
         try:
             with contextlib.redirect_stdout(buf):
-                sys.modules[mod].main()
+                measure.main()
         except Exception:
             pass                      # the pool cannot run here; we only need the todo count
         txt = buf.getvalue()
