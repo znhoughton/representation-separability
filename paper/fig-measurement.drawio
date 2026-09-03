@@ -1,6 +1,6 @@
 <mxfile host="app.diagrams.net" agent="claude" version="24.0.0">
   <diagram id="measurement" name="measurement">
-    <mxGraphModel dx="1000" dy="620" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="760" pageHeight="378" math="0" shadow="0">
+    <mxGraphModel dx="1000" dy="620" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="760" pageHeight="290" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
@@ -43,19 +43,6 @@
 
         <mxCell id="eq" value="M[i, c]&amp;nbsp; =&amp;nbsp; μ&amp;nbsp; +&amp;nbsp; α(i)&amp;nbsp; +&amp;nbsp; β(c)&amp;nbsp; +&amp;nbsp; γ(i, c)" style="rounded=1;whiteSpace=wrap;html=1;fontSize=14;fillColor=#FFFFFF;strokeColor=#154733;align=center;" vertex="1" parent="1">
           <mxGeometry x="172" y="238" width="416" height="38" as="geometry" />
-        </mxCell>
-
-        <mxCell id="Ba" value="α" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;fillColor=#154733;strokeColor=none;fontColor=#FFFFFF;" vertex="1" parent="1">
-          <mxGeometry x="40" y="312" width="330" height="32" as="geometry" />
-        </mxCell>
-        <mxCell id="Bb" value="β" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;fillColor=#005581;strokeColor=none;fontColor=#FFFFFF;" vertex="1" parent="1">
-          <mxGeometry x="370" y="312" width="104" height="32" as="geometry" />
-        </mxCell>
-        <mxCell id="Bg" value="γ" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;fillColor=#875E00;strokeColor=none;fontColor=#FFFFFF;" vertex="1" parent="1">
-          <mxGeometry x="474" y="312" width="226" height="32" as="geometry" />
-        </mxCell>
-        <mxCell id="Brk" value="" style="shape=curlyBracket;whiteSpace=wrap;html=1;rounded=1;direction=north;flipV=1;strokeColor=#6E6E6E;" vertex="1" parent="1">
-          <mxGeometry x="370" y="348" width="330" height="12" as="geometry" />
         </mxCell>
       </root>
     </mxGraphModel>
