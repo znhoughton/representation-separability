@@ -23,47 +23,43 @@ Only scripts that produce something in the paper live under `scripts/`. Everythi
 
 ```
 representation-separability/
-├── MATH.md                    # the measure, from plain-language walkthrough to formal reference
-├── METHOD.md / NOTES.md       # design decisions and history
-├── paper/                     # ACL Quarto draft (separability.qmd + refs.bib)
+├── paper/                          # ACL Quarto draft (separability.qmd + refs.bib)
 ├── scripts/
-│   ├── lib/
-│   │   ├── unified_separability.py  # THE measure: decomposition, sizes, overlaps, split-half gate
-│   │   └── separability_measure.py  # the older marginal-only `frac`; still imported by llm_extract
+│   ├── separability.py             # THE measure: decomposition, sizes, overlaps, split-half gate
 │   ├── toy/
-│   │   ├── experiment10_abc_grid.py # Experiment 1: the artificial-language grid
-│   │   └── validate_measure.py      # Appendix: components planted directly in a representation
+│   │   ├── artificial_language_grid.py  # Experiment 1
+│   │   └── validate_measure.py          # Appendix: components planted directly in a representation
 │   └── llm/
-│       ├── build_concat_ud.py       # concatenate 6 UD English treebanks -> one CoNLL-U
-│       ├── llm_extract.py           # extraction, CoNLL-U parsing, label re-derivation
-│       ├── run_llm_sweep.py         # drive extraction across the model set (GPU, memmap-streamed)
-│       ├── extract_vua.py           # VUA20 metaphor representations (GPU)
-│       ├── measure_llm.py           # Experiment 2: part of speech
-│       ├── measure_llm_role.py      # Experiment 2: grammatical role
-│       ├── measure_llm_metaphor.py  # Experiment 2: metaphor
-│       ├── measure_llm_morph.py     # Appendix: number/tense, the not-same-token control
-│       ├── decode_from_interaction.py # Experiment 3: decode the class from the interaction
-│       ├── methods_stats.py         # grid statistics quoted in the Dataset sections
-│       ├── run_ablation.sh          # Appendix: position ablation, end to end, everything to CSV
-│       ├── finalize_ablation.sh     # its post-processing stages, runnable on their own
-│       └── test_ablation_pipeline.py # regression test for the measurement chain (seconds, no GPU)
-├── data/                      # result CSVs are tracked; reps and corpora are gitignored
-└── archive/                   # superseded scripts and analyses (gitignored, kept on disk)
+│       ├── build_ud_corpus.py           # concatenate 6 UD English treebanks -> one CoNLL-U
+│       ├── extraction.py                # the extraction library: forward passes, alignment, labels
+│       ├── extract_ud.py                # drive extraction over UD for the model set (GPU)
+│       ├── extract_vua.py               # the same for VUA20 metaphor (GPU)
+│       ├── measure_pos.py               # Experiment 2: part of speech
+│       ├── measure_role.py              # Experiment 2: grammatical role
+│       ├── measure_metaphor.py          # Experiment 2: metaphor
+│       ├── measure_morphology.py        # Appendix: number/tense, the not-same-token control
+│       ├── decode_from_interaction.py   # Experiment 3
+│       ├── dataset_stats.py             # the counts quoted in the Dataset sections
+│       ├── run_position_ablation.sh     # Appendix: the ablation end to end, everything to CSV
+│       ├── finalize_position_ablation.sh  # its post-processing, runnable on its own
+│       └── test_measurement_pipeline.py # regression test for the chain (seconds, no GPU)
+├── data/                           # result CSVs are tracked; reps and corpora are gitignored
+└── archive/                        # superseded scripts, data and notes (gitignored, on disk)
 ```
 
 ## Which script produced which result
 
 | paper element | data file | script |
 |:--|:--|:--|
-| Experiment 1 | `experiment10_abc_grid.csv` | `toy/experiment10_abc_grid.py` |
-| Experiment 2, part of speech | `llm_unified_form.csv` | `llm/measure_llm.py --item-key form` |
-| Experiment 2, role | `llm_role.csv` | `llm/measure_llm_role.py` |
-| Experiment 2, metaphor | `llm_metaphor.csv` | `llm/measure_llm_metaphor.py` |
+| Experiment 1 | `artificial_language_grid.csv` | `toy/artificial_language_grid.py` |
+| Experiment 2, part of speech | `llm_unified_form.csv` | `llm/measure_pos.py --item-key form` |
+| Experiment 2, role | `llm_role.csv` | `llm/measure_role.py` |
+| Experiment 2, metaphor | `llm_metaphor.csv` | `llm/measure_metaphor.py` |
 | Experiment 3 | `llm_decode_pos_form.csv`, `llm_decode_interaction.csv` | `llm/decode_from_interaction.py` |
-| Dataset counts | `methods_grid_stats.csv` | `llm/methods_stats.py` |
+| Dataset counts | `methods_grid_stats.csv` | `llm/dataset_stats.py` |
 | Appendix: validation | `validate_measure.csv` | `toy/validate_measure.py` |
-| Appendix: morphology | `llm_morph.csv` | `llm/measure_llm_morph.py` |
-| Appendix: position ablation | `llm_*_ablation.csv`, `position_ablation_*.csv` | `llm/run_ablation.sh` |
+| Appendix: morphology | `llm_morph.csv` | `llm/measure_morphology.py` |
+| Appendix: position ablation | `llm_*_ablation.csv`, `position_ablation_*.csv` | `llm/run_position_ablation.sh` |
 
 ## The measure
 
@@ -77,42 +73,43 @@ rank over width, which is measured rather than assumed in the validation appendi
 Because a squared length has a positive noise floor, the interaction is estimated as a **cross
 product of two independent half-estimates** of the same grid and tested by permutation. Both
 experiments obtain those halves the same way, by splitting a cell's observations, so the toy and the
-language models are measured by the same function with the same arguments. See [`MATH.md`](MATH.md).
+language models are measured by the same function with the same arguments. The paper's
+first appendix gives the formal statement.
 
 ## Reproducing
 
 **Experiment 1 and the validation appendix** (GPU helps, not required):
 ```bash
-python scripts/toy/experiment10_abc_grid.py     # ~7.5k cells; resumable
+python scripts/toy/artificial_language_grid.py     # ~7.5k cells; resumable
 python scripts/toy/validate_measure.py          # ~250k runs; resumable, parallel
 ```
 
 **Experiments 2 and 3.** Extraction needs a GPU; measurement is CPU only. Redirect the read-only HF
 cache first (`export HF_HOME=$TMPDIR/hf`):
 ```bash
-python scripts/llm/build_concat_ud.py --out data/ud/en_all-ud.conllu
-python scripts/llm/run_llm_sweep.py --conllu data/ud/en_all-ud.conllu \
+python scripts/llm/build_ud_corpus.py --out data/ud/en_all-ud.conllu
+python scripts/llm/extract_ud.py --conllu data/ud/en_all-ud.conllu \
        --reps-dir data/llm_reps --max-tokens 300000 --device cuda
 python scripts/llm/extract_vua.py --out-dir data/vua_reps --device cuda
 
-python scripts/llm/measure_llm.py --reps-dir data/llm_reps --conllu data/ud/en_all-ud.conllu \
+python scripts/llm/measure_pos.py --reps-dir data/llm_reps --conllu data/ud/en_all-ud.conllu \
        --item-key form --out data/llm_unified_form.csv
-python scripts/llm/measure_llm_role.py  --reps-dir data/llm_reps --conllu data/ud/en_all-ud.conllu --out data/llm_role.csv
-python scripts/llm/measure_llm_morph.py --reps-dir data/llm_reps --conllu data/ud/en_all-ud.conllu --out data/llm_morph.csv
-python scripts/llm/measure_llm_metaphor.py --reps-dir data/vua_reps --out data/llm_metaphor.csv
+python scripts/llm/measure_role.py  --reps-dir data/llm_reps --conllu data/ud/en_all-ud.conllu --out data/llm_role.csv
+python scripts/llm/measure_morphology.py --reps-dir data/llm_reps --conllu data/ud/en_all-ud.conllu --out data/llm_morph.csv
+python scripts/llm/measure_metaphor.py --reps-dir data/vua_reps --out data/llm_metaphor.csv
 python scripts/llm/decode_from_interaction.py --reps-dir data/llm_reps --conllu data/ud/en_all-ud.conllu \
        --out data/llm_decode_interaction.csv
 ```
 
 **The position-ablation appendix**, one command, everything to CSV:
 ```bash
-nohup setsid bash scripts/llm/run_ablation.sh > logs/ablation.out 2>&1 &
+nohup setsid bash scripts/llm/run_position_ablation.sh > logs/ablation.out 2>&1 &
 ```
 It re-extracts the OPT-BabyLM models with `decoder.embed_positions` zeroed (Pythia has no such
 module), verifies per model that the ablation applied, measures all three constructions, and writes
 the summary. It deletes nothing and is resumable: re-running skips finished extractions.
 
-`python scripts/llm/test_ablation_pipeline.py` checks that whole chain on synthetic data in a few
+`python scripts/llm/test_measurement_pipeline.py` checks that whole chain on synthetic data in a few
 seconds without a GPU. Worth running before spending hours on an extraction.
 
 ## Notes
@@ -122,7 +119,7 @@ seconds without a GPU. Worth running before spending hours on an extraction.
 - **Item keying:** every construction in the paper keys the item on the **surface form**, so the
   token is identical at both levels of a distinction. Keying part of speech on the lemma instead
   pools inflected forms and inflates the layer-0 interaction by 50–100×, which is a fact about
-  tokenization rather than representation. `measure_llm.py` defaults accordingly.
+  tokenization rather than representation. `measure_pos.py` defaults accordingly.
 - **Reps carry their extraction parameters.** Token order depends on `batch_size`, `seed` and
   `max_length`, so those are saved in each `.npz` and used when labels are re-derived. Files written
   before that change are handled by trying the batch sizes this project has used and keeping the one

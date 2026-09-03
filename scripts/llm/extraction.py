@@ -16,11 +16,10 @@ tokenizer's word_ids, last subword of each word) -> `frac`, per layer, at two le
           analog of the toy's one-vector-per-(item,class) design).
 
 Deps: torch, transformers, numpy. Example:
-  python scripts/llm_extract.py --model facebook/opt-125m \
+  python scripts/extraction.py --model facebook/opt-125m \
       --conllu data/ud/en_ewt-ud-train.conllu \
       --layers -1,-2 --max-tokens 100000 --device cuda --out data/llm_separability.csv
 """
-import argparse
 import csv
 import os
 import sys
@@ -36,9 +35,8 @@ PROGRESS_EVERY_S = float(os.environ.get("PROGRESS_EVERY_S", 60))
 # Compress the saved reps? Off by default: on float32 activations zlib returns about 7% for
 # roughly twice the wall time of the extraction itself. Set COMPRESS_REPS=1 if disk is short.
 COMPRESS_REPS = os.environ.get("COMPRESS_REPS", "0") not in ("0", "", "false", "False")
-for _sub in ("lib", "llm", "toy"):
+for _sub in ("", "llm", "toy"):          # "" = scripts/, where the shared measure lives
     sys.path.insert(0, str(REPO_ROOT / "scripts" / _sub))
-from separability_measure import separability  # noqa: E402  (the canonical toy measure)
 
 
 # ------------------------------------------------------------------ UD parsing
@@ -142,68 +140,6 @@ def aligned_labels(z, conllu, candidates=(32, 128, 192, 256, 64, 16, 8)):
             return {k: v[:n] for k, v in lab.items()}, bs
         tried.append(f"{bs}:{int((lab['upos'][:n] == upos).sum())}/{n}")
     raise RuntimeError(f"{model}: could not reproduce the extraction order; tried {tried}")
-
-
-# ------------------------------------------------------------- representation
-def extract(model_name, sentences, layer_idxs, max_tokens, device, seed=0, max_length=256,
-            random_init=False, batch_size=32):
-    """Run the model over sentences; return {layer: (N,d) array}, upos array, lemma array --
-    one row per UD token, taking each word's LAST subword hidden state. random_init=True loads the
-    architecture with FRESH random weights (same config/tokenizer) -> the 'before learning'
-    baseline: frac_trained vs frac_random shows what training did to POS/lemma separability.
-
-    Sentences are processed in BATCHES of `batch_size` (padded, attention-masked), which is the
-    dominant speedup on GPU vs the old one-sentence-at-a-time loop; per-row word_ids() alignment
-    and last-subword selection are unchanged. To keep padding cheap, the (seed-permuted) order is
-    length-sorted WITHIN each batch-sized chunk -- so the max_tokens sample is still a random draw
-    over sentences, just packed efficiently."""
-    import torch
-    from transformers import AutoModel, AutoTokenizer
-
-    tok = AutoTokenizer.from_pretrained(model_name, add_prefix_space=True)  # BPE needs this for
-    #                                             is_split_into_words word-aligned extraction
-    if tok.pad_token is None:                     # GPT-NeoX/OPT have no pad token; needed for
-        tok.pad_token = tok.eos_token             # batching. Padding is masked + we only read
-    #                                             real (non-pad) subword positions, so it's inert.
-    if random_init:
-        from transformers import AutoConfig
-        cfg = AutoConfig.from_pretrained(model_name); cfg.output_hidden_states = True
-        torch.manual_seed(seed)
-        model = AutoModel.from_config(cfg)
-    else:
-        model = AutoModel.from_pretrained(model_name, output_hidden_states=True)
-    model.eval().to(device)
-    if not tok.is_fast:
-        raise RuntimeError(f"{model_name} lacks a fast tokenizer; word_ids() alignment needs one.")
-
-    order = np.random.default_rng(seed).permutation(len(sentences)).tolist()
-    reps = {li: [] for li in layer_idxs}
-    upos_all, lemma_all = [], []
-    n_tok = 0
-    for start in range(0, len(order), batch_size):
-        chunk = order[start:start + batch_size]
-        chunk.sort(key=lambda si: len(sentences[si]))          # length-sort within chunk -> less pad
-        batch_forms = [[w[0] for w in sentences[si]] for si in chunk]
-        enc = tok(batch_forms, is_split_into_words=True, return_tensors="pt",
-                  padding=True, truncation=True, max_length=max_length)
-        with torch.no_grad():
-            hs = model(**{k: v.to(device) for k, v in enc.items()}).hidden_states
-        hs = [h.float().cpu().numpy() for h in hs]              # one host copy per batch, not per token
-        for row, si in enumerate(chunk):
-            sent = sentences[si]
-            last_sub = {}
-            for pos, wid in enumerate(enc.word_ids(batch_index=row)):
-                if wid is not None:
-                    last_sub[wid] = pos                        # last subword position of each word
-            for wid, sub in sorted(last_sub.items()):
-                for li in layer_idxs:
-                    reps[li].append(hs[li][row, sub])
-                upos_all.append(sent[wid][2]); lemma_all.append(sent[wid][1])
-                n_tok += 1
-        if n_tok >= max_tokens:
-            break
-    reps = {li: np.asarray(v, dtype=np.float32) for li, v in reps.items()}
-    return reps, np.array(upos_all), np.array(lemma_all)
 
 
 def extract_stream_to_npz(out_path, model_name, sentences, layer_idxs, max_tokens, device, seed=0,
@@ -410,126 +346,3 @@ def verify_position_ablation(model, tok, device):
     if not wa or not wb:
         return float("nan")
     return float((ha[0, wa[-1]] - hb[0, wb[-1]]).abs().max())
-
-
-def save_reps(path, reps, upos, lemma, model_name, init):
-    """Cache extracted reps + labels to a single .npz so the (GPU-only) extraction runs ONCE and
-    all downstream separability analysis runs later on CPU (in-sandbox) from the file. Layers are
-    stored as arrays named 'layer_<idx>'."""
-    Path(path).parent.mkdir(parents=True, exist_ok=True)
-    arrs = {f"layer_{li}": v for li, v in reps.items()}
-    np.savez_compressed(path, upos=upos, lemma=lemma,
-                        layer_idxs=np.array(sorted(reps)), model=model_name, init=init, **arrs)
-
-
-def load_reps(path):
-    """Inverse of save_reps: -> (reps{layer:arr}, upos, lemma, meta)."""
-    z = np.load(path, allow_pickle=True)
-    reps = {int(li): z[f"layer_{li}"] for li in z["layer_idxs"]}
-    return reps, z["upos"], z["lemma"], dict(model=str(z["model"]), init=str(z["init"]))
-
-
-# -------------------------------------------------------------------- measure
-def aggregate_types(X, upos, lemma, min_count=5):
-    """Aggregate per-token reps to per-(lemma, POS) TYPE means (average over contexts), keeping
-    types with >= min_count tokens -- isolates lemma identity from context (the toy analog)."""
-    keys = np.array([f"{l}\t{u}" for l, u in zip(lemma, upos)])
-    uniq, inv, counts = np.unique(keys, return_inverse=True, return_counts=True)
-    sums = np.zeros((len(uniq), X.shape[1]), dtype=np.float64)
-    np.add.at(sums, inv, X.astype(np.float64))
-    means = (sums / counts[:, None]).astype(np.float32)
-    keep = counts >= min_count
-    parts = np.array([k.split("\t") for k in uniq[keep]])
-    return means[keep], parts[:, 1], parts[:, 0]      # X_type, upos_type, lemma_type
-
-
-def _frac(X, pos_code, lemma, n_pos, min_item):
-    """`frac` on lemmas with >= min_item tokens (stable centroids). class=POS, item=lemma."""
-    lems, cnt = np.unique(lemma, return_counts=True)
-    keep = set(lems[cnt >= min_item].tolist())
-    m = np.array([l in keep for l in lemma])
-    if m.sum() < 10 or len(keep) < 2:
-        return None, None, 0
-    f, k = separability(X[m], pos_code[m], n_pos, lemma[m], mode="raw")
-    return f, k, len(keep)
-
-
-def _row(X, pos_code, lemma, n_pos, layer, level, min_item):
-    f, k, n_item = _frac(X, pos_code, lemma, n_pos, min_item)
-    return dict(layer=layer, level=level, d=X.shape[1], n_points=len(pos_code),
-                n_over_d=round(len(pos_code) / X.shape[1], 1), n_pos=n_pos,
-                n_lemmas_used=n_item, k_class=k, frac=f)
-
-
-def measure(reps, upos, lemma, min_class_count=50, min_type_count=5, min_item=20):
-    """`frac` at token level (context in the centroid) and type=(lemma,POS)-mean level (context
-    averaged out; toy analog). Two rows per layer. Watch n_over_d at the type level."""
-    classes, counts = np.unique(upos, return_counts=True)
-    kept = sorted(set(classes[counts >= min_class_count]))
-    code = {c: i for i, c in enumerate(kept)}; n_pos = len(kept)
-    keep = set(kept)
-    mask = np.array([u in keep for u in upos])
-    rows = []
-    for li, X in reps.items():
-        Xt, ut, lt = X[mask], upos[mask], lemma[mask]
-        yt = np.array([code[u] for u in ut])
-        rows.append(_row(Xt, yt, lt, n_pos, li, "token", min_item))
-        Xty, uty, lty = aggregate_types(Xt, ut, lt, min_type_count)
-        if len(Xty) > n_pos + 5 and len(set(uty)) >= 2:
-            yty = np.array([code[u] for u in uty])
-            rows.append(_row(Xty, yty, lty, n_pos, li, "type", min_item=1))  # types already ≥min_count
-    return rows, kept
-
-
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--model", required=True, help="HF model id, e.g. facebook/opt-125m")
-    ap.add_argument("--conllu", required=True, help="path to a UD .conllu file")
-    ap.add_argument("--layers", default="-1,-2", help="comma list of hidden_states indices, or 'all'")
-    ap.add_argument("--max-tokens", type=int, default=100000)
-    ap.add_argument("--min-class-count", type=int, default=50, help="min tokens for a POS to be used")
-    ap.add_argument("--min-type-count", type=int, default=5, help="min tokens for a (lemma,POS) type")
-    ap.add_argument("--min-item", type=int, default=20, help="min tokens for a lemma (token level)")
-    ap.add_argument("--device", default="cpu")
-    ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument("--random-init", action="store_true",
-                    help="fresh random weights (before-learning baseline) instead of pretrained")
-    ap.add_argument("--out", default=str(REPO_ROOT / "data" / "llm_separability.csv"))
-    args = ap.parse_args()
-
-    sentences = list(parse_conllu(args.conllu))
-    print(f"Loaded {len(sentences)} sentences from {args.conllu}", flush=True)
-
-    if args.layers == "all":
-        from transformers import AutoConfig
-        n_layers = AutoConfig.from_pretrained(args.model).num_hidden_layers
-        layer_idxs = list(range(n_layers + 1))
-    else:
-        layer_idxs = [int(x) for x in args.layers.split(",")]
-
-    reps, upos, lemma = extract(args.model, sentences, layer_idxs, args.max_tokens, args.device,
-                                args.seed, random_init=args.random_init)
-    init = "random" if args.random_init else "pretrained"
-    print(f"[{init}] extracted {len(upos)} tokens; POS: {dict(zip(*np.unique(upos, return_counts=True)))}", flush=True)
-
-    rows, kept = measure(reps, upos, lemma, args.min_class_count, args.min_type_count, args.min_item)
-    print(f"Measured over {len(kept)} POS classes: {kept}", flush=True)
-
-    Path(args.out).parent.mkdir(parents=True, exist_ok=True)
-    fields = ["model", "init", "layer", "level", "d", "n_points", "n_over_d", "n_pos",
-              "n_lemmas_used", "k_class", "frac"]
-    write_header = not Path(args.out).exists()
-    with open(args.out, "a", newline="") as fh:
-        w = csv.DictWriter(fh, fieldnames=fields, extrasaction="ignore")
-        if write_header:
-            w.writeheader()
-        for r in rows:
-            r["model"] = args.model; r["init"] = init
-            w.writerow(r)
-            print(f"  layer {r['layer']!s:>4} [{r['level']:>5}]: n/d={r['n_over_d']!s:>7}  "
-                  f"k_class={r['k_class']!s:>5}  frac={r['frac']!s:>7}", flush=True)
-    print(f"Done -> {args.out}  (frac = fraction of lemma marginal in the POS subspace)")
-
-
-if __name__ == "__main__":
-    main()

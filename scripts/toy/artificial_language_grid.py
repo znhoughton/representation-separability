@@ -36,9 +36,9 @@ READING THE TWO ACTIVATIONS
   relu     : can synthesize the interaction, and is the arm analogous to a transformer
              (nonlinear inside, linear readout). Its size_interaction should track w_int.
 
-Run:  python scripts/toy/experiment10_abc_grid.py --probe                  # a few cells
-      python scripts/toy/experiment10_abc_grid.py --workers 28            # full grid, CPU
-      python scripts/toy/experiment10_abc_grid.py --workers 8 --device cuda
+Run:  python scripts/toy/artificial_language_grid.py --probe                  # a few cells
+      python scripts/toy/artificial_language_grid.py --workers 28            # full grid, CPU
+      python scripts/toy/artificial_language_grid.py --workers 8 --device cuda
 
 Resumable: cells already present in the output CSV are skipped, so an interrupted run continues.
 
@@ -61,9 +61,9 @@ for _v in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXP
 import numpy as np
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-for _sub in ("lib", "llm", "toy"):
+for _sub in ("", "llm", "toy"):          # "" = scripts/, where the shared measure lives
     sys.path.insert(0, str(REPO_ROOT / "scripts" / _sub))
-from unified_separability import unified_split  # noqa: E402
+from separability import unified_split  # noqa: E402
 
 
 # --------------------------------------------------------------------- generator
@@ -274,7 +274,7 @@ CONFIG = dict(
     r_item=8, r_class=4, r_int=4, r_ctx=8,
     lr=0.01, max_iters=3000, patience=40, min_delta=1e-5,
     device="cpu", n_workers=8,
-    out_csv=str(REPO_ROOT / "data" / "experiment10_abc_grid.csv"),
+    out_csv=str(REPO_ROOT / "data" / "artificial_language_grid.csv"),
 )
 
 FIELDS = ["key",                                          # resume identifier; must be written

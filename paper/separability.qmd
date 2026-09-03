@@ -47,7 +47,7 @@ theme_paper <- function(base = 9) {
 # 7,560 cells, measured with unified_split -- the SAME function and arguments Experiment 2
 # uses. The two independent estimates are two halves of each cell's observations, so there is
 # no alignment step and no projection. Capacity is a reported variable, never a filter.
-toy <- rd("experiment10_abc_grid.csv") |>
+toy <- rd("artificial_language_grid.csv") |>
   mutate(act = factor(activation, c("identity", "relu"), c("linear", "ReLU")),
          # the share of a random vector that lands in the class direction by chance. An
          # orthogonality reading means nothing without it, and it moves 16-fold across the

@@ -1,10 +1,10 @@
 """Concatenate the general-domain UD English treebanks (HF parquet mirror) into one CoNLL-U file
 so a single --conllu path gives ~3x the balanced NOUN/VERB lemma grid of EWT alone (see the
 feasibility check: 283 balanced lemmas at >=10 tokens/cell vs EWT's 90). Writes the minimal
-columns llm_extract.parse_conllu reads (id, form, lemma, upos); other columns are '_'.
+columns extraction.parse_conllu reads (id, form, lemma, upos); other columns are '_'.
 
 Run (network -> huggingface.co; redirect the read-only HF cache first):
-  HF_HOME=$TMPDIR/hf python scripts/build_concat_ud.py --out data/ud/en_all-ud.conllu
+  HF_HOME=$TMPDIR/hf python scripts/build_ud_corpus.py --out data/ud/en_all-ud.conllu
 """
 import argparse
 import os

@@ -2,7 +2,7 @@
 
 Reproduces the condition that lost the last run: a reps directory holding BOTH the intact and the
 _noposemb file for each model. Verifies that the ablated files are measured rather than skipped,
-that an `init` column distinguishes them, and that finalize_ablation.sh then builds a 2x2 with a
+that an `init` column distinguishes them, and that finalize_position_ablation.sh then builds a 2x2 with a
 `zeroed` row.
 
 Three routes, chosen by what each script depends on:
@@ -98,12 +98,12 @@ def main():
 
     # ---------------------------------------------------------------- metaphor, for real
     print("metaphor (full main(), real worker pool):")
-    import measure_llm_metaphor
+    import measure_metaphor
     out = data / "met.csv"
     sys.argv = ["m", "--reps-dir", str(vua), "--min-cell", "2", "--workers", "2",
                 "--out", str(out)]
     with contextlib.redirect_stdout(io.StringIO()):
-        measure_llm_metaphor.main()
+        measure_metaphor.main()
     rows = list(csv.DictReader(open(out)))
     inits = sorted({r.get("init", "<MISSING>") for r in rows})
     check(any("noposemb" in i for i in inits), "ablated rows present", ",".join(inits))
@@ -113,35 +113,35 @@ def main():
     # resume must not re-measure, and must not skip a condition it has not seen
     before = len(rows)
     with contextlib.redirect_stdout(io.StringIO()):
-        measure_llm_metaphor.main()
+        measure_metaphor.main()
     check(len(list(csv.DictReader(open(out)))) == before, "re-run adds nothing (resume works)")
 
     # ------------------------------------------------- POS and role: measure_file records init
     print("\nPOS / role (measure_file in-process, label derivation stubbed):")
-    import llm_extract
+    import extraction
     stub = {"upos": upos, "lemma": lemma, "form": form, "deprel": deprel}
-    llm_extract.derive_labels = lambda *a, **k: stub
-    llm_extract.parse_conllu = lambda *a, **k: []
+    extraction.derive_labels = lambda *a, **k: stub
+    extraction.parse_conllu = lambda *a, **k: []
 
-    import measure_llm, measure_llm_role
-    measure_llm.derive_labels = llm_extract.derive_labels
-    measure_llm.parse_conllu = llm_extract.parse_conllu
-    measure_llm_role.derive_labels = llm_extract.derive_labels
-    measure_llm_role.parse_conllu = llm_extract.parse_conllu
+    import measure_pos, measure_role
+    measure_pos.derive_labels = extraction.derive_labels
+    measure_pos.parse_conllu = extraction.parse_conllu
+    measure_role.derive_labels = extraction.derive_labels
+    measure_role.parse_conllu = extraction.parse_conllu
 
     f_abl = reps / f"{MODELS[0].replace('/', '__')}__pretrained_noposemb.npz"
-    r_pos = measure_llm.measure_file(str(f_abl), min_cell=2, item_key="form", conllu="x")
+    r_pos = measure_pos.measure_file(str(f_abl), min_cell=2, item_key="form", conllu="x")
     check(bool(r_pos) and all(r["init"] == "pretrained_noposemb" for r in r_pos),
-          "measure_llm.measure_file tags init", f"{len(r_pos)} rows")
-    r_role = measure_llm_role.measure_file(str(f_abl), "x", 2, None)
+          "measure_pos.measure_file tags init", f"{len(r_pos)} rows")
+    r_role = measure_role.measure_file(str(f_abl), "x", 2, None)
     check(bool(r_role) and all(r["init"] == "pretrained_noposemb" for r in r_role),
-          "measure_llm_role.measure_file tags init", f"{len(r_role)} rows")
+          "measure_role.measure_file tags init", f"{len(r_role)} rows")
 
     # ------------------------------------------- POS and role: the resume check (the real bug)
     print("\nPOS / role (resume check with intact rows already in the CSV):")
     for name, mod, argv_extra, outname in [
-        ("POS", "measure_llm", ["--item-key", "form", "--conllu", "x"], "form.csv"),
-        ("role", "measure_llm_role", ["--conllu", "x"], "role.csv"),
+        ("POS", "measure_pos", ["--item-key", "form", "--conllu", "x"], "form.csv"),
+        ("role", "measure_role", ["--conllu", "x"], "role.csv"),
     ]:
         out = data / outname
         # Seed the CSV with ONLY the intact conditions, exactly as the failed run had it.
@@ -170,7 +170,7 @@ def main():
               f"{name}: no ablated file was skipped as already-done")
 
     # --------------------------------------------------------------- finalize builds the 2x2
-    print("\nfinalize_ablation.sh (summary from the measurement CSVs):")
+    print("\nfinalize_position_ablation.sh (summary from the measurement CSVs):")
     shutil.copy(data / "met.csv", data / "llm_metaphor_ablation.csv")
     # a POS csv with both conditions, so the 2x2 has an intact and a zeroed row
     with open(data / "llm_unified_form_ablation.csv", "w", newline="") as fh:
@@ -178,7 +178,7 @@ def main():
         for init, val in [("random", 0.088), ("random_noposemb", 0.004),
                           ("pretrained", 0.115), ("pretrained_noposemb", 0.091)]:
             w.writerow([MODELS[0], init, 12, val])
-    sh = str(REPO / "scripts" / "llm" / "finalize_ablation.sh").replace("\\", "/")
+    sh = str(REPO / "scripts" / "llm" / "finalize_position_ablation.sh").replace("\\", "/")
     bash = shutil.which("bash") or "C:/Program Files/Git/bin/bash.exe"
     rc = subprocess.run([bash, sh, "summary"],
                         capture_output=True, text=True, cwd=str(SCRATCH))

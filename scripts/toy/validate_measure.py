@@ -44,9 +44,9 @@ for _v in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXP
 import numpy as np  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-for _sub in ("lib", "llm", "toy"):
+for _sub in ("", "llm", "toy"):          # "" = scripts/, where the shared measure lives
     sys.path.insert(0, str(REPO_ROOT / "scripts" / _sub))
-from unified_separability import unified_split  # noqa: E402
+from separability import unified_split  # noqa: E402
 
 
 def _centered(x, axes):

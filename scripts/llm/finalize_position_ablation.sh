@@ -4,15 +4,15 @@
 # deleting the ablated representations. Everything here reads logs and measurement CSVs -- it
 # never touches a GPU and never re-extracts, so it takes seconds and is safe to re-run.
 #
-# It lives apart from run_ablation.sh so the post-processing can be redone on its own: the
+# It lives apart from run_position_ablation.sh so the post-processing can be redone on its own: the
 # expensive stages (extraction, then measurement) can succeed while the summary does not, and
 # the fix should not be "run the multi-hour script again". These stages read CSVs and logs only.
 #
-#   bash scripts/llm/finalize_ablation.sh            # gate, summary, cleanup
-#   bash scripts/llm/finalize_ablation.sh gate       # just the verification gate (+ its CSV)
-#   bash scripts/llm/finalize_ablation.sh summary    # just the 2x2
-#   bash scripts/llm/finalize_ablation.sh cleanup    # just delete the ablated reps
-#   KEEP_REPS=1 bash scripts/llm/finalize_ablation.sh
+#   bash scripts/llm/finalize_position_ablation.sh            # gate, summary, cleanup
+#   bash scripts/llm/finalize_position_ablation.sh gate       # just the verification gate (+ its CSV)
+#   bash scripts/llm/finalize_position_ablation.sh summary    # just the 2x2
+#   bash scripts/llm/finalize_position_ablation.sh cleanup    # just delete the ablated reps
+#   KEEP_REPS=1 bash scripts/llm/finalize_position_ablation.sh
 #
 set -euo pipefail
 
@@ -170,7 +170,7 @@ stage_cleanup() {
   FREED=$(du -ch "$REPS_DIR"/*_noposemb.npz "$VUA_DIR"/*_noposemb.npz 2>/dev/null | tail -1 | cut -f1) || true
   rm -f "$REPS_DIR"/*_noposemb.npz "$VUA_DIR"/*_noposemb.npz
   echo "  removed $N_DEL file(s), reclaimed ${FREED:-0}"
-  echo "  (KEEP_REPS=1 to retain them; run_ablation.sh regenerates them)"
+  echo "  (KEEP_REPS=1 to retain them; run_position_ablation.sh regenerates them)"
 }
 
 # Can also be sourced, so a caller can run the stages at its own points -- a gate belongs before

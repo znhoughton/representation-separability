@@ -17,11 +17,11 @@ rather than role-semantic. The depth profile is the diagnostic: a positional art
 Same-token still removes the tokenization confound that made the morphology result unclean.
 
 We saved only upos/lemma with the reps, not deprel. Re-derive per-token deprel in the exact extraction
-order (llm_extract.derive_labels, tokenizer-only, no GPU) from the deprel-carrying concat conllu
-(rebuild via build_concat_ud.py -> writes deprel to col 8), truncate to the reps' token count, and
+order (extraction.derive_labels, tokenizer-only, no GPU) from the deprel-carrying concat conllu
+(rebuild via build_ud_corpus.py -> writes deprel to col 8), truncate to the reps' token count, and
 ASSERT re-derived upos/lemma == saved -> aligned, no re-extraction. Same unified_split measure/gate.
 
-Run: python scripts/measure_llm_role.py --reps-dir data/llm_reps --conllu data/ud/en_all-ud.conllu \
+Run: python scripts/measure_role.py --reps-dir data/llm_reps --conllu data/ud/en_all-ud.conllu \
         --skip-random --workers 6 --min-cell 10 --out data/llm_role.csv
 """
 import argparse
@@ -40,10 +40,10 @@ for _v in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXP
 import numpy as np  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-for _sub in ("lib", "llm", "toy"):
+for _sub in ("", "llm", "toy"):          # "" = scripts/, where the shared measure lives
     sys.path.insert(0, str(REPO_ROOT / "scripts" / _sub))
-from unified_separability import unified_split  # noqa: E402
-from llm_extract import parse_conllu, derive_labels, aligned_labels  # noqa: E402
+from separability import unified_split  # noqa: E402
+from extraction import parse_conllu, derive_labels, aligned_labels  # noqa: E402
 
 POS = "NOUN"
 CLASSES = ("nsubj", "obj")

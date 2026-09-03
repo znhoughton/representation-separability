@@ -9,7 +9,7 @@ literally or metaphorically, or is metaphoricity fused with the lexeme? Same-tok
 POSITION confound, since literal/metaphorical uses are not positionally segregated.
 
 Run (CPU, in-sandbox, after extract_vua.py has produced the reps on GPU):
-  python scripts/measure_llm_metaphor.py --reps-dir data/vua_reps --min-cell 10 --out data/llm_metaphor.csv
+  python scripts/measure_metaphor.py --reps-dir data/vua_reps --min-cell 10 --out data/llm_metaphor.csv
 """
 import argparse
 import csv
@@ -27,9 +27,9 @@ for _v in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXP
 import numpy as np  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-for _sub in ("lib", "llm", "toy"):
+for _sub in ("", "llm", "toy"):          # "" = scripts/, where the shared measure lives
     sys.path.insert(0, str(REPO_ROOT / "scripts" / _sub))
-from unified_separability import unified_split  # noqa: E402
+from separability import unified_split  # noqa: E402
 
 CLASSES = ("lit", "met")
 FIELDS = ["model", "init", "construction", "classes", "layer", "d", "n_points", "n_items", "min_cell",

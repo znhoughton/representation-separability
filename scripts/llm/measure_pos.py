@@ -1,4 +1,4 @@
-"""Apply the unified class/item/interaction measure to real LLM reps (saved by run_llm_sweep
+"""Apply the unified class/item/interaction measure to real LLM reps (saved by extract_ud
 --reps-dir), on a BALANCED NOUN/VERB lemma grid. This is the LLM counterpart of experiment9:
   class = POS (restricted to a balanced set, default NOUN/VERB -- the only pair with enough
               multi-POS lemmas in UD English; see the feasibility check),
@@ -13,8 +13,8 @@ neutralized (raw collapses -> k_class=1, leak~1; standardized stays sane).
 Memory: the .npz files are ~11 GB (all layers x all tokens). We open them lazily and load ONE
 layer array at a time (never the whole file), so this runs in-sandbox on CPU.
 
-Run:  python scripts/measure_llm.py --reps data/llm_reps/EleutherAI__pythia-160m__pretrained.npz
-      python scripts/measure_llm.py --reps-dir data/llm_reps --out data/llm_unified.csv
+Run:  python scripts/measure_pos.py --reps data/llm_reps/EleutherAI__pythia-160m__pretrained.npz
+      python scripts/measure_pos.py --reps-dir data/llm_reps --out data/llm_unified.csv
 """
 import argparse
 import csv
@@ -32,9 +32,9 @@ for _v in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXP
 import numpy as np  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-for _sub in ("lib", "llm", "toy"):
+for _sub in ("", "llm", "toy"):          # "" = scripts/, where the shared measure lives
     sys.path.insert(0, str(REPO_ROOT / "scripts" / _sub))
-from unified_separability import unified_split  # noqa: E402
+from separability import unified_split  # noqa: E402
 
 FIELDS = ["model", "init", "layer", "d", "n_points", "n_items", "classes", "min_cell",
           "std_size_item", "std_size_class", "std_size_interaction",
@@ -63,7 +63,7 @@ def _item_labels(z, item_key, conllu):
         return z["lemma"]
     if not conllu:
         raise SystemExit("--conllu is required with --item-key form")
-    from llm_extract import aligned_labels
+    from extraction import aligned_labels
     lab, _bs = aligned_labels(z, conllu)      # reproduces the extraction order, or raises
     return np.array([f.lower() for f in lab["form"]])
 

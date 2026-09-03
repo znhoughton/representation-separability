@@ -16,7 +16,7 @@ Method (per construction, deep layer, largest model of each family):
   answers "does ANY k-dim slice decode this?"; CV answers "does it generalize, not memorize?".)
 
 Constructions: pos (noun/verb, item=form by default so the token is identical at both levels),
-role (nsubj/obj, item=form, deprel re-derived like measure_llm_role), metaphor (lit/met from the
+role (nsubj/obj, item=form, deprel re-derived like measure_role), metaphor (lit/met from the
 VUA reps). All three are therefore same-token. Not circular: S_int is the gamma directions (beta,
 the shared class axis, is already subtracted in the decomposition), and CV calibrates the read.
 
@@ -34,9 +34,9 @@ from pathlib import Path
 import numpy as np
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-for _sub in ("lib", "llm", "toy"):
+for _sub in ("", "llm", "toy"):          # "" = scripts/, where the shared measure lives
     sys.path.insert(0, str(REPO_ROOT / "scripts" / _sub))
-from unified_separability import (standardize_columns, build_balanced_grid, _cell_means,  # noqa: E402
+from separability import (standardize_columns, build_balanced_grid, _cell_means,  # noqa: E402
                                   _decompose, _orthobasis)
 
 FIELDS = ["model", "construction", "layer", "n_items", "n_points", "k_int",
@@ -146,14 +146,14 @@ def load(construction, path, layer, conllu, item_key="form"):
         if item_key == "lemma":
             item = z["lemma"]
         else:
-            from llm_extract import parse_conllu, derive_labels
+            from extraction import parse_conllu, derive_labels
             up, lem, n = z["upos"], z["lemma"], len(z["upos"])
             lab = derive_labels(model, list(parse_conllu(conllu)))
             if not (np.array_equal(lab["upos"][:n], up) and np.array_equal(lab["lemma"][:n], lem)):
                 raise RuntimeError(f"{model}: alignment mismatch on POS labels")
             item = np.array([f.lower() for f in lab["form"][:n]])
     elif construction == "role":
-        from llm_extract import parse_conllu, derive_labels
+        from extraction import parse_conllu, derive_labels
         up = z["upos"]; lem = z["lemma"]; n = len(up)
         lab = derive_labels(model, list(parse_conllu(conllu)))
         du, dl = lab["upos"][:n], lab["lemma"][:n]

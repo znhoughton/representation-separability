@@ -2,7 +2,7 @@
 Unified class/item/interaction separability on a BALANCED (item x class) grid.
 
 Motivation (see SEPARABILITY_FINDINGS.md sec 0 and the design discussion): `frac`
-(separability_measure.py) answers only ONE of the two questions that "separable" folds
+(the older `frac`, now in archive/) answers only ONE of the two questions that "separable" folds
 together -- are the item(dog) and class(noun) MARGINALS on separate axes. It is silent on
 the second: how much of the representation is the irreducibly-joint INTERACTION (dog:noun),
 and whether that interaction sits on its own axis or smears into the marginals. A
@@ -38,7 +38,7 @@ classes (you must vary the class holding the item fixed). Single-class items are
 clean orthogonal partition of the sizes needs a BALANCED grid (every kept item in every kept
 class); build_balanced_grid() enforces this and reports what it dropped.
 
-`frac` (separability_measure.separability, mode="raw") is exactly leak_item_into_class here,
+`frac` (the older marginal-only measure, archived) is exactly leak_item_into_class here,
 so this SUPERSETS the old measure rather than replacing it.
 """
 import sys
@@ -48,7 +48,6 @@ import numpy as np
 
 # reuse the canonical rank estimator so subspace dims are chosen the same way everywhere
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # lib/ siblings on path when imported directly
-from separability_measure import between_class_subspace  # noqa: F401  (kept for parity/imports)
 
 
 # --------------------------------------------------------------------- utilities

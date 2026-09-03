@@ -9,7 +9,7 @@ build_balanced_grid reads only the label arrays -- so this needs no representati
 runs in seconds on CPU: np.load is lazy, and we touch only `upos`/`lemma`/`form`/`label`.
 
 Run on the box that holds the reps:
-  python scripts/llm/methods_stats.py --reps-dir data/llm_reps --vua-dir data/vua_reps \
+  python scripts/llm/dataset_stats.py --reps-dir data/llm_reps --vua-dir data/vua_reps \
          --conllu data/ud/en_all-ud.conllu --out data/methods_grid_stats.csv
 """
 import argparse
@@ -21,9 +21,9 @@ from pathlib import Path
 import numpy as np
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-for _sub in ("lib", "llm", "toy"):
+for _sub in ("", "llm", "toy"):          # "" = scripts/, where the shared measure lives
     sys.path.insert(0, str(REPO_ROOT / "scripts" / _sub))
-from unified_separability import build_balanced_grid  # noqa: E402
+from separability import build_balanced_grid  # noqa: E402
 
 FIELDS = ["model", "construction", "classes", "min_cell", "n_pre_grid_tokens",
           "n_items_eligible", "n_items_kept", "n_grid_tokens", "tokens_per_cell_median"]
@@ -52,7 +52,7 @@ def grid_stats(item_of, class_of, classes, min_cell):
 
 def corpus_stats(path):
     """Sentences and tokens per source treebank, read off the '# source = cfg/split' comments that
-    build_concat_ud.py writes. Counts only the rows parse_conllu would keep."""
+    build_ud_corpus.py writes. Counts only the rows parse_conllu would keep."""
     per, sents, cur = Counter(), Counter(), None
     with open(path, encoding="utf-8") as fh:
         for line in fh:

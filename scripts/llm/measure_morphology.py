@@ -11,12 +11,12 @@ fringe. These are also the native form of the exemplar/abstraction question (is 
 from the exemplar).
 
 We only saved upos/lemma with the reps, not FEATS. So we RE-DERIVE per-token Number/Tense in the
-exact extraction order (llm_extract.derive_labels, tokenizer-only, no GPU) from the feats-carrying
+exact extraction order (extraction.derive_labels, tokenizer-only, no GPU) from the feats-carrying
 concat conllu, truncate to the reps' token count, and ASSERT the re-derived upos/lemma match the
 saved arrays -- alignment verified, no re-extraction. Parallel across files (RAM ~= workers x per-file
 peak); pretrained-only by default.
 
-Run: python scripts/measure_llm_morph.py --reps-dir data/llm_reps --conllu data/ud/en_all-ud.conllu \
+Run: python scripts/measure_morphology.py --reps-dir data/llm_reps --conllu data/ud/en_all-ud.conllu \
         --skip-random --workers 6 --out data/llm_morph.csv
 """
 import argparse
@@ -35,10 +35,10 @@ for _v in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXP
 import numpy as np  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-for _sub in ("lib", "llm", "toy"):
+for _sub in ("", "llm", "toy"):          # "" = scripts/, where the shared measure lives
     sys.path.insert(0, str(REPO_ROOT / "scripts" / _sub))
-from unified_separability import unified_split  # noqa: E402
-from llm_extract import parse_conllu, derive_labels  # noqa: E402
+from separability import unified_split  # noqa: E402
+from extraction import parse_conllu, derive_labels  # noqa: E402
 
 # (feature, POS it inflects on, (UNMARKED, MARKED) class levels, label key). levels[1] is the
 # AFFIXED form (Plur -s, Past -ed) whose regularity we classify -- order matters for that.

@@ -9,12 +9,12 @@ systematic shift?) is about content words, not grammaticalized preposition metap
 
 This needs a SEPARATE extraction from the UD sweep (different corpus, and we want only the annotated
 TARGET token per instance, not every token). GPU REQUIRED -- the sandbox blocks CUDA, so run this in
-your outside terminal like run_llm_sweep.py. It is small/fast (~14.5k sentences, ~88k content targets,
+your outside terminal like extract_ud.py. It is small/fast (~14.5k sentences, ~88k content targets,
 one forward pass each) and memory-flat (memmap streaming; peak ~ one forward batch), so it stays well
 under the RAM cap even for the 1.4b model.
 
 Per model it writes data/vua_reps/<model>__pretrained.npz with: layer_<li> (N,d) target reps, and
-aligned form / pos / label arrays. Measure with measure_llm_metaphor.py (unified_split, same gate).
+aligned form / pos / label arrays. Measure with measure_metaphor.py (unified_split, same gate).
 
 Run (redirect the read-only HF cache; one model at a time is fine):
   HF_HOME=$TMPDIR/hf python scripts/extract_vua.py --out-dir data/vua_reps --device cuda
@@ -29,10 +29,10 @@ from pathlib import Path
 import numpy as np
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-for _sub in ("lib", "llm", "toy"):
+for _sub in ("", "llm", "toy"):          # "" = scripts/, where the shared measure lives
     sys.path.insert(0, str(REPO_ROOT / "scripts" / _sub))
-from run_llm_sweep import PAIRS, _resolve_layers  # noqa: E402
-from llm_extract import (init_tag, zero_position_embeddings,  # noqa: E402
+from extract_ud import PAIRS, _resolve_layers  # noqa: E402
+from extraction import (init_tag, zero_position_embeddings,  # noqa: E402
                          verify_position_ablation, COMPRESS_REPS)
 
 CONTENT = {"VERB", "NOUN", "ADJ", "ADV"}
@@ -101,7 +101,7 @@ def extract_model(model_name, out_path, sents, n_tgt, device, batch_size, max_le
                 hs = model(**{k: v.to(device) for k, v in enc.items()}).hidden_states
 
             # Gather the batch's target coordinates first, then one indexed read per layer on the
-            # device. See llm_extract.extract_stream_to_npz for why: the per-token, per-layer
+            # device. See extraction.extract_stream_to_npz for why: the per-token, per-layer
             # Python loop is interpreter-bound, and copying every position to the host wastes the
             # transfer on subwords that are never kept. Target order is unchanged.
             rows, subs, meta = [], [], []
@@ -129,7 +129,7 @@ def extract_model(model_name, out_path, sents, n_tgt, device, batch_size, max_le
         for li in layer_idxs:
             mm[li].flush()
         arrs = {f"layer_{li}": mm[li][:n] for li in layer_idxs}
-        # Same trade as in llm_extract: zlib returns a few percent on float32 activations and
+        # Same trade as in extraction: zlib returns a few percent on float32 activations and
         # costs more wall time than the forward passes did. COMPRESS_REPS=1 to compress anyway.
         save = np.savez_compressed if COMPRESS_REPS else np.savez
         save(out_path, form=np.array(forms), pos=np.array(poss),
