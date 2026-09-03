@@ -33,6 +33,9 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 # How often extraction reports progress, in seconds. PROGRESS_EVERY_S=10 to watch a short run
 # closely, or a large value to keep a long log quiet.
 PROGRESS_EVERY_S = float(os.environ.get("PROGRESS_EVERY_S", 60))
+# Compress the saved reps? Off by default: on float32 activations zlib returns about 7% for
+# roughly twice the wall time of the extraction itself. Set COMPRESS_REPS=1 if disk is short.
+COMPRESS_REPS = os.environ.get("COMPRESS_REPS", "0") not in ("0", "", "false", "False")
 for _sub in ("lib", "llm", "toy"):
     sys.path.insert(0, str(REPO_ROOT / "scripts" / _sub))
 from separability_measure import separability  # noqa: E402  (the canonical toy measure)
@@ -297,14 +300,20 @@ def extract_stream_to_npz(out_path, model_name, sentences, layer_idxs, max_token
         # between the last progress update and the finished file -- which is indistinguishable
         # from a hang at exactly the moment the run looks most alarming.
         raw_gb = n_tok * d * len(layer_idxs) * 4 / 1e9
+        # zlib on float32 activations is a bad trade: measured on a 1.3B, it spent 118 MINUTES to
+        # turn 61 GB into 56.8 GB -- 7%, single-threaded, with the GPU idle, for more time than
+        # the extraction itself took. Uncompressed is a straight disk write. np.load reads either
+        # format, so files written both ways mix freely.
+        save = np.savez_compressed if COMPRESS_REPS else np.savez
         print(f"    {model_name} [{init_tag(random_init, ablate_positions)}]: extraction done, "
-              f"compressing {raw_gb:.0f} GB to {Path(out_path).name} "
-              f"(single-threaded, GPU idle, expect many minutes)", flush=True)
+              f"writing {raw_gb:.0f} GB to {Path(out_path).name}"
+              + (" (COMPRESSED, single-threaded, GPU idle, expect many minutes; "
+                 "COMPRESS_REPS=0 to skip)" if COMPRESS_REPS else " (uncompressed)"), flush=True)
         t_z = time.time()
-        np.savez_compressed(out_path, upos=upos, lemma=lemma,
-                            layer_idxs=np.array(sorted(layer_idxs)), model=model_name,
-                            init=init_tag(random_init, ablate_positions),
-                            **arrs)
+        save(out_path, upos=upos, lemma=lemma,
+             layer_idxs=np.array(sorted(layer_idxs)), model=model_name,
+             init=init_tag(random_init, ablate_positions),
+             **arrs)
         print(f"    {model_name} [{init_tag(random_init, ablate_positions)}]: compressed in "
               f"{(time.time() - t_z) / 60:.1f} min -> "
               f"{Path(out_path).stat().st_size / 1e9:.1f} GB", flush=True)
