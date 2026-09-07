@@ -177,8 +177,6 @@ It is worth noting that entanglement is guaranteed under a specific subset of th
 
 Each form, each class and each context has its own embedding. The three are concatenated and passed to a standard multi-layer perceptron (MLP) with a single hidden layer of width $d$ and either a linear or a ReLU activation function, which outputs a distribution over the vocabulary (@fig-training).
 
-Under the linear activation the hidden layer is a weighted sum of the three embeddings, one term for the form, one for the class and one for the context, so its interaction is identically zero however much the language contains (Appendix \ref{sec-appendix-math}). That makes the linear condition a negative control by algebra: whatever the measure reports there is its own noise, read off at that exact width, sample size and context level.
-
 Training minimizes the exact expected cross-entropy against the true target, so there is no minibatch noise, and stops when that loss plateaus; each cell records whether it plateaued or exhausted its budget.
 
 ![What the learner sees and what it is trained to predict. Every (form, class) cell is observed 24 times, each in a different context; that within-cell variation is what the measurement later splits in half. $\odot$ is the elementwise product: a sum splits into an item part plus a class part, and a product does not.](fig-training.pdf){#fig-training width="100%"}
@@ -239,7 +237,7 @@ pB <- ggplot(toy_cap, aes(capacity, overlap, colour = act)) +
   theme(legend.position = "top", legend.margin = margin(0, 0, -6, 0))
 ```
 
-The measure reports zero when the answer is zero. The linear condition cannot represent an interaction, so every reading it gives is the estimator's own noise. Across all `r cm(nullget("linear", TRUE, "n"))` cells where the language *did* contain an interaction, it reports a median share of `r g(nullget("linear", TRUE, "med"), 4)` and flags one in `r sprintf("%.1f%%", 100 * nullget("linear", TRUE, "flagged"))` of them, the nominal rate for a test at the 5% level; where no interaction was planted it flags `r sprintf("%.1f%%", 100 * nullget("linear", FALSE, "flagged"))`. This calibration comes from a condition whose true value is provably zero, measured at every width, sample size and noise level in the grid.
+The measure reports zero when the answer is zero. Under the linear activation the hidden layer is a weighted sum of the three embeddings, so its interaction is identically zero however much the language contains (Appendix \ref{sec-appendix-math}), and every reading the measure gives there is its own noise. Across all `r cm(nullget("linear", TRUE, "n"))` cells where the language *did* contain an interaction, it reports a median share of `r g(nullget("linear", TRUE, "med"), 4)` and flags one in `r sprintf("%.1f%%", 100 * nullget("linear", TRUE, "flagged"))` of them, the nominal rate for a test at the 5% level; where no interaction was planted it flags `r sprintf("%.1f%%", 100 * nullget("linear", FALSE, "flagged"))`. This calibration comes from a condition whose true value is provably zero, measured at every width, sample size and noise level in the grid.
 
 The measure also tracks what is there. Under ReLU the measured interaction rises monotonically with the planted one (@fig-toy, left), and the rate at which it is flagged rises with it, from `r sprintf("%.0f%%", 100 * min(toy_track$flagged[toy_track$act == "ReLU" & toy_track$bin != "none"]))` at the smallest nonzero setting to `r sprintf("%.0f%%", 100 * max(toy_track$flagged[toy_track$act == "ReLU"]))` at the largest. With no interaction planted, ReLU flags `r sprintf("%.1f%%", 100 * nullget("ReLU", FALSE, "flagged"))` of cells, below nominal: the nonlinearity does not manufacture an interaction out of an additive language. The measured shares are smaller than the planted ones throughout, which is what the target-versus-representation distinction predicts; what matters is that the relationship is monotone and that zero maps to zero.
 
@@ -274,7 +272,7 @@ For part of speech and grammatical role we concatenate six general-domain Englis
 All three constructions are **same-token**: the item's surface form is identical across the two class levels, so the representation is read from the same token in both, and no part of any difference can come from tokenization.
 
 | distinction | item | levels | analyzed | tokens |
-|:--------------|:--------------|:--------------|--------------:|--------------:|
+|:---|:---|:---|---:|---:|
 | part of speech | surface form | [noun]{.smallcaps} / [verb]{.smallcaps} | `r max(llm$n_items[llm$construction == "POS (noun/verb)"])` | `r cm(4722)` |
 | grammatical role | surface form | *nsubj* / *obj* | 49 | `r cm(2150)` |
 | metaphor | surface form | literal / figurative | `r gs("metaphor", "n_items_kept")` | `r cm(gs("metaphor", "n_grid_tokens"))` |
