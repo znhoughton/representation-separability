@@ -155,21 +155,21 @@ llm <- bind_rows(
 
 # Experiment 1: What a Learner Builds from a Known Language {#sec-exp1}
 
-Experiment 1 has two jobs. The first is to establish that the measure reports what is there: we build an artificial language whose structure we control, dial each of the three effects from nothing to everything, and check what the measure recovers. The second is to ask what a learner does with that structure when a separable solution is available to it and it has room to find one.
+The goal of experiment 1 is to validate our measurement on an artificial language whose structure we control as well as examine how a learner represents that structure.
 
 ## Dataset {#sec-exp1-data}
 
-The artificial language is a next-token prediction task over a vocabulary of `r cm(600)` tokens. Every observation is a triple: a **form** (one of `r max(toy$n_form)`), a **class** (one of `r max(toy$n_class)`), and a **context** drawn from a pool of 400. Each (form, class) cell is observed `r max(toy$n_obs)` times, each time in a different context, which is what a word in a corpus looks like: one type, many occurrences, each in different company. The target distribution for an observation is built from four independently generated terms, weighted and passed through a softmax:
+In order to examine the representation of linguistic concepts, we constructed an artificial language which comprises a probability distribution over a vocabulary of `r cm(600)` tokens. Every observation is a triple: a **form** (one of `r max(toy$n_form)`), a **class** (one of `r max(toy$n_class)`), and a **context** drawn from a pool of 400. The motivation for this setup is to give each word a naturalistic environment: the word occurs in a context that favors a specific class-membership (e.g., *walk* as a verb occurs in a different context than *walk* as a noun). Each (form, class) cell is observed `r max(toy$n_obs)` times, each time in a different context, which is what a word in a corpus looks like: one type, many occurrences, each in different company. Consider *walk* used as a verb, in one of those contexts. Four things determine the distribution over the next token, and each contributes a vector over the vocabulary. *Walk* itself contributes the same amount whichever class it is used as; the verb class contributes the same amount for every verb; a third term contributes whatever is specific to *walk*-as-a-verb over and above those two; and the context contributes the rest. The four are weighted, summed, and passed through a softmax:
 
 $$
 P(\text{next token} \mid f, c, x) = \operatorname{softmax}\Big(s\big[\,w_\alpha\,\text{item}(f) + w_\beta\,\text{class}(c) + w_\gamma\,\text{int}(f,c) + w_{\text{ctx}}\,\text{context}(x)\,\big]\Big)
 $$ {#eq-toy}
 
-The item and class terms are what those factors contribute on their own. The **interaction** term multiplies the form's and the class's latent codes elementwise before mapping them onto the vocabulary, and the product is what makes it an interaction: a sum can always be split into a form part plus a class part, and a product cannot. The **context** term is nuisance, but it is real information the model has to encode, exactly as the rest of a sentence is for a language model. Every term is normalized to unit scale before weighting, so the weights set composition and nothing else; total signal strength, and hence task difficulty, is constant across the grid.
+The first two terms are straightforward to build. Every form is assigned its own random vector and every class is assigned its own, and each is mapped onto the vocabulary, so $\text{item}(\textit{walk})$ is the same vector whether *walk* is used as a noun or a verb and $\text{class}(\textit{verb})$ is the same vector for every verb. The third has to be built so that it cannot be recovered from the other two, so we multiply *walk*'s vector by the verb vector entry by entry and map that product onto the vocabulary. A sum could be pulled back apart into a form part and a class part; a product cannot, which is what makes this term genuinely joint. The context term is noise as far as our question goes, but the model still has to encode it, exactly as a language model has to encode the rest of a sentence. Each term is scaled to unit length before it is weighted, so changing the weights changes the mix of the three effects without changing how much signal there is in total, and the task stays equally hard everywhere in the grid.
 
 **The grid.** The three effect weights are crossed factorially, each over $\{0, 0.5, 1, 2\}$, giving 63 combinations. Fifteen of those plant no item effect, fifteen no class effect and fifteen no interaction, so the measure is asked to report zero in every case where zero is the truth. These are crossed in turn with the context weight (three levels), the hidden width, the output nonlinearity and five random draws of the language, for `r format(nrow(toy), big.mark = ",")` cells, of which `r sprintf("%.1f%%", 100 * mean(toy$converged))` trained to a loss plateau.
 
-**Capacity.** The structure needs `r max(toy$rank)` dimensions and the hidden layer has `r paste(sort(unique(toy$d)), collapse = ", ")`, so their ratio, which we call **capacity**, runs from `r g(min(toy$capacity), 3)` to `r g(max(toy$capacity), 1)`. Below one there is room to give every component its own axis, so any entanglement was chosen; above one, dimension counting makes separation impossible and entanglement is forced. Capacity is a reported variable, and the results below are grouped by it.
+**Capacity.** The structure needs `r max(toy$rank)` dimensions and the hidden layer has `r paste(sort(unique(toy$d)), collapse = ", ")`, so their ratio, which we call **capacity**, runs from `r g(min(toy$capacity), 3)` to `r g(max(toy$capacity), 1)`. Below one there is room to give every component its own axis, so any entanglement was chosen; above one there are more components than dimensions to put them in, so they cannot all have their own axis and entanglement is forced. Capacity is a reported variable, and the results below are grouped by it.
 
 ## Method {#sec-exp1-method}
 
@@ -179,7 +179,7 @@ The model has an embedding per **form**, an embedding per **class**, and an embe
 
 The linear condition is a negative control by algebra. With additive inputs a linear map produces cell means of the form $A(f) + B(c)$, and such a grid has $\gamma = 0$ identically (Appendix \ref{sec-appendix-math}), so the linear learner cannot represent an interaction however much the language contains, and it visibly fails to fit when the language contains one. Whatever the measure reports there is its own noise, read off at that exact width, sample size and context level. ReLU is the condition that can build an interaction, and the one that corresponds to a transformer: nonlinear inside, linear readout.
 
-![What the learner sees and what it is trained to predict. Every (form, class) cell is observed 24 times, each in a different context; that within-cell variation is what the measurement later splits in half. $\odot$ is the elementwise product: a sum splits into an item part plus a class part, and a product does not.](fig-training.pdf){#fig-training width=100%}
+![What the learner sees and what it is trained to predict. Every (form, class) cell is observed 24 times, each in a different context; that within-cell variation is what the measurement later splits in half. $\odot$ is the elementwise product: a sum splits into an item part plus a class part, and a product does not.](fig-training.pdf){#fig-training width="100%"}
 
 ### Decomposing a representation {#sec-measure}
 
@@ -195,7 +195,7 @@ Because the dependent variable is a vector, each component is a direction in rep
 
 Two quantities follow, and only the second is geometric. The first is how much structure each component carries, which the partition guarantees is well defined. The second is which directions each occupies, and nothing in the partition constrains that; two components can carry cleanly separated shares of the structure while lying on the very same axis. We therefore measure orientation separately, as the fraction of one component's energy that lies inside another's subspace, read against the level a randomly oriented effect would give at that width, and we reserve the word *orthogonal* for that sense throughout. A representation is separable if a word's representation is the sum of an item part and a class part with the two on their own axes, so it fails either when the components are non-orthogonal, so that projecting out the class also removes item information, or when there is a third component that is neither an item part nor a class part, whatever its orientation. The question is accordingly not whether class information is present, but how it is carried: on a single direction shared across words, or on a separate direction for each of them.
 
-![If a word's representation were an item part plus a class part, three corners of a $2 \times 2$ grid of cell means would fix the fourth and the parallelogram would close. It does not. $\gamma$ is how far the actual cell sits from where that additive account puts it, and it is not error: the four components exhaust the grid exactly, so $\gamma$ is the part that belongs to the pairing of a particular word with a particular class. The arrow's length is $\lVert \gamma(i,c) \rVert$, and with two items and two classes it is the whole interaction, since $\gamma$ then has a single degree of freedom and the four cells share one vector up to sign. What we report is each component's squared length as a share of the structure across cells.](fig-measurement.pdf){#fig-measurement width=72%}
+![If a word's representation were an item part plus a class part, three corners of a $2 \times 2$ grid of cell means would fix the fourth and the parallelogram would close. It does not. $\gamma$ is how far the actual cell sits from where that additive account puts it, and it is not error: the four components exhaust the grid exactly, so $\gamma$ is the part that belongs to the pairing of a particular word with a particular class. The arrow's length is $\lVert \gamma(i,c) \rVert$, and with two items and two classes it is the whole interaction, since $\gamma$ then has a single degree of freedom and the four cells share one vector up to sign. What we report is each component's squared length as a share of the structure across cells.](fig-measurement.pdf){#fig-measurement width="72%"}
 
 ## Results {#sec-exp1-results}
 
@@ -272,7 +272,7 @@ For part of speech and grammatical role we concatenate six general-domain Englis
 All three constructions are **same-token**: the item's surface form is identical across the two class levels, so the representation is read from the same token in both, and no part of any difference can come from tokenization.
 
 | distinction | item | levels | analyzed | tokens |
-|:-----------|:-----------|:-----------|-----------:|-----------:|
+|:--------------|:--------------|:--------------|--------------:|--------------:|
 | part of speech | surface form | [noun]{.smallcaps} / [verb]{.smallcaps} | `r max(llm$n_items[llm$construction == "POS (noun/verb)"])` | `r cm(4722)` |
 | grammatical role | surface form | *nsubj* / *obj* | 49 | `r cm(2150)` |
 | metaphor | surface form | literal / figurative | `r gs("metaphor", "n_items_kept")` | `r cm(gs("metaphor", "n_grid_tokens"))` |
@@ -399,30 +399,16 @@ This result has a definite scope. It shows that $\gamma$ carries the specific la
 # Discussion {#sec-discussion}
 
 ::: {.content-visible when-format="acl-pdf"}
-```{=html}
 <!-- PLACEHOLDER: author to write. -->
-```
 :::
 
 # Limitations {.unnumbered}
 
-Everything here is English, and rests on three distinctions measured in two model families at three
-scales each. The graded ordering we report is an ordering across *these* distinctions, and whether
-it holds for aspect, animacy or definiteness is untested.
+Everything here is English, and rests on three distinctions measured in two model families at three scales each. The graded ordering we report is an ordering across *these* distinctions, and whether it holds for aspect, animacy or definiteness is untested.
 
-The measure is invariant to per-dimension rescaling and to rotation, but not to arbitrary linear
-reparameterization, so overlap between the item and class effects is relative to the model's own
-basis. We take that to be the basis of interest, since LayerNorm and the feed-forward nonlinearities
-act coordinate-wise and a downstream readout operates on the unwhitened space; a reader who wants a
-fully gauge-free quantity will not find one here. The component sizes, their growth with depth and
-their significance do not depend on that choice.
+The measure is invariant to per-dimension rescaling and to rotation, but not to arbitrary linear reparameterization, so overlap between the item and class effects is relative to the model's own basis. We take that to be the basis of interest, since LayerNorm and the feed-forward nonlinearities act coordinate-wise and a downstream readout operates on the unwhitened space; a reader who wants a fully gauge-free quantity will not find one here. The component sizes, their growth with depth and their significance do not depend on that choice.
 
-Two things we would like to have done. These are endpoint measurements, so they say nothing about
-the order in which the two components are learned, which needs training checkpoints. And the
-interaction captures any systematic within-word difference between the levels, so a distinction
-realized through the contexts a word appears in is measured together with those contexts. For a
-contextual model we take that to be what representing the distinction consists in, but separating
-the two would need a construction in which they can be varied independently.
+Two things we would like to have done. These are endpoint measurements, so they say nothing about the order in which the two components are learned, which needs training checkpoints. And the interaction captures any systematic within-word difference between the levels, so a distinction realized through the contexts a word appears in is measured together with those contexts. For a contextual model we take that to be what representing the distinction consists in, but separating the two would need a construction in which they can be varied independently.
 
 ```{=latex}
 \bibliography{refs}
@@ -679,4 +665,3 @@ rd("llm_unified_form_ablation.csv") |>
 A second line of evidence points the same way and needs no ablation at all. Pythia never had an absolute position embedding to remove, and its portable fractions are 0.253, 0.287 and 0.262, at or below every intact OPT-BabyLM value. The family without the mechanism shows the phenomenon at least as strongly as the family with it. An explanation resting on absolute position embeddings would have to account for the models that do not have them.
 
 We tested this for part of speech, the construction where the positional worry is sharpest because noun and verb uses of a form occupy systematically different sentence positions. Grammatical role carries the same concern for the same reason, and behaves the same way. Metaphor does not, since literal and figurative uses of a word are not positionally distinguished.
-
