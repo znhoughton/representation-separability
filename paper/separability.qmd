@@ -175,15 +175,13 @@ It is worth noting that entanglement is guaranteed under a specific subset of th
 
 ### The learner
 
-The input to the learner model comprises three pieces of information: which form, which class, and which context. Each has its own embedding, and the three are concatenated and passed to a standard multi-layer perceptron (MLP) with a single hidden layer of width $d$ and either a linear or a ReLU activation function, which outputs a distribution over the vocabulary (@fig-training).
-
-Training minimizes the exact expected cross-entropy against the true target, so there is no minibatch noise, and stops when that loss plateaus; each cell records whether it plateaued or exhausted its budget.
+The input to the learner model comprises three pieces of information: which form, which class, and which context. Each has its own embedding, and the three are concatenated and passed to a standard multi-layer perceptron (MLP) with a single hidden layer of width $d$ and either a linear or a ReLU activation function, which outputs a distribution over the vocabulary (@fig-training). The training objective is thus to minimize cross-entropy between the model's predicted distribution over the vocabulary and the true distribution over the vocabulary.
 
 ![What the learner sees and what it is trained to predict. Every (form, class) cell is observed 24 times, each in a different context; that within-cell variation is what the measurement later splits in half. $\odot$ is the elementwise product: a sum splits into an item part plus a class part, and a product does not.](fig-training.pdf){#fig-training width="100%"}
 
 ### Decomposing a representation {#sec-measure}
 
-We measure separability by decomposing a word-in-context representation into the part that belongs to the word, the part that belongs to the class, and the part that belongs to neither. Let $M[i,c] \in \mathbb{R}^d$ be the mean representation of item $i$ used at class level $c$; we decompose that grid by centering, so that
+We measure separability by decomposing a word-in-context representation into the part that belongs to the word, the part that belongs to the class, and the part that belongs to neither. The representation is the MLP's hidden layer, which for a given form and class varies across the contexts that cell is observed in, so let $M[i,c] \in \mathbb{R}^d$ be the mean of those hidden states for item $i$ used at class level $c$. We decompose that grid by centering, so that
 
 $$
 M[i,c] \;=\; \mu + \alpha(i) + \beta(c) + \gamma(i,c),
@@ -272,7 +270,7 @@ For part of speech and grammatical role we concatenate six general-domain Englis
 All three constructions are **same-token**: the item's surface form is identical across the two class levels, so the representation is read from the same token in both, and no part of any difference can come from tokenization.
 
 | distinction | item | levels | analyzed | tokens |
-|:---|:---|:---|---:|---:|
+|:--------------|:--------------|:--------------|--------------:|--------------:|
 | part of speech | surface form | [noun]{.smallcaps} / [verb]{.smallcaps} | `r max(llm$n_items[llm$construction == "POS (noun/verb)"])` | `r cm(4722)` |
 | grammatical role | surface form | *nsubj* / *obj* | 49 | `r cm(2150)` |
 | metaphor | surface form | literal / figurative | `r gs("metaphor", "n_items_kept")` | `r cm(gs("metaphor", "n_grid_tokens"))` |
