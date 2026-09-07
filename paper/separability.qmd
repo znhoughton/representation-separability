@@ -175,7 +175,7 @@ It is worth noting that entanglement is guaranteed under a specific subset of th
 
 ### The learner
 
-The learner is a standard MLP: three embeddings, one each for the form, the class and the context, concatenated and passed through a single hidden layer of width $d$ with either a linear or a ReLU activation, then read out to a distribution over the vocabulary (@fig-training). We measure the hidden layer. Each of a cell's `r max(toy$n_obs)` observations has a different context, so their hidden states differ, and that variation is what the measurement splits in half.
+Each form, each class and each context has its own embedding. The three are concatenated and passed to a standard MLP with a single hidden layer of width $d$ and either a linear or a ReLU activation, which outputs a distribution over the vocabulary (@fig-training). We measure the hidden layer. Each of a cell's `r max(toy$n_obs)` observations has a different context, so their hidden states differ, and that variation is what the measurement splits in half.
 
 Nothing in the input identifies the pairing. The form and the class arrive separately, so if the hidden layer comes to encode anything specific to *walk*-as-a-verb, the network has constructed it from the two, and whether it can do so depends entirely on the activation. Under the linear activation the hidden layer is a weighted sum of the three embeddings, one term for the form, one for the class and one for the context, so its interaction is identically zero however much the language contains (Appendix \ref{sec-appendix-math}). The linear condition is in that sense a negative control by algebra, and whatever the measure reports there is its own noise, read off at that exact width, sample size and context level.
 
