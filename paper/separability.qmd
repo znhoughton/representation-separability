@@ -175,7 +175,7 @@ It is worth noting that entanglement is guaranteed under a specific subset of th
 
 ### The learner
 
-Each form, each class and each context has its own embedding. The three are concatenated and passed to a standard multi-layer perceptron (MLP) with a single hidden layer of width $d$ and either a linear or a ReLU activation function, which outputs a distribution over the vocabulary (@fig-training).
+The input to the learner model comprises three pieces of information: which form, which class, and which context. Each has its own embedding, and the three are concatenated and passed to a standard multi-layer perceptron (MLP) with a single hidden layer of width $d$ and either a linear or a ReLU activation function, which outputs a distribution over the vocabulary (@fig-training).
 
 Training minimizes the exact expected cross-entropy against the true target, so there is no minibatch noise, and stops when that loss plateaus; each cell records whether it plateaued or exhausted its budget.
 
