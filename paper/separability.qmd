@@ -175,9 +175,9 @@ It is worth noting that entanglement is guaranteed under a specific subset of th
 
 ### The learner
 
-Each form, each class and each context has its own embedding. The three are concatenated and passed to a standard MLP with a single hidden layer of width $d$ and either a linear or a ReLU activation, which outputs a distribution over the vocabulary (@fig-training). We measure the hidden layer. Each of a cell's `r max(toy$n_obs)` observations has a different context, so their hidden states differ, and that variation is what the measurement splits in half.
+Each form, each class and each context has its own embedding. The three are concatenated and passed to a standard multi-layer perceptron (MLP) with a single hidden layer of width $d$ and either a linear or a ReLU activation function, which outputs a distribution over the vocabulary (@fig-training). We measure the hidden layer.
 
-Nothing in the input identifies the pairing. The form and the class arrive separately, so if the hidden layer comes to encode anything specific to *walk*-as-a-verb, the network has constructed it from the two, and whether it can do so depends entirely on the activation. Under the linear activation the hidden layer is a weighted sum of the three embeddings, one term for the form, one for the class and one for the context, so its interaction is identically zero however much the language contains (Appendix \ref{sec-appendix-math}). The linear condition is in that sense a negative control by algebra, and whatever the measure reports there is its own noise, read off at that exact width, sample size and context level.
+Under the linear activation the hidden layer is a weighted sum of the three embeddings, one term for the form, one for the class and one for the context, so its interaction is identically zero however much the language contains (Appendix \ref{sec-appendix-math}). That makes the linear condition a negative control by algebra: whatever the measure reports there is its own noise, read off at that exact width, sample size and context level.
 
 Training minimizes the exact expected cross-entropy against the true target, so there is no minibatch noise, and stops when that loss plateaus; each cell records whether it plateaued or exhausted its budget.
 
