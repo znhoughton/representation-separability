@@ -2,6 +2,7 @@
 #
 # Position-ablation control, start to finish. One command, everything to CSV.
 #
+#   mkdir -p logs
 #   nohup setsid bash scripts/llm/run_position_ablation.sh > logs/ablation.out 2>&1 &
 #   tail -f logs/ablation.out
 #

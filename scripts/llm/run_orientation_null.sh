@@ -2,6 +2,7 @@
 #
 # Re-measure the three body constructions with the orientation null and the between-grid share.
 #
+#   mkdir -p logs
 #   nohup setsid bash scripts/llm/run_orientation_null.sh > logs/null.out 2>&1 &
 #   tail -f logs/null.out
 #
