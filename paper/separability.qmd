@@ -87,11 +87,16 @@ toy_track_lin <- toy_track_w |> filter(act == "linear") |>
 
 # Capacity: below 1 every component can have its own axis, above 1 they cannot.
 toy_cap <- toy |> filter(w_int > 0, w_item > 0, w_class > 0) |>
+  # the interaction's own chance level is the rank of the marginal subspace over the width, and
+  # it moves around with capacity, so the overlap is only interpretable against it
+  mutate(ch_int = (k_item + k_class) / d) |>
   group_by(act, capacity) |>
   summarise(n = n(), size_int = median(size_interaction),
             overlap = median(leak_item_into_class, na.rm = TRUE),
             floor = median(floor),
-            ratio = median(leak_item_into_class / floor, na.rm = TRUE), .groups = "drop")
+            ratio = median(leak_item_into_class / floor, na.rm = TRUE),
+            overlap_int = median(leak_int_into_margins, na.rm = TRUE),
+            ch_int = median(ch_int), .groups = "drop")
 
 # Context is the nuisance dial: how much of the target is about something other than the item,
 # the class and their conjunction. The high end is the regime Experiment 2 sits in.
@@ -237,7 +242,7 @@ The weights in @eq-toy describe the true distribution the model is trained to ma
 #| fig-width: 6.3
 #| fig-height: 2.5
 #| out-width: "100%"
-#| fig-cap: "Experiment 1, all 7,560 runs. Left: the measured interaction against the amount planted in the language, one line per hidden width, with the linear condition dashed. The linear condition cannot represent an interaction whatever the language contains and reads zero at every width; under ReLU the measured share rises with the planted one, and the wider the representation the more of it is expressed. The two axes are not on a common scale: the planted share is a share of the target distribution and the measured share is a share of the representation the model builds, and Appendix \\ref{sec-appendix-validate} shows the measure recovers a planted share exactly when the planting is done in a representation. Right: overlap between the item and class effects against capacity, with the dashed line marking what a randomly oriented effect would give at that width. Below capacity the two effects are more orthogonal than chance; once dimension counting makes separation impossible they are several times chance. Note the log axis, and that the floor moves by a factor of eight across these widths."
+#| fig-cap: "What the artificial-language grid settles about the measure and about the learner, over all 7,560 runs. Left: the measured interaction against the amount planted in the language, one line per hidden width, with the linear condition dashed. The linear condition cannot represent an interaction whatever the language contains and reads zero at every width; under ReLU the measured share rises with the planted one, and the wider the representation the more of it is expressed. The two axes are not on a common scale: the planted share is a share of the target distribution and the measured share is a share of the representation the model builds, and Appendix \\ref{sec-appendix-validate} shows the measure recovers a planted share exactly when the planting is done in a representation. Right: overlap between the item and class effects against capacity, with the dashed line marking what a randomly oriented effect would give at that width. Below capacity the two effects are more orthogonal than chance; once dimension counting makes separation impossible they are several times chance. Note the log axis, and that the floor moves by a factor of eight across these widths."
 ACT2 <- c(linear = UO[["green2"]], ReLU = UO[["gold"]])
 # One ReLU line per width, shading gold to amber with increasing width. Pooled, the level was
 # set by the narrowest models, which cannot build an interaction at all.
@@ -280,16 +285,18 @@ Item and class effects entangle only when there is no room for them not to, and 
 
 ```{r}
 #| label: tbl-toy
-#| tbl-cap: "Experiment 1, by capacity, over runs where all three effects were planted. Chance is the share of a randomly oriented effect that would fall in the class direction at that width, and the ratio is the observed overlap against it. Below one, a fully separable solution is reachable by dimension counting; above one it is not."
+#| tbl-cap: "What a learner builds from the same languages as its representation runs out of room. Capacity is the rank the structure needs divided by the hidden width, so the rows run from a width of 128 down to 8 while the languages are held fixed: the median interaction planted is 0.097 in every row, and the fall down the *interaction* column is therefore the width and not the language. *Interaction* is the interaction's share of the representation, a size. The last two columns are orientations, and a separate question: how much of the item effect lies in the class subspace, and how much of the interaction lies in the span of the two main effects. Each is the fraction that survives the projection, which is the quantity that matters, with its chance level in parentheses. Chance is what a randomly oriented effect would give at that width, so it sets the scale rather than a bound: nothing stops a learned representation falling below it, and with room to spare ReLU does. It moves eightfold down this table, which is why the raw fractions are not comparable across rows on their own. The linear arm has no interaction to orient, so its last column is empty. Below capacity one a fully separable solution is reachable by dimension counting; above one it is not."
 toy_cap |>
   transmute(condition = act, capacity = g(capacity, 3),
             interaction = g(size_int, 3),
-            overlap = g(overlap, 4),
-            chance = g(floor, 4),
-            ratio = g(ratio, 2)) |>
+            `item-class overlap` = paste0(g(overlap, 4), " (", g(floor, 4), ")"),
+            # the linear arm has no interaction to orient, so its direction is noise
+            `interaction overlap` = ifelse(
+              act == "linear", "---",
+              paste0(g(overlap_int, 3), " (", g(ch_int, 3), ")"))) |>
   arrange(condition, capacity) |>
-  kbl(booktabs = TRUE, align = "lrrrrr", linesep = "") |>
-  kable_styling(latex_options = c("HOLD_position"), font_size = 8)
+  kbl(booktabs = TRUE, align = "lrrrr", linesep = "", escape = FALSE) |>
+  kable_styling(latex_options = c("HOLD_position"), font_size = 7)
 ```
 
 The measure also works when the representation primarily encodes contextual information unrelated to the specific form and class. When the context term accounts for more than 80% of the variance in the logits, leaving under a fifth for the form, the class and their interaction combined, ReLU's measured interaction holds at `r g(toy_noise$size_int[toy_noise$act == "ReLU" & toy_noise$cbin == ">80%"], 3)` against `r g(toy_noise$size_int[toy_noise$act == "ReLU" & toy_noise$cbin == "<20%"], 3)` when context is minor, and the flag rate falls from `r sprintf("%.0f%%", 100 * toy_noise$flagged[toy_noise$act == "ReLU" & toy_noise$cbin == "<20%"])` to `r sprintf("%.0f%%", 100 * toy_noise$flagged[toy_noise$act == "ReLU" & toy_noise$cbin == ">80%"])`. Power degrades, as it must with twenty-four observations per item and level, but the estimate does not drift. That is the regime Experiment 2 sits in, since a word's hidden state varies mostly with the sentence it appears in rather than with the word or its class.
@@ -342,7 +349,7 @@ The two independent estimates come from the corpus itself: each item at a level 
 #| fig-width: 6.3
 #| fig-height: 3.7
 #| out-width: "100%"
-#| fig-cap: "Experiment 2, by relative depth (0 = static embeddings, 1 = final block). Top: the interaction's share of representational structure. Middle: the class effect's share. Bottom: the portable fraction, the class effect's share of the two together, which is the quantity the three distinctions are ordered by. Each line is one model; color distinguishes the two training corpora. Both components are built by depth, and the interaction is the larger of the two throughout. The deepest-layer values, with their chance levels, are in Table \\ref{tbl-llm}."
+#| fig-cap: "How the three components grow through the network, for every model and every distinction. Relative depth runs from the static embedding layer (0) to the final block (1). Top: the interaction's share of representational structure. Middle: the class effect's share. Bottom: the portable fraction, the class effect's share of the two together, which is the quantity the three distinctions are ordered by. Each line is one model; color distinguishes the two training corpora. Both components are built by depth, and the interaction is the larger of the two throughout. The deepest-layer values, with their chance levels, are in Table \\ref{tbl-llm}."
 plt <- llm |>
   mutate(portable = size_class / (size_class + size_int)) |>
   select(construction, family, size, depth, size_int, size_class, portable) |>
@@ -456,6 +463,76 @@ Two things we would like to have done. These are endpoint measurements, so they 
 \floatplacement{figure}{H}
 ```
 
+# Validating the Measure {#sec-appendix-validate}
+
+Experiment 1 plants structure in a *language* and measures a trained model's representation. A discrepancy there is ambiguous between the measure missing something and the model not mirroring the language, and the second is known to happen: the linear condition cannot represent an interaction at all. This appendix removes the ambiguity by planting $\mu$, $\alpha$, $\beta$ and $\gamma$ **directly in a representation**, with no model and no training, and passing the result to the same function the language models are measured with. Ground truth now sits at the level the measure operates on.
+
+```{r}
+#| label: setup-validate
+#| include: false
+val <- rd("validate_measure.csv")
+v_rec <- val |> filter(n_obs == 24, d >= 768) |> group_by(planted_int) |>
+  summarise(n = n(), measured = median(size_interaction),
+            lo = quantile(size_interaction, .05), hi = quantile(size_interaction, .95),
+            flagged = mean(sig_interaction), .groups = "drop")
+v_null <- bind_rows(
+  val |> filter(planted_int == 0) |> group_by(n_obs) |>
+    summarise(effect = "interaction", med = median(size_interaction),
+              p95 = quantile(size_interaction, .95),
+              flagged = mean(sig_interaction), .groups = "drop"),
+  val |> filter(planted_class == 0) |> group_by(n_obs) |>
+    summarise(effect = "class effect", med = median(size_class),
+              p95 = quantile(size_class, .95), flagged = NA_real_, .groups = "drop"),
+  val |> filter(planted_item == 0) |> group_by(n_obs) |>
+    summarise(effect = "item effect", med = median(size_item),
+              p95 = quantile(size_item, .95), flagged = NA_real_, .groups = "drop"))
+v_ov <- val |> filter(!is.na(leak_item_into_class), n_obs == 24, planted_overlap == 0) |>
+  group_by(d) |> summarise(measured = median(leak_item_into_class),
+                           chance = median(k_class / d), .groups = "drop")
+vget <- function(eff, obs, col) v_null[[col]][v_null$effect == eff & v_null$n_obs == obs]
+```
+
+**Construction.** The three components are drawn at random and then centered so each satisfies the constraints its role implies: $\alpha$ and $\beta$ sum to zero over their own index, $\gamma$ over both. Without that a planted $\gamma$ would partly be an item or class main effect and the planted shares would be wrong before the measure saw them. Each is rescaled to hit a target share of the total squared length across the grid, under the same weighting the measure uses. Each mean is then observed $n$ times under isotropic noise, whose scale is set as a multiple of the mean squared length. The grid crosses the planted shares (the same factorial Experiment 1 runs, mapped into share space, plus the three compositions Experiment 2 measures), item counts from 27 to 180, two and four class levels, widths from 8 to 2048, 10, 24 and 100 observations per item and level, three noise levels, planted-orthogonal and planted-non-orthogonal effects, and five seeds: `r cm(nrow(val))` runs.
+
+**Recovery.** At Experiment 2's regime, 24 observations per item and level in 768 or more dimensions, the measured interaction matches the planted one across the whole range (Table \ref{tbl-val-recovery}), and is flagged in essentially every run where anything was planted and none where nothing was.
+
+```{r}
+#| label: tbl-val-recovery
+#| tbl-cap: "Recovery at 24 observations per item and level in 768 or more dimensions, pooled over noise levels, item counts and widths. Brackets are the 5th and 95th percentiles across runs."
+v_rec |> filter(planted_int == 0 | planted_int > 0.02) |> head(12) |>
+  transmute(`planted` = g(planted_int, 3),
+            runs = n,
+            `measured` = sprintf("%.4f [%.4f, %.4f]", measured, lo, hi),
+            `flagged` = sprintf("%.0f%%", 100 * flagged)) |>
+  kbl(longtable = TRUE, booktabs = TRUE, align = "rrrr", linesep = "") |>
+  kable_styling(font_size = 9, latex_options = c("repeat_header"))
+```
+
+**Floors.** The interaction and the item effect read essentially zero when nothing is planted, at every sample size. The class effect does not, and this is the one quantity in the paper that carries a floor worth knowing (Table \ref{tbl-val-null}): at 24 observations per item and level a true zero reads `r g(vget("class effect", 24, "med"), 4)`. This is the price of estimating the class effect as a squared length rather than a cross-product, and it is why the metaphor result in @sec-exp2-results is stated as an inability to distinguish the class effect from zero rather than as a measurement of something small. Metaphor's observed class effect, 0.0016 to 0.0062 at the deepest layer, sits at that floor.
+
+```{r}
+#| label: tbl-val-null
+#| tbl-cap: "What the measure reports when an effect is planted at exactly zero, by observations per item and level, pooled over every other axis. The interaction is flagged well below the nominal 5%; the class effect is not cross-denoised and carries a floor that shrinks with sample size."
+v_null |>
+  transmute(effect, observations = n_obs,
+            median = g(med, 5), `95th pct` = g(p95, 4),
+            flagged = ifelse(is.na(flagged), "---", sprintf("%.1f%%", 100 * flagged))) |>
+  arrange(effect, observations) |>
+  kbl(longtable = TRUE, booktabs = TRUE, align = "lrrrr", linesep = "") |>
+  kable_styling(font_size = 9, latex_options = c("repeat_header"))
+```
+
+**The chance level for overlap.** With the item and class effects planted orthogonal, the measured overlap tracks $r/d$ closely and sits a little below it (Table \ref{tbl-val-overlap}). This is the number Experiment 2's overlaps are read against: at $d = 2048$ a genuinely orthogonal pair reads `r g(v_ov$measured[v_ov$d == 2048], 5)`, and the values reported in @sec-exp2-results are two to seven times that.
+
+```{r}
+#| label: tbl-val-overlap
+#| tbl-cap: "Measured item-class overlap when the two effects are planted orthogonal, at 24 observations per item and level. The *chance* column is the analytic level of Appendix \\ref{sec-appendix-math}."
+v_ov |>
+  transmute(`width d` = d, measured = g(measured, 5), `analytic chance` = g(chance, 5)) |>
+  kbl(longtable = TRUE, booktabs = TRUE, align = "rrr", linesep = "") |>
+  kable_styling(font_size = 9, latex_options = c("repeat_header"))
+```
+
 # The Decomposition and Its Estimator {#sec-appendix-math}
 
 ## The decomposition as a projection {#sec-appendix-math-proj}
@@ -535,76 +612,6 @@ The same construction is applied to the item effect. The **class effect is not c
 
 The measure is exactly invariant to per-dimension rescaling, which the standardization absorbs, and the functionals are invariant to orthogonal rotation of already-standardized data. It is **not** invariant to general linear reparameterization: we do not whiten. Whitening would make a linear representation read separable in any basis, but it requires estimating a $d \times d$ covariance and it discards the basis the model actually computes in. LayerNorm and the feed-forward nonlinearities act coordinate-wise, and a downstream output layer operates on the unwhitened space, so the question of interest is whether item and class occupy separate axes *in the model's own basis*. Overlap values are therefore basis-relative, while the sizes, their growth with depth and their cross-denoised significance do not depend on the choice.
 
-# Validating the Measure {#sec-appendix-validate}
-
-Experiment 1 plants structure in a *language* and measures a trained model's representation. A discrepancy there is ambiguous between the measure missing something and the model not mirroring the language, and the second is known to happen: the linear condition cannot represent an interaction at all. This appendix removes the ambiguity by planting $\mu$, $\alpha$, $\beta$ and $\gamma$ **directly in a representation**, with no model and no training, and passing the result to the same function the language models are measured with. Ground truth now sits at the level the measure operates on.
-
-```{r}
-#| label: setup-validate
-#| include: false
-val <- rd("validate_measure.csv")
-v_rec <- val |> filter(n_obs == 24, d >= 768) |> group_by(planted_int) |>
-  summarise(n = n(), measured = median(size_interaction),
-            lo = quantile(size_interaction, .05), hi = quantile(size_interaction, .95),
-            flagged = mean(sig_interaction), .groups = "drop")
-v_null <- bind_rows(
-  val |> filter(planted_int == 0) |> group_by(n_obs) |>
-    summarise(effect = "interaction", med = median(size_interaction),
-              p95 = quantile(size_interaction, .95),
-              flagged = mean(sig_interaction), .groups = "drop"),
-  val |> filter(planted_class == 0) |> group_by(n_obs) |>
-    summarise(effect = "class effect", med = median(size_class),
-              p95 = quantile(size_class, .95), flagged = NA_real_, .groups = "drop"),
-  val |> filter(planted_item == 0) |> group_by(n_obs) |>
-    summarise(effect = "item effect", med = median(size_item),
-              p95 = quantile(size_item, .95), flagged = NA_real_, .groups = "drop"))
-v_ov <- val |> filter(!is.na(leak_item_into_class), n_obs == 24, planted_overlap == 0) |>
-  group_by(d) |> summarise(measured = median(leak_item_into_class),
-                           chance = median(k_class / d), .groups = "drop")
-vget <- function(eff, obs, col) v_null[[col]][v_null$effect == eff & v_null$n_obs == obs]
-```
-
-**Construction.** The three components are drawn at random and then centered so each satisfies the constraints its role implies: $\alpha$ and $\beta$ sum to zero over their own index, $\gamma$ over both. Without that a planted $\gamma$ would partly be an item or class main effect and the planted shares would be wrong before the measure saw them. Each is rescaled to hit a target share of the total squared length across the grid, under the same weighting the measure uses. Each mean is then observed $n$ times under isotropic noise, whose scale is set as a multiple of the mean squared length. The grid crosses the planted shares (the same factorial Experiment 1 runs, mapped into share space, plus the three compositions Experiment 2 measures), item counts from 27 to 180, two and four class levels, widths from 8 to 2048, 10, 24 and 100 observations per item and level, three noise levels, planted-orthogonal and planted-non-orthogonal effects, and five seeds: `r cm(nrow(val))` runs.
-
-**Recovery.** At Experiment 2's regime, 24 observations per item and level in 768 or more dimensions, the measured interaction matches the planted one across the whole range (Table \ref{tbl-val-recovery}), and is flagged in essentially every run where anything was planted and none where nothing was.
-
-```{r}
-#| label: tbl-val-recovery
-#| tbl-cap: "Recovery at 24 observations per item and level in 768 or more dimensions, pooled over noise levels, item counts and widths. Brackets are the 5th and 95th percentiles across runs."
-v_rec |> filter(planted_int == 0 | planted_int > 0.02) |> head(12) |>
-  transmute(`planted` = g(planted_int, 3),
-            runs = n,
-            `measured` = sprintf("%.4f [%.4f, %.4f]", measured, lo, hi),
-            `flagged` = sprintf("%.0f%%", 100 * flagged)) |>
-  kbl(longtable = TRUE, booktabs = TRUE, align = "rrrr", linesep = "") |>
-  kable_styling(font_size = 9, latex_options = c("repeat_header"))
-```
-
-**Floors.** The interaction and the item effect read essentially zero when nothing is planted, at every sample size. The class effect does not, and this is the one quantity in the paper that carries a floor worth knowing (Table \ref{tbl-val-null}): at 24 observations per item and level a true zero reads `r g(vget("class effect", 24, "med"), 4)`. This is the price of estimating the class effect as a squared length rather than a cross-product, and it is why the metaphor result in @sec-exp2-results is stated as an inability to distinguish the class effect from zero rather than as a measurement of something small. Metaphor's observed class effect, 0.0016 to 0.0062 at the deepest layer, sits at that floor.
-
-```{r}
-#| label: tbl-val-null
-#| tbl-cap: "What the measure reports when an effect is planted at exactly zero, by observations per item and level, pooled over every other axis. The interaction is flagged well below the nominal 5%; the class effect is not cross-denoised and carries a floor that shrinks with sample size."
-v_null |>
-  transmute(effect, observations = n_obs,
-            median = g(med, 5), `95th pct` = g(p95, 4),
-            flagged = ifelse(is.na(flagged), "---", sprintf("%.1f%%", 100 * flagged))) |>
-  arrange(effect, observations) |>
-  kbl(longtable = TRUE, booktabs = TRUE, align = "lrrrr", linesep = "") |>
-  kable_styling(font_size = 9, latex_options = c("repeat_header"))
-```
-
-**The chance level for overlap.** With the item and class effects planted orthogonal, the measured overlap tracks $r/d$ closely and sits a little below it (Table \ref{tbl-val-overlap}). This is the number Experiment 2's overlaps are read against: at $d = 2048$ a genuinely orthogonal pair reads `r g(v_ov$measured[v_ov$d == 2048], 5)`, and the values reported in @sec-exp2-results are two to seven times that.
-
-```{r}
-#| label: tbl-val-overlap
-#| tbl-cap: "Measured item-class overlap when the two effects are planted orthogonal, at 24 observations per item and level. The *chance* column is the analytic level of Appendix \\ref{sec-appendix-math}."
-v_ov |>
-  transmute(`width d` = d, measured = g(measured, 5), `analytic chance` = g(chance, 5)) |>
-  kbl(longtable = TRUE, booktabs = TRUE, align = "rrr", linesep = "") |>
-  kable_styling(font_size = 9, latex_options = c("repeat_header"))
-```
-
 # A Construction That Is Not Same-Token {#sec-appendix-morph}
 
 Every construction in the body keys the item on the surface form, so the token is identical at both levels of the distinction and the embedding layer has nothing to distinguish them with. That property is what licenses reading the depth profile as contextualization. Applying the same measure to a distinction that lacks the property shows what its absence looks like.
@@ -630,7 +637,7 @@ rd("llm_morph.csv") |>
 
 The profile inverts (Table \ref{tbl-morph}). Where the same-token constructions begin near zero at layer 0 and grow by one to two orders of magnitude, number and tense begin large and grow barely or not at all. This is what a distinction carried by the input rather than built by the network looks like under this measure, and it is the pattern the body's constructions were designed to avoid.
 
-It also illustrates why the surface-form keying of part of speech mattered. Keyed on the lemma, part of speech looked like this: a large layer-0 interaction and, for the BabyLM models, no growth. Keyed on the form it looks like role and metaphor instead. The measure was reporting the tokenization correctly in both cases; what changed was which question it was being asked.
+The same reading covers the lemma-keyed part of speech figures in @sec-exp2-data. Pooling inflected forms puts part of the distinction into the input, and the measure reports that correctly. What differs between the two keyings is the question the measure is asked, not how well it answers.
 
 # Model Details {#sec-appendix-models}
 
@@ -660,7 +667,7 @@ Table \ref{tbl-llm} gives the deepest-layer values behind the curves of @fig-llm
 
 ```{r}
 #| label: tbl-llm
-#| tbl-cap: "Experiment 2, at each model's deepest layer. The two overlaps are the two ways separability can fail by orientation, each with its own chance level in parentheses: item-class overlap is the fraction of the item effect lying in the class subspace (chance $= r_{\\text{class}}/d$), and interaction overlap is the fraction of the interaction lying in the span of the two main effects (chance $= r_{\\text{margin}}/d$, much higher because that subspace has rank of order the item count). The portable fraction is the class effect's share of the class-relevant structure, the class effect divided by the sum of the class effect and the interaction: how much of what distinguishes the two class levels is a direction shared across words rather than specific to each word."
+#| tbl-cap: "Every measurement the three distinctions are compared on, at the deepest layer of each model and taken as medians across the six models. The two overlaps are the two ways separability can fail by orientation, each with its own chance level in parentheses: item-class overlap is the fraction of the item effect lying in the class subspace (chance $= r_{\\text{class}}/d$), and interaction overlap is the fraction of the interaction lying in the span of the two main effects (chance $= r_{\\text{margin}}/d$, much higher because that subspace has rank of order the item count). The portable fraction is the class effect's share of the class-relevant structure, the class effect divided by the sum of the class effect and the interaction: how much of what distinguishes the two class levels is a direction shared across words rather than specific to each word."
 llm |> group_by(construction, model) |>
   filter(layer == max(layer)) |> ungroup() |>
   mutate(portable = size_class / (size_class + size_int),
