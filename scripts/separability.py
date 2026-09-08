@@ -96,6 +96,54 @@ def _leak(vectors, basis):
     return float((proj ** 2).sum()) / tot
 
 
+def _leak_null(vectors, basis_rank, rng, n_draws=200):
+    """Null distribution of `_leak` under arbitrary orientation.
+
+    r/d is only the MEAN of this distribution, so comparing an observed overlap to it says
+    nothing about whether the overlap is more than orientation alone would give. The effect is
+    left exactly as measured -- singular values and all -- and the SUBSPACE is redrawn at random
+    instead. By rotational symmetry that is the same null as randomly rotating the effect, but it
+    avoids assuming the effect's directions carry equal weight, which they do not.
+    """
+    V = np.asarray(vectors, dtype=np.float64)
+    if V.ndim == 1:
+        V = V[None, :]
+    d = V.shape[1]
+    tot = float((V ** 2).sum())
+    if tot <= 0 or basis_rank <= 0 or basis_rank >= d:
+        return np.zeros(0)
+    out = np.empty(n_draws)
+    for i in range(n_draws):
+        B, _ = np.linalg.qr(rng.standard_normal((d, basis_rank)))
+        out[i] = float(((V @ B) ** 2).sum()) / tot
+    return out
+
+
+def _between_share(X, cells, items, classes):
+    """Share of the representation's total variance that the item-by-class grid accounts for.
+
+    The three reported sizes sum to one by construction because they partition the grid of
+    means, which has already averaged the contexts away. This is the missing denominator: how
+    much of the representation that grid is in the first place. The remainder is variation
+    across the contexts a word appears in at a fixed class level.
+    """
+    idx = np.concatenate([cells[(it, c)] for it in items for c in classes])
+    if idx.size == 0:
+        return None
+    Y = X[idx]
+    gmean = Y.mean(0)
+    total = float(((Y - gmean) ** 2).sum())
+    if total <= 0:
+        return None
+    between = 0.0
+    for it in items:
+        for c in classes:
+            j = cells[(it, c)]
+            if len(j):
+                between += len(j) * float(((X[j].mean(0) - gmean) ** 2).sum())
+    return between / total
+
+
 def _principal_angle_overlap(A, B):
     """Symmetric subspace overlap in [0,1]: mean squared cosine of the principal angles between
     orthonormal bases A (d x ra) and B (d x rb). 0 = orthogonal, 1 = one contains the other."""
@@ -248,11 +296,12 @@ def _gated_report(aa, ga, ab, gb, al, be, gm, L, C, rng, n_boot, sig):
         sig_item=big["item"], sig_class=big["class"], sig_interaction=big["int"],
         **leaks, **angles,
         n_items=L, n_classes=C, k_item=S_item.shape[1], k_class=S_class.shape[1], k_int=S_int.shape[1],
+        k_margin=S_margin.shape[1],
     )
 
 
 def unified_split(X, item_of, class_of, min_cell=10, classes=None, standardize=True,
-                  n_boot=200, sig=0.05, seed=0, verbose=False):
+                  n_boot=200, n_null=200, sig=0.05, seed=0, verbose=False):
     """LLM-side unified measure: the two independent estimates are two disjoint halves of each
     cell's TOKEN CONTEXTS. Same model -> SAME frame, so NO gauge alignment is needed (unlike the
     toy's two-init unified_cross). Removes context noise; same significance-gated reporting."""
@@ -270,7 +319,24 @@ def unified_split(X, item_of, class_of, min_cell=10, classes=None, standardize=T
     _, aa, _, ga = _decompose(MA)                           # half A (same frame as B)
     _, ab, _, gb = _decompose(MB)                           # half B
     _, al, be, gm = _decompose(M)                           # full grid -> best directions
-    return _gated_report(aa, ga, ab, gb, al, be, gm, L, C, rng, n_boot, sig)
+    rep = _gated_report(aa, ga, ab, gb, al, be, gm, L, C, rng, n_boot, sig)
+
+    # An overlap is only evidence of shared directions if it beats what arbitrary orientation
+    # gives, and r/d is just that null's mean. Draw the null and report its upper tail.
+    nrng = np.random.default_rng(seed + 1)
+    if rep.get("leak_item_into_class") is not None:
+        nd = _leak_null(al, rep["k_class"], nrng, n_null)
+        if nd.size:
+            rep["leak_item_into_class_null_hi"] = float(np.quantile(nd, 0.975))
+            rep["leak_item_into_class_p"] = float((nd >= rep["leak_item_into_class"]).mean())
+    if rep.get("leak_int_into_margins") is not None:
+        nd = _leak_null(gm.reshape(L * C, -1), rep["k_margin"], nrng, n_null)
+        if nd.size:
+            rep["leak_int_into_margins_null_hi"] = float(np.quantile(nd, 0.975))
+            rep["leak_int_into_margins_p"] = float((nd >= rep["leak_int_into_margins"]).mean())
+
+    rep["between_share"] = _between_share(X, cells, items, classes)
+    return rep
 
 
 def unified_cross(Xa, Xb, item_of, class_of, min_cell=1, classes=None, standardize=True,

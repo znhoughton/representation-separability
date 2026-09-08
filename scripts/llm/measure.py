@@ -45,6 +45,18 @@ from separability import unified_split  # noqa: E402
 _blank = lambda v: "" if v is None else v
 
 
+# An overlap only shows shared directions if it beats arbitrary orientation, and r/d is merely
+# that null's mean, so unified_split now also returns the null's upper tail and a p-value. It
+# also returns how much of the representation the item-by-class grid accounts for at all: the
+# three sizes sum to one because they partition the grid of means, not the representation.
+NULL_FIELDS = ["between_share", "leak_item_into_class_null_hi", "leak_item_into_class_p",
+               "leak_int_into_margins_null_hi", "leak_int_into_margins_p"]
+
+
+def _null_cols(r, prefix=""):
+    return {prefix + k: _blank(r.get(k)) for k in NULL_FIELDS}
+
+
 def _init_of(z):
     """The condition tag: pretrained/random, with _noposemb when position embeddings were zeroed.
     Without it the ablated and unablated runs of one model are indistinguishable in the output and
@@ -58,7 +70,7 @@ POS_FIELDS = ["model", "init", "layer", "d", "n_points", "n_items", "classes", "
               "std_sig_interaction", "std_leak_item_into_class", "std_leak_int_into_margins",
               "std_k_class", "std_k_int",
               "raw_leak_item_into_class", "raw_k_class",       # raw = the un-fixed (rogue-dim) read
-              "raw_size_interaction"]
+              "raw_size_interaction"] + [f"std_" + k for k in NULL_FIELDS]
 
 
 def _item_labels(z, item_key, conllu):
@@ -109,7 +121,8 @@ def measure_pos(path, args, layers):
             std_k_class=std["k_class"], std_k_int=std["k_int"],
             raw_leak_item_into_class=(_blank(raw.get("leak_item_into_class")) if "error" not in raw else ""),
             raw_k_class=(raw.get("k_class") if "error" not in raw else ""),
-            raw_size_interaction=(raw.get("size_interaction") if "error" not in raw else "")))
+            raw_size_interaction=(raw.get("size_interaction") if "error" not in raw else ""),
+            **_null_cols(std, "std_")))
         r = rows[-1]
         f = lambda v: "NA" if v in ("", None) else (f"{v:.3f}" if isinstance(v, float) else v)
         print(f"  layer {li:>2}: n_items={r['n_items']:>3}  STD sz_int={r['std_size_interaction']:.3f} "
@@ -122,7 +135,7 @@ def measure_pos(path, args, layers):
 # ------------------------------------------------------------------ role (nsubj/obj)
 ROLE_FIELDS = ["model", "init", "construction", "classes", "layer", "d", "n_points", "n_items",
                "min_cell", "size_item", "size_class", "size_interaction", "sig_interaction",
-               "leak_item_into_class", "leak_int_into_margins", "k_class", "k_int"]
+               "leak_item_into_class", "leak_int_into_margins", "k_class", "k_int"] + NULL_FIELDS
 ROLE_POS, ROLE_CLASSES = "NOUN", ("nsubj", "obj")
 
 
@@ -151,7 +164,7 @@ def measure_role(path, args, layers):
                                  sig_interaction=r["sig_interaction"],
                                  leak_item_into_class=_blank(r["leak_item_into_class"]),
                                  leak_int_into_margins=_blank(r["leak_int_into_margins"]),
-                                 k_class=r["k_class"], k_int=r["k_int"]))
+                                 k_class=r["k_class"], k_int=r["k_int"], **_null_cols(r)))
         del X
         this = [rr for rr in rows if rr["layer"] == li]
         if this:
@@ -166,7 +179,7 @@ def measure_role(path, args, layers):
 # ------------------------------------------------------------------ metaphor (lit/met)
 MET_FIELDS = ["model", "init", "construction", "classes", "layer", "d", "n_points", "n_items",
               "min_cell", "size_item", "size_class", "size_interaction", "sig_interaction",
-              "leak_item_into_class", "leak_int_into_margins", "k_class", "k_int"]
+              "leak_item_into_class", "leak_int_into_margins", "k_class", "k_int"] + NULL_FIELDS
 MET_CLASSES = ("lit", "met")
 
 
@@ -192,7 +205,7 @@ def measure_metaphor(path, args, layers):
                          size_interaction=r["size_interaction"], sig_interaction=r["sig_interaction"],
                          leak_item_into_class=_blank(r["leak_item_into_class"]),
                          leak_int_into_margins=_blank(r["leak_int_into_margins"]),
-                         k_class=r["k_class"], k_int=r["k_int"]))
+                         k_class=r["k_class"], k_int=r["k_int"], **_null_cols(r)))
         rr = rows[-1]
         print(f"  {model.split('/')[-1]:>26} L{li:>2}: lit/met sz_int={rr['size_interaction']:.3f} "
               f"leak_i>c={rr['leak_item_into_class'] or float('nan'):.4f} n_items={rr['n_items']}",
@@ -208,7 +221,7 @@ FEATURES = [("Number", "NOUN", ("Sing", "Plur"), "number"),
 MORPH_FIELDS = ["model", "init", "feature", "regularity", "classes", "layer", "d", "n_points",
                 "n_items", "min_cell", "size_item", "size_class", "size_interaction",
                 "sig_interaction", "leak_item_into_class", "leak_int_into_margins",
-                "k_class", "k_int"]
+                "k_class", "k_int"] + NULL_FIELDS
 
 
 def _regularity(feature, lemma, form):
@@ -269,7 +282,7 @@ def measure_morphology(path, args, layers):
                                  sig_interaction=r["sig_interaction"],
                                  leak_item_into_class=_blank(r["leak_item_into_class"]),
                                  leak_int_into_margins=_blank(r["leak_int_into_margins"]),
-                                 k_class=r["k_class"], k_int=r["k_int"]))
+                                 k_class=r["k_class"], k_int=r["k_int"], **_null_cols(r)))
         del X
         this = [rr for rr in rows if rr["layer"] == li]
         if this:
