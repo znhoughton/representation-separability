@@ -41,10 +41,15 @@ data/vua_reps/
 data/*_reps/
 # concatenated / single UD corpora (regenerable via scripts/llm/build_concat_ud.py) -- CSVs stay tracked
 data/ud/
-# Quarto paper build artifacts (extension installed via `quarto add`; PDFs/TeX are generated)
-paper/_extensions/
+# Quarto paper build artifacts. The rendered paper and its TeX are generated, but the ACL
+# extension and the exported figures are inputs the render needs, so they stay tracked.
 paper/*.pdf
+!paper/fig-training.pdf
+!paper/fig-measurement.pdf
 paper/*.tex
+# Quarto copies these out of the extension into paper/ at render time
+paper/acl.sty
+paper/acl_natbib.bst
 paper/.quarto/
 paper/*_files/
 # stray shell / editor / tool dotfiles at repo root (personal env — never commit)

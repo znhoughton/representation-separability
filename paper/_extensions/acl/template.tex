@@ -1,0 +1,125 @@
+\documentclass[11pt]{article}
+
+% Mode is controlled by the `acl-mode` YAML field:
+%   review   — anonymous, line numbers (default for submission)
+%   final    — camera-ready, authors shown
+%   preprint — non-anonymous, page numbers
+% acl.sty handles: geometry (a4, 2.5cm margins), twocolumn, natbib,
+%   caption, hyperref, bibliographystyle{acl_natbib}.
+% Do NOT load those packages again here.
+% Pass sort option to natbib before acl.sty loads it
+\PassOptionsToPackage{sort}{natbib}
+$if(acl-mode)$
+\usepackage[$acl-mode$]{acl}
+$else$
+\usepackage[review]{acl}
+$endif$
+
+% Packages from the official ACL template (acl_latex.tex) — safe to load after acl.sty
+\usepackage{times}
+\usepackage{latexsym}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{textcomp}   % euro sign and other symbols
+\usepackage{microtype}
+\usepackage{inconsolata}
+
+% Math
+\usepackage{amsmath}
+\usepackage{amssymb}
+
+% Tables — all three needed for pandoc's longtable output
+\usepackage{longtable}
+\usepackage{booktabs}
+\usepackage{array}     % pandoc uses >{\raggedright\arraybackslash}p{} column types
+\usepackage{calc}      % pandoc uses \real{} expressions for column widths
+\usepackage{multirow}  % multi-row table cells
+\usepackage{float}     % enables [H] placement specifier for tables and figures
+\usepackage{pdflscape} % enables kableExtra::landscape() for wide tables
+
+% longtable is incompatible with twocolumn mode (enforced by acl.sty).
+% Conditionally switch to onecolumn only when currently in twocolumn mode,
+% so appendix longtables (already in onecolumn) don't trigger a spurious clearpage.
+\usepackage{etoolbox}
+\newif\ifWasInTwoColumn
+\makeatletter
+\BeforeBeginEnvironment{longtable}{%
+  \if@twocolumn\WasInTwoColumntrue\onecolumn\else\WasInTwoColumnfalse\fi}
+\AfterEndEnvironment{longtable}{%
+  \ifWasInTwoColumn\twocolumn\fi}
+\makeatother
+
+% Fix table caption numbering for longtable
+\def\fnum@table{\tablename~\thetable}
+
+% Graphics
+\usepackage{graphicx}
+\makeatletter
+% pandoc uses \maxwidth and \maxheight when including images
+\def\maxwidth{\ifdim\Gin@nat@width>\linewidth\linewidth\else\Gin@nat@width\fi}
+\def\maxheight{\ifdim\Gin@nat@height>\textheight\textheight\else\Gin@nat@height\fi}
+% Default figure placement
+\def\fps@figure{htbp}
+\makeatother
+
+% Code blocks and inline code
+\IfFileExists{upquote.sty}{\usepackage{upquote}}{}  % straight quotes in verbatim
+\usepackage{fancyvrb}
+\newcommand{\passthrough}[1]{#1}  % pandoc inline code
+
+% Suppress date (ACL papers do not display a date)
+\date{}
+
+% pandoc: scale images to fit column width, preserving aspect ratio
+\makeatletter
+\newsavebox\pandoc@box
+\newcommand*\pandocbounded[1]{%
+  \sbox\pandoc@box{#1}%
+  \Gscale@div\@tempa{\linewidth}{\wd\pandoc@box}%
+  \ifdim\@tempa\p@<\p@\scalebox{\@tempa}{\usebox\pandoc@box}\else#1\fi%
+}
+\makeatother
+
+% pandoc: tight lists (no extra space between items)
+\providecommand{\tightlist}{%
+  \setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
+
+$if(title)$
+\title{$title$}
+$endif$
+
+% In review mode, acl.sty replaces the author block with
+% "Anonymous ACL submission" automatically.
+$if(by-author)$
+\author{
+$for(by-author)$
+  $by-author.name.literal$ \\
+  $if(by-author.affiliations)$
+    $for(by-author.affiliations)$$by-author.affiliations.name$$sep$ \\ $endfor$ \\
+  $endif$
+  $if(by-author.email)$
+    \texttt{$by-author.email$}
+  $endif$
+  $sep$ \And
+$endfor$
+}
+$endif$
+
+\begin{document}
+\maketitle
+
+$if(abstract)$
+\begin{abstract}
+$abstract$
+\end{abstract}
+$endif$
+
+$body$
+
+% acl.sty sets \bibliographystyle{acl_natbib} at load time.
+% Only \bibliography{} is needed here to point to the bib file(s).
+$if(bibliography)$
+\bibliography{$for(bibliography)$$bibliography$$sep$,$endfor$}
+$endif$
+
+\end{document}
