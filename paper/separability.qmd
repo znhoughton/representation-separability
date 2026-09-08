@@ -220,8 +220,8 @@ pA <- ggplot(toy_track, aes(ach, size_int, colour = act, fill = act)) +
 # rank is estimated, and drawing both makes a zigzag that reads as structure when it is not
 floor_line <- toy_cap |> group_by(capacity) |> summarise(floor = median(floor), .groups = "drop")
 pB <- ggplot(toy_cap, aes(capacity, overlap, colour = act)) +
-  geom_line(data = floor_line, aes(y = floor), inherit.aes = FALSE,
-            mapping = aes(capacity, floor), colour = UO[["grey"]], linetype = 2, linewidth = .5) +
+  geom_line(data = floor_line, mapping = aes(capacity, floor), inherit.aes = FALSE,
+            colour = UO[["grey"]], linetype = 2, linewidth = .5) +
   geom_line(linewidth = .6) + geom_point(size = 1.5) +
   annotate("text", x = 0.135, y = 0.032, label = "chance", size = 2.5,
            colour = UO[["grey"]], hjust = 0) +
