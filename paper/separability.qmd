@@ -73,6 +73,18 @@ toy_track <- toy |> filter(w_item > 0, w_class > 0) |>
             lo = quantile(size_interaction, .25), hi = quantile(size_interaction, .75),
             flagged = mean(sig_interaction), .groups = "drop")
 
+# The same relationship, kept separate by width. Pooled over widths the level is dominated by
+# the narrowest models, which cannot build an interaction at all, so the pooled curve
+# understates how well the wider ones track. The linear arm is flat at every width, so it is
+# summarised once and drawn as a single reference.
+toy_track_w <- toy |> filter(w_item > 0, w_class > 0) |>
+  mutate(bin = cut(ach_int, c(-Inf, .005, .05, .15, .30, .55, Inf))) |>
+  group_by(act, d, bin) |>
+  summarise(ach = median(ach_int), size_int = median(size_interaction), .groups = "drop")
+toy_track_lin <- toy_track_w |> filter(act == "linear") |>
+  group_by(bin) |>
+  summarise(ach = median(ach), size_int = median(size_int), .groups = "drop")
+
 # Capacity: below 1 every component can have its own axis, above 1 they cannot.
 toy_cap <- toy |> filter(w_int > 0, w_item > 0, w_class > 0) |>
   group_by(act, capacity) |>
@@ -225,14 +237,17 @@ The weights in @eq-toy describe the true distribution the model is trained to ma
 #| fig-width: 6.3
 #| fig-height: 2.5
 #| out-width: "100%"
-#| fig-cap: "Experiment 1, all 7,560 runs. Left: the measured interaction against the amount planted in the language, with interquartile ranges. The linear condition cannot represent an interaction whatever the language contains, and reads zero throughout; the ReLU condition tracks what was planted. Right: overlap between the item and class effects against capacity, with the dashed line marking what a randomly oriented effect would give at that width. Below capacity the two effects are more orthogonal than chance; once dimension counting makes separation impossible they are several times chance. Note the log axis, and that the floor moves by a factor of eight across these widths."
+#| fig-cap: "Experiment 1, all 7,560 runs. Left: the measured interaction against the amount planted in the language, one line per hidden width, with the linear condition dashed. The linear condition cannot represent an interaction whatever the language contains and reads zero at every width; under ReLU the measured share rises with the planted one, and the wider the representation the more of it is expressed. The two axes are not on a common scale: the planted share is a share of the target distribution and the measured share is a share of the representation the model builds, and Appendix \\ref{sec-appendix-validate} shows the measure recovers a planted share exactly when the planting is done in a representation. Right: overlap between the item and class effects against capacity, with the dashed line marking what a randomly oriented effect would give at that width. Below capacity the two effects are more orthogonal than chance; once dimension counting makes separation impossible they are several times chance. Note the log axis, and that the floor moves by a factor of eight across these widths."
 ACT2 <- c(linear = UO[["green2"]], ReLU = UO[["gold"]])
-# fill duplicates the colour legend, so it is suppressed rather than collected twice
-pA <- ggplot(toy_track, aes(ach, size_int, colour = act, fill = act)) +
-  geom_ribbon(aes(ymin = lo, ymax = hi), alpha = .16, colour = NA) +
-  geom_line(linewidth = .6) + geom_point(size = 1.5) +
-  scale_colour_manual(values = ACT2, name = NULL) +
-  scale_fill_manual(values = ACT2, guide = "none") +
+# One ReLU line per width, shading gold to amber with increasing width. Pooled, the level was
+# set by the narrowest models, which cannot build an interaction at all.
+WID <- colorRampPalette(c(UO[["gold"]], UO[["amber"]]))(length(unique(toy_track_w$d)))
+names(WID) <- sort(unique(toy_track_w$d))
+pA <- ggplot(filter(toy_track_w, act == "ReLU"), aes(ach, size_int, colour = factor(d))) +
+  geom_line(data = toy_track_lin, mapping = aes(ach, size_int), inherit.aes = FALSE,
+            colour = ACT2[["linear"]], linetype = 2, linewidth = .5) +
+  geom_line(linewidth = .6) + geom_point(size = 1.4) +
+  scale_colour_manual(values = WID, name = "width") +
   labs(x = "interaction planted in the language", y = "interaction measured\nin the representation") +
   theme_paper(8)
 
@@ -251,13 +266,15 @@ pB <- ggplot(toy_cap, aes(capacity, overlap, colour = act)) +
   labs(x = "capacity (structure rank / hidden width)", y = "item-class overlap (log)") +
   theme_paper(8)
 
-(pA | pB) + plot_layout(guides = "collect") &
+# Each panel keeps its own legend: collected, the left panel's width scale and the right
+# panel's activation scale sit side by side in the same gold and read as one key.
+(pA | pB) &
   theme(legend.position = "top", legend.margin = margin(0, 0, -6, 0))
 ```
 
 The measure reports zero when the answer is zero. Under the linear activation the hidden layer is a weighted sum of the three embeddings, so its interaction is identically zero however much the language contains (Appendix \ref{sec-appendix-math}), and every reading the measure gives there is its own noise. Across all `r cm(nullget("linear", TRUE, "n"))` runs where the language *did* contain an interaction, it reports a median share of `r g(nullget("linear", TRUE, "med"), 4)` and flags one in `r sprintf("%.1f%%", 100 * nullget("linear", TRUE, "flagged"))` of them, the nominal rate for a test at the 5% level; where no interaction was planted it flags `r sprintf("%.1f%%", 100 * nullget("linear", FALSE, "flagged"))`. This calibration comes from a condition whose true value is provably zero, measured at every width, sample size and noise level in the grid.
 
-The measure also tracks what is there. Under ReLU the measured interaction rises monotonically with the planted one (@fig-toy, left), and the rate at which it is flagged rises with it, from `r sprintf("%.0f%%", 100 * min(toy_track$flagged[toy_track$act == "ReLU" & toy_track$bin != "none"]))` at the smallest nonzero setting to `r sprintf("%.0f%%", 100 * max(toy_track$flagged[toy_track$act == "ReLU"]))` at the largest. With no interaction planted, ReLU flags `r sprintf("%.1f%%", 100 * nullget("ReLU", FALSE, "flagged"))` of runs, below nominal: the nonlinearity does not manufacture an interaction out of an additive language. The measured shares are smaller than the planted ones throughout, which is what that distinction predicts; what matters is that the relationship is monotone and that zero maps to zero.
+The measure also tracks what is there. Under ReLU the measured interaction rises monotonically with the planted one (@fig-toy, left), and the rate at which it is flagged rises with it, from `r sprintf("%.0f%%", 100 * min(toy_track$flagged[toy_track$act == "ReLU" & toy_track$bin != "none"]))` at the smallest nonzero setting to `r sprintf("%.0f%%", 100 * max(toy_track$flagged[toy_track$act == "ReLU"]))` at the largest. With no interaction planted, ReLU flags `r sprintf("%.1f%%", 100 * nullget("ReLU", FALSE, "flagged"))` of runs, below nominal: the nonlinearity does not manufacture an interaction out of an additive language. The measured shares are smaller than the planted ones throughout, and the gap is a fact about the representation rather than about the measure: planting the same components directly in a representation recovers them almost exactly at every level (Appendix \ref{sec-appendix-validate}), so a model trained on a language built largely out of the interaction still builds a representation that carries much less of it. How much less depends on how wide the representation is, and what matters here is that the relationship is monotone and that zero maps to zero.
 
 Item and class effects entangle only when there is no room for them not to, and this is the substantive result (@fig-toy, right; @tbl-toy). With capacity well below one, ReLU's item-class overlap is `r g(capget("ReLU", 0.125, "overlap"), 4)` against a chance level of `r g(capget("ReLU", 0.125, "floor"), 4)`, so the two effects are *more* orthogonal than two arbitrary directions would be, which is what a learner that has room and uses it looks like. At capacity 1 the overlap is `r g(capget("ReLU", 1, "overlap"), 3)` against a floor of `r g(capget("ReLU", 1, "floor"), 4)`, about `r g(capget("ReLU", 1, "ratio"), 1)` times chance, and at capacity 2 it is `r g(capget("ReLU", 2, "overlap"), 3)`; the linear condition stays at or below chance throughout. This is superposition in a setting where we can watch it happen: when the number of directions the structure needs exceeds the number available, the components stop being orthogonal because they cannot all be, and nothing about the language changed across those runs.
 
