@@ -103,13 +103,13 @@ gs <- function(constr, col) {
 }
 
 MODELS <- tibble::tribble(
-  ~model,                                       ~family,  ~size,   ~d,
-  "znhoughton/opt-babylm-125m-20eps-seed964",   "BabyLM", "125M",  768,
-  "znhoughton/opt-babylm-350m-20eps-seed964",   "BabyLM", "350M",  1024,
-  "znhoughton/opt-babylm-1.3B-20eps-seed964",   "BabyLM", "1.3B",  2048,
-  "EleutherAI/pythia-160m",                     "Pythia", "160M",  768,
-  "EleutherAI/pythia-410m",                     "Pythia", "410M",  1024,
-  "EleutherAI/pythia-1.4b",                     "Pythia", "1.4B",  2048)
+  ~model,                                       ~family,  ~size,
+  "znhoughton/opt-babylm-125m-20eps-seed964",   "BabyLM", "125M",
+  "znhoughton/opt-babylm-350m-20eps-seed964",   "BabyLM", "350M",
+  "znhoughton/opt-babylm-1.3B-20eps-seed964",   "BabyLM", "1.3B",
+  "EleutherAI/pythia-160m",                     "Pythia", "160M",
+  "EleutherAI/pythia-410m",                     "Pythia", "410M",
+  "EleutherAI/pythia-1.4b",                     "Pythia", "1.4B")
 
 # The three same-token constructions carried in the body. Each file reports the same measure;
 # the POS file prefixes its columns std_ because it also stores an unstandardized read.
@@ -255,7 +255,7 @@ toy_cap |>
   kable_styling(latex_options = c("HOLD_position"), font_size = 8)
 ```
 
-The measure also works when the thing it is measuring is a small minority of what drives the data. When the context term accounts for more than 80% of the variance in the logits, leaving under a fifth for the form, the class and their interaction combined, ReLU's measured interaction holds at `r g(toy_noise$size_int[toy_noise$act == "ReLU" & toy_noise$cbin == ">80%"], 3)` against `r g(toy_noise$size_int[toy_noise$act == "ReLU" & toy_noise$cbin == "<20%"], 3)` when context is minor, and the flag rate falls from `r sprintf("%.0f%%", 100 * toy_noise$flagged[toy_noise$act == "ReLU" & toy_noise$cbin == "<20%"])` to `r sprintf("%.0f%%", 100 * toy_noise$flagged[toy_noise$act == "ReLU" & toy_noise$cbin == ">80%"])`. Power degrades, as it must with twenty-four observations per item and level, but the estimate does not drift. That is the regime Experiment 2 sits in, since a word's hidden state varies mostly with the sentence it appears in rather than with the word or its class.
+The measure also works when the representation primarily encodes contextual information unrelated to the specific form and class. When the context term accounts for more than 80% of the variance in the logits, leaving under a fifth for the form, the class and their interaction combined, ReLU's measured interaction holds at `r g(toy_noise$size_int[toy_noise$act == "ReLU" & toy_noise$cbin == ">80%"], 3)` against `r g(toy_noise$size_int[toy_noise$act == "ReLU" & toy_noise$cbin == "<20%"], 3)` when context is minor, and the flag rate falls from `r sprintf("%.0f%%", 100 * toy_noise$flagged[toy_noise$act == "ReLU" & toy_noise$cbin == "<20%"])` to `r sprintf("%.0f%%", 100 * toy_noise$flagged[toy_noise$act == "ReLU" & toy_noise$cbin == ">80%"])`. Power degrades, as it must with twenty-four observations per item and level, but the estimate does not drift. That is the regime Experiment 2 sits in, since a word's hidden state varies mostly with the sentence it appears in rather than with the word or its class.
 
 Two things carry into Experiment 2. The instrument reads zero when the answer is zero and tracks the answer when it is not, at the sample size and noise level the language models will be measured at. And whether the item and class effects come out orthogonal is governed by whether the representation had room, which is a fact about capacity rather than about the language, so near-orthogonality in a wide model is uninformative on its own and has to be read against its own chance level.
 
@@ -270,7 +270,7 @@ For part of speech and grammatical role we concatenate six general-domain Englis
 All three constructions are **same-token**: the item's surface form is identical across the two class levels, so the representation is read from the same token in both, and no part of any difference can come from tokenization.
 
 | distinction | item | levels | analyzed | tokens |
-|:---|:---|:---|---:|---:|
+|:--------------|:--------------|:--------------|--------------:|--------------:|
 | part of speech | surface form | [noun]{.smallcaps} / [verb]{.smallcaps} | `r max(llm$n_items[llm$construction == "POS (noun/verb)"])` | `r cm(4722)` |
 | grammatical role | surface form | *nsubj* / *obj* | 49 | `r cm(2150)` |
 | metaphor | surface form | literal / figurative | `r gs("metaphor", "n_items_kept")` | `r cm(gs("metaphor", "n_grid_tokens"))` |
