@@ -49,7 +49,10 @@ _blank = lambda v: "" if v is None else v
 # that null's mean, so unified_split now also returns the null's upper tail and a p-value. It
 # also returns how much of the representation the item-by-class grid accounts for at all: the
 # three sizes sum to one because they partition the grid of means, not the representation.
-NULL_FIELDS = ["between_share", "leak_item_into_class_null_hi", "leak_item_into_class_p",
+NULL_FIELDS = ["between_share",
+               "leak_item_into_class_null_lo", "leak_item_into_class_null_med",
+               "leak_item_into_class_null_hi", "leak_item_into_class_p",
+               "leak_int_into_margins_null_lo", "leak_int_into_margins_null_med",
                "leak_int_into_margins_null_hi", "leak_int_into_margins_p"]
 
 

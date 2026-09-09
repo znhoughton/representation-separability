@@ -323,17 +323,28 @@ def unified_split(X, item_of, class_of, min_cell=10, classes=None, standardize=T
 
     # An overlap is only evidence of shared directions if it beats what arbitrary orientation
     # gives, and r/d is just that null's mean. Draw the null and report its upper tail.
+    # The null's MEDIAN is the reference an aggregated overlap is read against: a median over runs
+    # would land there if every run were orientation alone. Its upper tail answers the different
+    # question of whether ONE run could have produced the value, and the two are far apart because
+    # the null is strongly right-skewed. Both are stored, along with the tail probability, so the
+    # presentation can change without measuring again.
     nrng = np.random.default_rng(seed + 1)
+
+    def _null_cols(vectors, rank, observed, prefix):
+        nd = _leak_null(vectors, rank, nrng, n_null)
+        if not nd.size:
+            return
+        lo, med, hi = np.quantile(nd, (0.025, 0.5, 0.975))
+        rep[prefix + "_null_lo"] = float(lo)
+        rep[prefix + "_null_med"] = float(med)
+        rep[prefix + "_null_hi"] = float(hi)
+        rep[prefix + "_p"] = float((nd >= observed).mean())
+
     if rep.get("leak_item_into_class") is not None:
-        nd = _leak_null(al, rep["k_class"], nrng, n_null)
-        if nd.size:
-            rep["leak_item_into_class_null_hi"] = float(np.quantile(nd, 0.975))
-            rep["leak_item_into_class_p"] = float((nd >= rep["leak_item_into_class"]).mean())
+        _null_cols(al, rep["k_class"], rep["leak_item_into_class"], "leak_item_into_class")
     if rep.get("leak_int_into_margins") is not None:
-        nd = _leak_null(gm.reshape(L * C, -1), rep["k_margin"], nrng, n_null)
-        if nd.size:
-            rep["leak_int_into_margins_null_hi"] = float(np.quantile(nd, 0.975))
-            rep["leak_int_into_margins_p"] = float((nd >= rep["leak_int_into_margins"]).mean())
+        _null_cols(gm.reshape(L * C, -1), rep["k_margin"],
+                   rep["leak_int_into_margins"], "leak_int_into_margins")
 
     rep["between_share"] = _between_share(X, cells, items, classes)
     return rep

@@ -285,7 +285,9 @@ FIELDS = ["key",                                          # resume identifier; m
           "leak_item_into_class", "leak_int_into_margins",
           # each overlap against the upper tail of its own null, so Experiment 1 reads its
           # orientations the same way Experiment 2 does rather than against r/d, the null's mean
+          "leak_item_into_class_null_lo", "leak_item_into_class_null_med",
           "leak_item_into_class_null_hi", "leak_item_into_class_p",
+          "leak_int_into_margins_null_lo", "leak_int_into_margins_null_med",
           "leak_int_into_margins_null_hi", "leak_int_into_margins_p",
           "between_share",                                # how much of the representation the grid is
           "overlap_item_int", "overlap_class_int",

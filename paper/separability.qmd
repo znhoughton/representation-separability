@@ -49,10 +49,11 @@ theme_paper <- function(base = 9) {
 # no alignment step and no projection. Capacity is a reported variable, never a filter.
 toy <- rd("artificial_language_grid.csv") |>
   mutate(act = factor(activation, c("identity", "relu"), c("linear", "ReLU")),
-         # the share of a random vector that lands in the class direction by chance. An
-         # orthogonality reading means nothing without it, and it moves 16-fold across the
-         # widths used here, so it is carried alongside rather than argued about.
-         floor = k_class / d)
+         # An orthogonality reading means nothing on its own, so each overlap is carried
+         # alongside the upper tail of its own null: the largest value an arbitrary orientation
+         # produces in 97.5% of draws, from rotating the target subspace 200 times.
+         null_hi = leak_item_into_class_null_hi,
+         null_int = leak_int_into_margins_null_hi)
 
 # The linear arm is a negative control by ALGEBRA, not by stipulation: with additive inputs a
 # linear map gives means of the form A(f)+B(c), whose interaction is identically zero
@@ -87,16 +88,13 @@ toy_track_lin <- toy_track_w |> filter(act == "linear") |>
 
 # Capacity: below 1 every component can have its own axis, above 1 they cannot.
 toy_cap <- toy |> filter(w_int > 0, w_item > 0, w_class > 0) |>
-  # the interaction's own chance level is the rank of the marginal subspace over the width, and
-  # it moves around with capacity, so the overlap is only interpretable against it
-  mutate(ch_int = (k_item + k_class) / d) |>
   group_by(act, capacity) |>
   summarise(n = n(), size_int = median(size_interaction),
             overlap = median(leak_item_into_class, na.rm = TRUE),
-            floor = median(floor),
-            ratio = median(leak_item_into_class / floor, na.rm = TRUE),
+            floor = median(null_hi, na.rm = TRUE),
+            ratio = median(leak_item_into_class / null_hi, na.rm = TRUE),
             overlap_int = median(leak_int_into_margins, na.rm = TRUE),
-            ch_int = median(ch_int), .groups = "drop")
+            ch_int = median(null_int, na.rm = TRUE), .groups = "drop")
 
 # Context is the nuisance dial: how much of the target is about something other than the item,
 # the class and their conjunction. The high end is the regime Experiment 2 sits in.
@@ -153,11 +151,10 @@ MODELS <- tibble::tribble(
 # 0.083-0.172 keyed on the lemma against 0.0010-0.0028 keyed on the form, a 50-100x difference
 # that is inflectional rather than representational. The file also holds random-init rows, which
 # the paper makes no claim about -- these are endpoint measurements -- so they are filtered out.
-# The _v2 files carry everything the earlier ones did plus the orientation nulls and the
-# between-grid share. They also contain the random and position-ablated inits, which the earlier
-# role and metaphor files did not, so all three now need the pretrained filter.
+# These carry the orientation nulls and the between-grid share. They also hold the random and
+# position-ablated inits, so all three sources need the pretrained filter.
 llm <- bind_rows(
-  rd("llm_unified_form_v2.csv") |> filter(init == "pretrained") |>
+  rd("llm_unified_form.csv") |> filter(init == "pretrained") |>
     transmute(model, layer, d, n_items, construction = "POS (noun/verb)",
               size_item = std_size_item, size_class = std_size_class,
               size_int = std_size_interaction, sig = std_sig_interaction,
@@ -165,7 +162,7 @@ llm <- bind_rows(
               leak_null = std_leak_item_into_class_null_hi,
               leak_int_null = std_leak_int_into_margins_null_hi,
               between = std_between_share),
-  rd("llm_role_v2.csv") |> filter(init == "pretrained") |>
+  rd("llm_role.csv") |> filter(init == "pretrained") |>
     transmute(model, layer, d, n_items, construction = "role (subject/object)",
               size_item, size_class, size_int = size_interaction,
               sig = sig_interaction, leak = leak_item_into_class,
@@ -173,7 +170,7 @@ llm <- bind_rows(
               leak_null = leak_item_into_class_null_hi,
               leak_int_null = leak_int_into_margins_null_hi,
               between = between_share),
-  rd("llm_metaphor_v2.csv") |> filter(init == "pretrained") |>
+  rd("llm_metaphor.csv") |> filter(init == "pretrained") |>
     transmute(model, layer, d, n_items, construction = "metaphor (literal/figurative)",
               size_item, size_class, size_int = size_interaction,
               sig = sig_interaction, leak = leak_item_into_class,
@@ -274,7 +271,7 @@ The weights in @eq-toy describe the true distribution the model is trained to ma
 #| fig-width: 6.3
 #| fig-height: 2.5
 #| out-width: "100%"
-#| fig-cap: "What the artificial-language grid settles about the measure and about the learner, over all 7,560 runs. Left: the measured interaction against the amount planted in the language, one line per hidden width, with the linear condition dashed. The linear condition cannot represent an interaction whatever the language contains and reads zero at every width; under ReLU the measured share rises with the planted one, and the wider the representation the more of it is expressed. The two axes are not on a common scale: the planted share is a share of the target distribution and the measured share is a share of the representation the model builds, and Appendix \\ref{sec-appendix-validate} shows the measure recovers a planted share exactly when the planting is done in a representation. Right: overlap between the item and class effects against capacity, with the dashed line marking what a randomly oriented effect would give at that width. Below capacity the two effects are more orthogonal than chance; once dimension counting makes separation impossible they are several times chance. Note the log axis, and that the floor moves by a factor of eight across these widths."
+#| fig-cap: "What the artificial-language grid settles about the measure and about the learner, over all 7,560 runs. Left: the measured interaction against the amount planted in the language, one line per hidden width, with the linear condition dashed. The linear condition cannot represent an interaction whatever the language contains and reads zero at every width; under ReLU the measured share rises with the planted one, and the wider the representation the more of it is expressed. The two axes are not on a common scale: the planted share is a share of the target distribution and the measured share is a share of the representation the model builds, and Appendix \\ref{sec-appendix-validate} shows the measure recovers a planted share exactly when the planting is done in a representation. Right: overlap between the item and class effects against capacity, with the dashed line marking the upper end of the null for an arbitrarily oriented effect. Below capacity the two effects are more orthogonal than chance; once dimension counting makes separation impossible they are several times chance. Note the log axis, and that the floor moves by a factor of eight across these widths."
 ACT2 <- c(linear = UO[["green2"]], ReLU = UO[["gold"]])
 # One ReLU line per width, shading gold to amber with increasing width. Pooled, the level was
 # set by the narrowest models, which cannot build an interaction at all.
@@ -317,7 +314,7 @@ Item and class effects entangle only when there is no room for them not to, and 
 
 ```{r}
 #| label: tbl-toy
-#| tbl-cap: "What a learner builds from the same languages as its representation runs out of room. Capacity is the rank the structure needs divided by the hidden width, so the rows run from a width of 128 down to 8 while the languages are held fixed: the median interaction planted is 0.097 in every row, and the fall down the *interaction* column is therefore the width and not the language. *Interaction* is the interaction's share of the representation, a size. The last two columns are orientations, and a separate question: how much of the item effect lies in the class subspace, and how much of the interaction lies in the span of the two main effects. Each is the fraction that survives the projection, which is the quantity that matters, with its chance level in parentheses. Chance is what a randomly oriented effect would give at that width, so it sets the scale rather than a bound: nothing stops a learned representation falling below it, and with room to spare ReLU does. It moves eightfold down this table, which is why the raw fractions are not comparable across rows on their own. The linear arm has no interaction to orient, so its last column is empty. Below capacity one a fully separable solution is reachable by dimension counting; above one it is not."
+#| tbl-cap: "What a learner builds from the same languages as its representation runs out of room. Capacity is the rank the structure needs divided by the hidden width, so the rows run from a width of 128 down to 8 while the languages are held fixed: the median interaction planted is 0.097 in every row, and the fall down the *interaction* column is therefore the width and not the language. *Interaction* is the interaction's share of the representation, a size. The last two columns are orientations, and a separate question: how much of the item effect lies in the class subspace, and how much of the interaction lies in the span of the two main effects. Each is the fraction that survives the projection, which is the quantity that matters, with the upper end of its own null in parentheses: the largest value an arbitrary orientation produces in 97.5% of draws, from holding the effect fixed and rotating the target subspace 200 times. It is a scale rather than a bound, and nothing stops a learned representation falling below it, which with room to spare ReLU does. It moves several-fold down this table, which is why the raw fractions are not comparable across rows on their own. The linear arm has no interaction to orient, so its last column is empty. Below capacity one a fully separable solution is reachable by dimension counting; above one it is not."
 toy_cap |>
   transmute(condition = act, capacity = g(capacity, 3),
             interaction = g(size_int, 3),
