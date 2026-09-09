@@ -292,6 +292,10 @@ def _gated_report(aa, ga, ab, gb, al, be, gm, L, C, rng, n_boot, sig):
         overlap_class_int=gate(_principal_angle_overlap(S_class, S_int), "class", "int"),
     )
     return dict(
+        # raw cross-products and their permutation nulls, so unified_split can report each size
+        # against its own baseline the way the overlaps are
+        _obs_item=obs_item, _obs_int=obs_int,
+        draws_size_item=np.asarray(null_item), draws_size_interaction=np.asarray(null_int),
         size_item=s_item / total, size_class=s_class / total, size_interaction=s_int / total,
         sig_item=big["item"], sig_class=big["class"], sig_interaction=big["int"],
         **leaks, **angles,
@@ -340,6 +344,9 @@ def unified_split(X, item_of, class_of, min_cell=10, classes=None, standardize=T
         rep[prefix + "_null_med"] = float(med)
         rep[prefix + "_null_hi"] = float(hi)
         rep[prefix + "_p"] = float((nd >= observed).mean())
+        rep[prefix + "_outside"] = bool(observed < lo or observed > hi)
+        if med > 0:
+            rep[prefix + "_ratio"] = float(observed / med)
         # Summaries answer whichever question was in mind when they were chosen. The draws
         # answer any of them, and cost 200 floats, so keep them and never re-measure to change
         # a summary again.
@@ -353,6 +360,38 @@ def unified_split(X, item_of, class_of, min_cell=10, classes=None, standardize=T
     if rep.get("leak_int_into_margins") is not None:
         _null_cols(gm.reshape(L * C, -1), rep["k_margin"],
                    rep["leak_int_into_margins"], "leak_int_into_margins")
+
+    # The class effect has no cross-product to permute, so its baseline comes from permuting
+    # class labels within each item: that destroys any systematic class difference while leaving
+    # each item's own representations intact. mu and the item effect are unchanged by it.
+    crng = np.random.default_rng(seed + 2)
+    Mc = M - M.mean((0, 1))
+    obs_class = L * float((be ** 2).sum())
+    nd_class = np.empty(n_boot)
+    for b in range(n_boot):
+        perm = np.stack([Mc[i][crng.permutation(C)] for i in range(L)])
+        nd_class[b] = L * float((perm.mean(0) ** 2).sum())
+
+    # Each size against its own baseline. Two things to know about these columns. The nulls are
+    # on the RAW scale (cross-product, or L*sum||beta||^2) while the reported sizes are shares of
+    # the total, so the *_null_* values are not comparable to size_* directly; the _outside flag
+    # is, because it is invariant to that denominator. And no multiple of the median is given:
+    # these nulls are centred on zero by construction, so the ratio is undefined.
+    for name, obs, draws in (("size_item", rep.pop("_obs_item"), rep["draws_size_item"]),
+                             ("size_interaction", rep.pop("_obs_int"),
+                              rep["draws_size_interaction"]),
+                             ("size_class", obs_class, nd_class)):
+        if draws.size:
+            lo, med, hi = np.quantile(draws, (0.025, 0.5, 0.975))
+            rep[name + "_null_lo"] = float(lo)
+            rep[name + "_null_med"] = float(med)
+            rep[name + "_null_hi"] = float(hi)
+            rep[name + "_outside"] = bool(obs < lo or obs > hi)
+    if keep_null_draws:
+        rep["draws_size_class"] = nd_class
+    else:
+        rep.pop("draws_size_item", None)
+        rep.pop("draws_size_interaction", None)
 
     rep["between_share"] = _between_share(X, cells, items, classes)
     return rep

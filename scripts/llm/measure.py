@@ -41,6 +41,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 for _sub in ("", "llm", "toy"):          # "" = scripts/, where the shared measure lives
     sys.path.insert(0, str(REPO_ROOT / "scripts" / _sub))
 from separability import unified_split  # noqa: E402
+from csv_repair import repair  # noqa: E402
 
 _blank = lambda v: "" if v is None else v
 
@@ -374,6 +375,8 @@ def main():
 
     # Resume on (model, init). Keying on the model alone would treat a model's ablated and
     # unablated files as the same work and silently skip the second one.
+    # drop a half-written final row left by a killed run, before the resume reads it
+    repair(str(out))
     done = set()
     if out.exists():
         with open(out, newline="") as fh:

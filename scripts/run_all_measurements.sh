@@ -102,7 +102,14 @@ retire_if_stale() {
   echo "  [retire] $f -> $OLDDIR/$(basename "$f" .csv).$stamp.csv (old format)"
 }
 
+# Killing this cleanly means killing the whole process group, not just the parent: the toy's
+# workers are forked children and survive a kill aimed at the script alone.
+PGID=$(ps -o pgid= -p $$ | tr -d ' ')
+echo "$PGID" > "$LOGDIR/pgid"
+
 echo "=== measurements ================================================="
+echo "  to stop everything:  kill -TERM -$PGID     (note the minus)"
+echo "                       or: kill -TERM -\$(cat $LOGDIR/pgid)"
 echo "  toy: device=$TOY_DEVICE workers=$TOY_WORKERS  runs-dir=$RUNS_DIR"
 echo "  llm: workers=$LLM_WORKERS  nulls-dir=$NULLS_DIR"
 echo "  superseded CSVs go to $OLDDIR/ ; nothing is deleted"
@@ -132,6 +139,18 @@ if [ "$SKIP_TOY" != "1" ]; then
   "$PY" scripts/toy/validate_measure.py --workers "$TOY_WORKERS" 2>&1 | tee "$LOGDIR/validate.log"
   rc="${PIPESTATUS[0]}"
   [ "$rc" -eq 0 ] || { echo "[validate] FAILED (exit $rc)" >&2; rc_all=1; }
+
+  # The grid resumes by skipping cells already in the CSV, so a change to the measure part way
+  # through would leave early rows measured one way and later rows another. Re-measuring every
+  # saved cell from its hidden states makes the whole file current, and costs no retraining.
+  if [ -d "$RUNS_DIR" ] && [ -n "$(ls -A "$RUNS_DIR" 2>/dev/null)" ]; then
+    echo
+    echo "[re-measure] applying the current measure to every saved cell"
+    "$PY" scripts/toy/remeasure_from_runs.py --runs-dir "$RUNS_DIR" \
+          --workers "$TOY_WORKERS" 2>&1 | tee "$LOGDIR/remeasure.log"
+    rc="${PIPESTATUS[0]}"
+    [ "$rc" -eq 0 ] || { echo "[re-measure] FAILED (exit $rc)" >&2; rc_all=1; }
+  fi
 fi
 
 # ---------------------------------------------------------------- Experiment 2

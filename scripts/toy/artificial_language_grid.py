@@ -67,6 +67,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 for _sub in ("", "llm", "toy"):          # "" = scripts/, where the shared measure lives
     sys.path.insert(0, str(REPO_ROOT / "scripts" / _sub))
 from separability import unified_split  # noqa: E402
+from csv_repair import repair  # noqa: E402
 
 
 # --------------------------------------------------------------------- generator
@@ -411,6 +412,9 @@ def main():
 
     # resume: a cell is identified by the weights it was asked for, not the normalized ones,
     # so the key is rebuilt from the same tuple the scheduler uses
+    # A killed run can leave a half-written final row, and the resume below would skip it as
+    # unparseable and then append the same cell twice. Fix both before reading.
+    repair(str(out), ["key", "d", "activation", "seed"])
     done = set()
     if out.exists():
         with open(out, newline="") as fh:

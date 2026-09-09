@@ -36,7 +36,7 @@ ACT_LAB <- c(identity = "linear", relu = "ReLU")
 theme_paper <- function(base = 9) {
   theme_minimal(base_size = base) +
     theme(panel.grid.minor = element_blank(),
-          panel.grid.major = element_line(linewidth = 0.25, colour = "grey88"),
+          panel.grid.major = element_line(linewidth = 0.25, color = "grey88"),
           strip.text = element_text(face = "bold", size = base),
           legend.position = "top", legend.margin = margin(0, 0, -4, 0),
           legend.key.height = unit(9, "pt"),
@@ -60,36 +60,36 @@ toy <- rd("artificial_language_grid.csv") |>
 # however much the language contains. Whatever it reports is the measure's own noise, read at
 # that exact width, sample size and context level.
 toy_null <- toy |> group_by(act, planted = w_int > 0) |>
-  summarise(n = n(), med = median(size_interaction),
+  summarize(n = n(), med = median(size_interaction),
             p95 = quantile(size_interaction, .95),
             flagged = mean(sig_interaction), .groups = "drop")
 
 # Does the measured interaction track the planted one? Binned, because the achieved share is
-# continuous (neither the softmax nor the normalisation is linear in the weights).
+# continuous (neither the softmax nor the normalization is linear in the weights).
 toy_track <- toy |> filter(w_item > 0, w_class > 0) |>
   mutate(bin = cut(ach_int, c(-Inf, .005, .05, .15, .30, .55, Inf),
                    labels = c("none", ".005-.05", ".05-.15", ".15-.30", ".30-.55", ">.55"))) |>
   group_by(act, bin) |>
-  summarise(n = n(), ach = median(ach_int), size_int = median(size_interaction),
+  summarize(n = n(), ach = median(ach_int), size_int = median(size_interaction),
             lo = quantile(size_interaction, .25), hi = quantile(size_interaction, .75),
             flagged = mean(sig_interaction), .groups = "drop")
 
 # The same relationship, kept separate by width. Pooled over widths the level is dominated by
 # the narrowest models, which cannot build an interaction at all, so the pooled curve
 # understates how well the wider ones track. The linear arm is flat at every width, so it is
-# summarised once and drawn as a single reference.
+# summarized once and drawn as a single reference.
 toy_track_w <- toy |> filter(w_item > 0, w_class > 0) |>
   mutate(bin = cut(ach_int, c(-Inf, .005, .05, .15, .30, .55, Inf))) |>
   group_by(act, d, bin) |>
-  summarise(ach = median(ach_int), size_int = median(size_interaction), .groups = "drop")
+  summarize(ach = median(ach_int), size_int = median(size_interaction), .groups = "drop")
 toy_track_lin <- toy_track_w |> filter(act == "linear") |>
   group_by(bin) |>
-  summarise(ach = median(ach), size_int = median(size_int), .groups = "drop")
+  summarize(ach = median(ach), size_int = median(size_int), .groups = "drop")
 
 # Capacity: below 1 every component can have its own axis, above 1 they cannot.
 toy_cap <- toy |> filter(w_int > 0, w_item > 0, w_class > 0) |>
   group_by(act, capacity) |>
-  summarise(n = n(), size_int = median(size_interaction),
+  summarize(n = n(), size_int = median(size_interaction),
             overlap = median(leak_item_into_class, na.rm = TRUE),
             floor = median(null_hi, na.rm = TRUE),
             ratio = median(leak_item_into_class / null_hi, na.rm = TRUE),
@@ -102,7 +102,7 @@ toy_noise <- toy |> filter(w_int > 0, w_item > 0, w_class > 0) |>
   mutate(cbin = cut(ach_ctx, c(-Inf, .2, .5, .8, Inf),
                     labels = c("<20%", "20-50%", "50-80%", ">80%"))) |>
   group_by(act, cbin) |>
-  summarise(n = n(), size_int = median(size_interaction),
+  summarize(n = n(), size_int = median(size_interaction),
             flagged = mean(sig_interaction), .groups = "drop")
 
 g <- function(x, digits = 3) formatC(x, format = "f", digits = digits)
@@ -257,7 +257,9 @@ where $\mu$ is the grand mean; $\alpha(i)$, item $i$'s mean across class levels 
 
 Each of these averages is taken over finitely many observations, which differ only in context, so each carries some of the context term of @eq-toy as noise. For $\gamma$ this matters: a squared length is always positive, so its size would come out above zero even for a language with no idiosyncratic information in it at all. We therefore split the observations behind each average in half, run the decomposition on each half separately, and take the dot product of the two estimates of $\gamma$, $\langle \gamma_A, \gamma_B \rangle$, which is large when the halves agree about the idiosyncratic information and near zero when they do not. Noise that differs between the halves cancels, and unlike a squared length this can come out negative, which is what allows a test: significance comes from permuting which item of one half is paired with which item of the other, preserving each component's size while destroying the correspondence between them.
 
-For each representation we report two measurements. The first measures the fraction of the representation accounted for by lexical, class and idiosyncratic information: each component's squared length, summed over its vectors and divided by the total, so that the three fractions sum to one. The second measures whether those components occupy the same directions. In order to do so, we project the item vectors onto the class direction and record the fraction of their squared length that survives, and we project the interaction onto the smallest subspace containing both the item and the class vectors (i.e., the span of the two subspaces). Each fraction is read against $r/d$, what a randomly oriented effect would place in a subspace of rank $r$ at width $d$. A representation is separable if a word's representation is the sum of an item part and a class part with the two on their own axes, so it fails either when the components are non-orthogonal, so that projecting out the class also removes item information, or when there is a third component that is neither an item part nor a class part, whatever its orientation. The question is accordingly not whether class information is present, but how it is carried: on a single direction shared across words, or on a separate direction for each of them.
+For each representation we report two measurements. The first measures the fraction of the representation accounted for by lexical, class and idiosyncratic information: each component's squared length, summed over its vectors and divided by the total, so that the three fractions sum to one. The second measures whether those components occupy the same directions. In order to do so, we project the item vectors onto the class direction and record the fraction of their squared length that survives, and we project the interaction onto the smallest subspace containing both the item and the class vectors (i.e., the span of the two subspaces). A representation is separable if a word's representation is the sum of an item part and a class part with the two on their own axes, so it fails either when the components are non-orthogonal, so that projecting out the class also removes item information, or when there is a third component that is neither an item part nor a class part, whatever its orientation. The question is accordingly not whether class information is present, but how it is carried: on a single direction shared across words, or on a separate direction for each of them.
+
+In order to quantify whether the overlap is meaningful, we measure the overlap an effect has with a random subspace. We do so by holding the effect exactly as measured and projecting it onto a random subspace of the same rank, two hundred times, which leaves the effect untouched and varies only the subspace. These two hundred projections give us a distribution of overlaps that an unrelated subspace would yield. An effect lower than this baseline indicates meaningful orthogonality; an effect larger than it indicates meaningful non-orthogonality. We present each overlap as a multiple of the median of this distribution, together with how many measurements fall outside its 95% interval. This gives both the size of the effect and how consistently it holds across measurements.
 
 ![If a word's representation were an item part plus a class part, three corners of a $2 \times 2$ grid of means would fix the fourth and the parallelogram would close. It does not. $\gamma$ is how far the actual mean sits from where that additive account puts it, and it is not error: the four components exhaust the grid exactly, so $\gamma$ is the part that belongs to the pairing of a particular word with a particular class. The arrow's length is $\lVert \gamma(i,c) \rVert$, and with two items and two classes it is the whole interaction, since $\gamma$ then has a single degree of freedom and the four means share one vector up to sign. What we report is each component's squared length as a share of the structure across the grid.](fig-measurement.pdf){#fig-measurement width="100%"}
 
@@ -277,24 +279,24 @@ ACT2 <- c(linear = UO[["green2"]], ReLU = UO[["gold"]])
 # set by the narrowest models, which cannot build an interaction at all.
 WID <- colorRampPalette(c(UO[["gold"]], UO[["amber"]]))(length(unique(toy_track_w$d)))
 names(WID) <- sort(unique(toy_track_w$d))
-pA <- ggplot(filter(toy_track_w, act == "ReLU"), aes(ach, size_int, colour = factor(d))) +
+pA <- ggplot(filter(toy_track_w, act == "ReLU"), aes(ach, size_int, color = factor(d))) +
   geom_line(data = toy_track_lin, mapping = aes(ach, size_int), inherit.aes = FALSE,
-            colour = ACT2[["linear"]], linetype = 2, linewidth = .5) +
+            color = ACT2[["linear"]], linetype = 2, linewidth = .5) +
   geom_line(linewidth = .6) + geom_point(size = 1.4) +
-  scale_colour_manual(values = WID, name = "width") +
+  scale_color_manual(values = WID, name = "width") +
   labs(x = "interaction planted in the language", y = "interaction measured\nin the representation") +
   theme_paper(8)
 
 # one chance line, not one per condition: the two differ slightly because the class subspace
 # rank is estimated, and drawing both makes a zigzag that reads as structure when it is not
-floor_line <- toy_cap |> group_by(capacity) |> summarise(floor = median(floor), .groups = "drop")
-pB <- ggplot(toy_cap, aes(capacity, overlap, colour = act)) +
+floor_line <- toy_cap |> group_by(capacity) |> summarize(floor = median(floor), .groups = "drop")
+pB <- ggplot(toy_cap, aes(capacity, overlap, color = act)) +
   geom_line(data = floor_line, mapping = aes(capacity, floor), inherit.aes = FALSE,
-            colour = UO[["grey"]], linetype = 2, linewidth = .5) +
+            color = UO[["grey"]], linetype = 2, linewidth = .5) +
   geom_line(linewidth = .6) + geom_point(size = 1.5) +
   annotate("text", x = 0.135, y = 0.032, label = "chance", size = 2.5,
-           colour = UO[["grey"]], hjust = 0) +
-  scale_colour_manual(values = ACT2, name = NULL) +
+           color = UO[["grey"]], hjust = 0) +
+  scale_color_manual(values = ACT2, name = NULL) +
   scale_x_log10(breaks = c(.125, .25, .5, 1, 2)) +
   scale_y_log10(labels = scales::label_number(drop0trailing = TRUE)) +
   labs(x = "capacity (structure rank / hidden width)", y = "item-class overlap (log)") +
@@ -386,10 +388,10 @@ plt <- llm |>
                values_to = "share") |>
   mutate(component = factor(component, c("size_int", "size_class", "portable"),
                             c("interaction", "class effect", "portable fraction")))
-ggplot(plt, aes(depth, share, colour = family, group = interaction(family, size))) +
+ggplot(plt, aes(depth, share, color = family, group = interaction(family, size))) +
   geom_line(linewidth = .55, alpha = .85) +
   facet_grid(component ~ construction, scales = "free_y", switch = "y") +
-  scale_colour_manual(values = c(BabyLM = UO[["gold"]], Pythia = UO[["blue"]]), name = NULL) +
+  scale_color_manual(values = c(BabyLM = UO[["gold"]], Pythia = UO[["blue"]]), name = NULL) +
   scale_x_continuous(breaks = c(0, .5, 1)) +
   labs(x = "relative depth", y = NULL) +
   theme_paper(8) + theme(strip.placement = "outside")
@@ -501,22 +503,22 @@ Experiment 1 plants structure in a *language* and measures a trained model's rep
 #| include: false
 val <- rd("validate_measure.csv")
 v_rec <- val |> filter(n_obs == 24, d >= 768) |> group_by(planted_int) |>
-  summarise(n = n(), measured = median(size_interaction),
+  summarize(n = n(), measured = median(size_interaction),
             lo = quantile(size_interaction, .05), hi = quantile(size_interaction, .95),
             flagged = mean(sig_interaction), .groups = "drop")
 v_null <- bind_rows(
   val |> filter(planted_int == 0) |> group_by(n_obs) |>
-    summarise(effect = "interaction", med = median(size_interaction),
+    summarize(effect = "interaction", med = median(size_interaction),
               p95 = quantile(size_interaction, .95),
               flagged = mean(sig_interaction), .groups = "drop"),
   val |> filter(planted_class == 0) |> group_by(n_obs) |>
-    summarise(effect = "class effect", med = median(size_class),
+    summarize(effect = "class effect", med = median(size_class),
               p95 = quantile(size_class, .95), flagged = NA_real_, .groups = "drop"),
   val |> filter(planted_item == 0) |> group_by(n_obs) |>
-    summarise(effect = "item effect", med = median(size_item),
+    summarize(effect = "item effect", med = median(size_item),
               p95 = quantile(size_item, .95), flagged = NA_real_, .groups = "drop"))
 v_ov <- val |> filter(!is.na(leak_item_into_class), n_obs == 24, planted_overlap == 0) |>
-  group_by(d) |> summarise(measured = median(leak_item_into_class),
+  group_by(d) |> summarize(measured = median(leak_item_into_class),
                            chance = median(k_class / d), .groups = "drop")
 vget <- function(eff, obs, col) v_null[[col]][v_null$effect == eff & v_null$n_obs == obs]
 ```
@@ -653,7 +655,7 @@ Number and tense provide that distinction. A plural or a past tense is spelled w
 rd("llm_morph.csv") |>
   filter(regularity == "regular") |>
   group_by(model, feature) |>
-  summarise(L0 = size_interaction[layer == 0],
+  summarize(L0 = size_interaction[layer == 0],
             deep = size_interaction[layer == max(layer)], .groups = "drop") |>
   left_join(MODELS, by = "model") |>
   transmute(family, model = sub(".*/", "", model), feature,
@@ -704,7 +706,7 @@ llm |> group_by(construction, model) |>
   # Each overlap is shown against the upper tail of its own null rather than against r/d. The
   # two differ: r/d assumes the subspace has its algebraic maximum rank, while the projection
   # uses the rank actually fitted, which is roughly half of it for the marginal subspace.
-  summarise(`item-class overlap` = {v <- median(leak, na.rm = TRUE)
+  summarize(`item-class overlap` = {v <- median(leak, na.rm = TRUE)
                if (is.na(v)) "---" else sprintf("%.4f (%.4f)", v, median(leak_null, na.rm = TRUE))},
             `interaction overlap` = {v <- median(leak_int, na.rm = TRUE)
                if (is.na(v)) "---" else sprintf("%.3f (%.3f)", v, median(leak_int_null, na.rm = TRUE))},
