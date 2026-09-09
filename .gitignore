@@ -39,6 +39,11 @@ data/vua_reps/
 /archive/
 # all saved representation dirs (large, regenerable) -- catch-all; result CSVs stay tracked
 data/*_reps/
+# per-cell toy artefacts: hidden states plus the raw null draws, ~8 GB for the full grid. Kept
+# so a change to what we MEASURE costs a re-measure rather than retraining the whole grid.
+data/toy_runs/
+# raw null draws from the LLM side; small, but regenerable from the saved representations
+data/llm_nulls/
 # concatenated / single UD corpora (regenerable via scripts/llm/build_concat_ud.py) -- CSVs stay tracked
 data/ud/
 # Quarto paper build artifacts. The generated TeX is disposable; the rendered paper, the ACL

@@ -301,7 +301,8 @@ def _gated_report(aa, ga, ab, gb, al, be, gm, L, C, rng, n_boot, sig):
 
 
 def unified_split(X, item_of, class_of, min_cell=10, classes=None, standardize=True,
-                  n_boot=200, n_null=200, sig=0.05, seed=0, verbose=False):
+                  n_boot=200, n_null=200, sig=0.05, seed=0, verbose=False,
+                  keep_null_draws=False):
     """LLM-side unified measure: the two independent estimates are two disjoint halves of each
     cell's TOKEN CONTEXTS. Same model -> SAME frame, so NO gauge alignment is needed (unlike the
     toy's two-init unified_cross). Removes context noise; same significance-gated reporting."""
@@ -339,6 +340,13 @@ def unified_split(X, item_of, class_of, min_cell=10, classes=None, standardize=T
         rep[prefix + "_null_med"] = float(med)
         rep[prefix + "_null_hi"] = float(hi)
         rep[prefix + "_p"] = float((nd >= observed).mean())
+        # Summaries answer whichever question was in mind when they were chosen. The draws
+        # answer any of them, and cost 200 floats, so keep them and never re-measure to change
+        # a summary again.
+        if keep_null_draws:
+            # float64: the draws are a few KB and storing them narrower would mean quantiles
+            # recomputed later disagreed with the ones written here, defeating the point
+            rep["draws_" + prefix] = nd
 
     if rep.get("leak_item_into_class") is not None:
         _null_cols(al, rep["k_class"], rep["leak_item_into_class"], "leak_item_into_class")

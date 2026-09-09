@@ -39,11 +39,17 @@ Run:  python scripts/toy/artificial_language_grid.py --probe                  # 
 
 Resumable: cells already present in the output CSV are skipped, so an interrupted run continues.
 
-ON CPU VS GPU. The models here are small (d <= 128, vocab 600, 5760 rows), so a single cell is
-not GPU-bound and the parallelism that matters is across cells. Twenty-eight CPU workers will
-usually beat twenty-eight processes contending for one GPU, and each CUDA context costs a few
-hundred MB of device memory before any tensors, so 28 of them is 6-8 GB spent on overhead. If
-using --device cuda, drop --workers to something like 8.
+ON CPU VS GPU. Use the GPU; it is substantially faster here. An earlier version of this note
+claimed CPU workers would win because the models are small. That was wrong, and it misled a
+later reader into recommending a CPU run, so it is corrected rather than deleted. Each CUDA
+context does cost a few hundred MB before any tensors, so keep --workers modest with --device
+cuda. Note that CPU and GPU do not produce bitwise-identical results: float differences compound
+over ~1000 iterations and move where early stopping fires. Individual cells differ; the medians
+this grid reports do not, to about one part in a hundred.
+
+WHAT IS SAVED. --runs-dir writes one npz per cell holding the hidden states the measure ran on
+and the raw null draws. That is ~8 GB for the full grid and it is the difference between a
+change to the MEASUREMENT costing a re-measure and costing a retrain.
 """
 import argparse
 import csv
@@ -332,8 +338,17 @@ def run_cell(spec, cfg):
         w[0], w[1], w[2], w_ctx, cfg["scale"])
     H, iters, loss, gap, plateaued = train_and_extract(
         P, form_of, class_of, ctx_of, cfg["ctx_pool"], d, act, seed, cfg)
+    runs_dir = cfg.get("runs_dir")
     r = unified_split(H, form_of, class_of, min_cell=max(2, cfg["n_obs"] // 2),
-                      classes=list(range(cfg["n_class"])), standardize=True, seed=0)
+                      classes=list(range(cfg["n_class"])), standardize=True, seed=0,
+                      keep_null_draws=bool(runs_dir))
+    if runs_dir:
+        # written from the worker so the arrays are never pickled back to the parent
+        tag = f"{_key(w, w_ctx)}__d{d}__{act}__s{seed}".replace("/", "-")
+        np.savez_compressed(Path(runs_dir) / f"{tag}.npz",
+                            H=H.astype(np.float32), form_of=form_of, class_of=class_of,
+                            ctx_of=ctx_of, **{k: v for k, v in r.items()
+                                              if k.startswith("draws_")})
     rank = cfg["r_item"] + cfg["r_class"] + cfg["r_int"]
     row = dict(key=_key(w, w_ctx),
                w_item=wn[0], w_class=wn[1], w_int=wn[2], w_ctx=wn[3],
@@ -355,8 +370,14 @@ def main():
     ap.add_argument("--device", default="cpu")
     ap.add_argument("--workers", type=int, default=None)
     ap.add_argument("--out", default=None)
+    ap.add_argument("--runs-dir", default=None,
+                    help="save each cell's hidden states and null draws here (~8 GB full grid); "
+                         "a later change to the measure then needs no retraining")
     args = ap.parse_args()
     cfg = dict(CONFIG, device=args.device)
+    if args.runs_dir:
+        Path(args.runs_dir).mkdir(parents=True, exist_ok=True)
+        cfg["runs_dir"] = args.runs_dir
     if args.workers:
         cfg["n_workers"] = args.workers
     if args.out:

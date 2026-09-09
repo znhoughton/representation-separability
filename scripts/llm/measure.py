@@ -56,6 +56,25 @@ NULL_FIELDS = ["between_share",
                "leak_int_into_margins_null_hi", "leak_int_into_margins_p"]
 
 
+def _write_draws(args, model, init, tag, store):
+    """One npz per (model, init, construction). Small -- a few hundred KB for a whole run."""
+    d = getattr(args, "nulls_dir", None)
+    if not d or not store:
+        return
+    out = Path(d)
+    out.mkdir(parents=True, exist_ok=True)
+    name = f"{model.split('/')[-1]}__{init}__{tag}.npz".replace("/", "-")
+    np.savez_compressed(out / name, **store)
+
+
+def _stash_draws(store, key, r):
+    """Park the raw null draws under a per-layer key. Written next to the CSV at the end of the
+    run, because a summary answers only the question it was chosen for and the draws answer any."""
+    for k, v in r.items():
+        if k.startswith("draws_"):
+            store[f"{key}__{k}"] = v
+
+
 def _null_cols(r, prefix=""):
     return {prefix + k: _blank(r.get(k)) for k in NULL_FIELDS}
 
@@ -102,18 +121,21 @@ def measure_pos(path, args, layers):
         print(f"  {model} [{init}]: <2 of {classes} present; skipping", flush=True)
         return []
     rows = []
+    draws = {}
     for li in [int(x) for x in z["layer_idxs"]]:
         if layers is not None and li not in layers:
             continue
         X = z[f"layer_{li}"]; d = int(X.shape[1])
         # two independent estimates = two token-context halves (same model -> same frame).
         # raw = unstandardized, kept for the rogue-dimension contrast.
-        std = unified_split(X, item, upos, min_cell=args.min_cell, classes=use, standardize=True)
+        std = unified_split(X, item, upos, min_cell=args.min_cell, classes=use, standardize=True,
+                            keep_null_draws=True)
         raw = unified_split(X, item, upos, min_cell=args.min_cell, classes=use, standardize=False)
         del X
         if "error" in std:
             print(f"  layer {li}: {std['error']}", flush=True)
             continue
+        _stash_draws(draws, f"layer{li}", std)
         rows.append(dict(
             model=model, init=init, layer=li, d=d,
             n_points=len(upos), n_items=std["n_items"], classes="+".join(use), min_cell=args.min_cell,
@@ -132,6 +154,7 @@ def measure_pos(path, args, layers):
               f"sig={r['std_sig_interaction']} leak_i>c={f(r['std_leak_item_into_class'])} "
               f"leak_int>m={f(r['std_leak_int_into_margins'])}  |  RAW leak_i>c={f(r['raw_leak_item_into_class'])}",
               flush=True)
+    _write_draws(args, model, init, "pos", draws)
     return rows
 
 
@@ -150,6 +173,7 @@ def measure_role(path, args, layers):
     form = np.array([f.lower() for f in lab["form"]])         # same token in both roles
     deprel = lab["deprel"]
     rows = []
+    draws = {}
     for li in [int(x) for x in z["layer_idxs"]]:
         if layers is not None and li not in layers:
             continue
@@ -157,9 +181,10 @@ def measure_role(path, args, layers):
         m = (up == ROLE_POS) & np.isin(deprel, ROLE_CLASSES)
         if m.sum() >= 2 * args.min_cell:
             r = unified_split(X[m], form[m], deprel[m], min_cell=args.min_cell,
-                              classes=list(ROLE_CLASSES))
+                              classes=list(ROLE_CLASSES), keep_null_draws=True)
             if "error" not in r:
-                rows.append(dict(model=model, init=init, construction="noun_role",
+                _stash_draws(draws, f"layer{li}", r)
+        rows.append(dict(model=model, init=init, construction="noun_role",
                                  classes="+".join(ROLE_CLASSES), layer=li, d=d,
                                  n_points=int(m.sum()), n_items=r["n_items"], min_cell=args.min_cell,
                                  size_item=r["size_item"], size_class=r["size_class"],
@@ -176,6 +201,7 @@ def measure_role(path, args, layers):
                   f"sz_int={rr['size_interaction']:.3f} "
                   f"leak_i>c={rr['leak_item_into_class'] or float('nan'):.4f} n_items={rr['n_items']}",
                   flush=True)
+    _write_draws(args, model, init, "role", draws)
     return rows
 
 
@@ -193,14 +219,17 @@ def measure_metaphor(path, args, layers):
     form = np.array([f.lower() for f in z["form"]]); model = str(z["model"]); init = _init_of(z)
     cls = np.where(z["label"].astype(int) == 1, "met", "lit")     # 1=metaphorical, 0=literal
     rows = []
+    draws = {}
     for li in [int(x) for x in z["layer_idxs"]]:
         if layers is not None and li not in layers:
             continue
         X = z[f"layer_{li}"]; d = int(X.shape[1])
-        r = unified_split(X, form, cls, min_cell=args.min_cell, classes=list(MET_CLASSES))
+        r = unified_split(X, form, cls, min_cell=args.min_cell, classes=list(MET_CLASSES),
+                          keep_null_draws=True)
         del X
         if "error" in r:
             continue
+        _stash_draws(draws, f"layer{li}", r)
         rows.append(dict(model=model, init=init, construction="metaphor",
                          classes="+".join(MET_CLASSES), layer=li, d=d, n_points=int(len(form)),
                          n_items=r["n_items"], min_cell=args.min_cell,
@@ -213,6 +242,7 @@ def measure_metaphor(path, args, layers):
         print(f"  {model.split('/')[-1]:>26} L{li:>2}: lit/met sz_int={rr['size_interaction']:.3f} "
               f"leak_i>c={rr['leak_item_into_class'] or float('nan'):.4f} n_items={rr['n_items']}",
               flush=True)
+    _write_draws(args, model, init, "metaphor", draws)
     return rows
 
 
@@ -319,6 +349,9 @@ def main():
     ap.add_argument("--item-key", choices=["lemma", "form"], default="lemma",
                     help="pos only: what counts as an ITEM. 'form' makes it same-token; needs --conllu")
     ap.add_argument("--min-cell", type=int, default=10)
+    ap.add_argument("--nulls-dir", default=None,
+                    help="save the raw null draws here (a few hundred KB); lets an "
+                         "overlap be re-summarised without measuring again")
     ap.add_argument("--layers", default=None, help="comma list to restrict (default all)")
     ap.add_argument("--skip-random", action="store_true", help="only measure *pretrained* reps")
     ap.add_argument("--workers", type=int, default=6,
