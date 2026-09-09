@@ -349,9 +349,9 @@ def main():
     ap.add_argument("--item-key", choices=["lemma", "form"], default="lemma",
                     help="pos only: what counts as an ITEM. 'form' makes it same-token; needs --conllu")
     ap.add_argument("--min-cell", type=int, default=10)
-    ap.add_argument("--nulls-dir", default=None,
-                    help="save the raw null draws here (a few hundred KB); lets an "
-                         "overlap be re-summarised without measuring again")
+    ap.add_argument("--nulls-dir", default=str(REPO_ROOT / "data" / "llm_nulls"),
+                    help="save the raw null draws here (a few hundred KB); lets an overlap be "
+                         "re-summarised without measuring again. Default on; pass '' to disable.")
     ap.add_argument("--layers", default=None, help="comma list to restrict (default all)")
     ap.add_argument("--skip-random", action="store_true", help="only measure *pretrained* reps")
     ap.add_argument("--workers", type=int, default=6,

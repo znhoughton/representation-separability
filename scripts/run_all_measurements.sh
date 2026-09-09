@@ -7,13 +7,27 @@
 #   nohup setsid bash scripts/run_all_measurements.sh > logs/all.out 2>&1 &
 #   tail -f logs/all.out
 #
-# WHAT IT PRODUCES
+# WHAT IT PRODUCES -- every data file the paper reads, in dependency order.
 #   data/artificial_language_grid.csv   Experiment 1, 7,560 cells        (toy, GPU)
+#   data/validate_measure.csv           Appendix: the measure on planted representations
 #   data/llm_unified_form.csv           Experiment 2, part of speech
 #   data/llm_role.csv                   Experiment 2, grammatical role
 #   data/llm_metaphor.csv               Experiment 2, metaphor
+#   data/llm_morph.csv                  Appendix: number and tense
+#   data/methods_grid_stats.csv         dataset counts quoted in Methods
+#   data/llm_decode_pos_form.csv        Experiment 3, part of speech
+#   data/llm_decode_interaction.csv     Experiment 3, role and metaphor
 #   data/toy_runs/*.npz                 per cell: hidden states + raw null draws  (~8 GB)
 #   data/llm_nulls/*.npz                per model/init/construction: raw null draws
+#
+# NOT run by default: the position ablation, which re-extracts representations with the position
+# embeddings zeroed and so costs as much as extraction itself. ABLATION=1 includes it, or run
+# scripts/llm/run_position_ablation.sh on its own.
+#
+# It assumes the representations already exist in data/llm_reps and data/vua_reps. Extraction is
+# a separate step because it downloads models and is the one part that is not idempotent:
+#   python scripts/llm/extract_ud.py  --conllu data/ud/en_all-ud.conllu
+#   python scripts/llm/extract_vua.py
 #
 # WHY THE NPZ DIRECTORIES EXIST. A summary answers only the question it was chosen for. Writing
 # one quantile of the null has twice forced a re-measure and once a retrain when the question
@@ -44,6 +58,8 @@ TOY_WORKERS="${TOY_WORKERS:-32}"      # cells are independent, so this is just c
 LLM_WORKERS="${LLM_WORKERS:-4}"       # RAM-bound: ~12 GB peak per worker on a 1.4B
 SKIP_TOY="${SKIP_TOY:-0}"
 SKIP_LLM="${SKIP_LLM:-0}"
+SKIP_DERIVED="${SKIP_DERIVED:-0}"     # dataset counts and the decoding analysis
+ABLATION="${ABLATION:-0}"             # re-extracts reps; off unless asked for
 
 # The column that marks the current format. A CSV without it predates the nulls and cannot be
 # resumed into, because every row needs the new fields.
@@ -108,6 +124,14 @@ if [ "$SKIP_TOY" != "1" ]; then
         2>&1 | tee "$LOGDIR/toy.log"
   rc="${PIPESTATUS[0]}"
   [ "$rc" -eq 0 ] || { echo "[toy] FAILED (exit $rc); see $LOGDIR/toy.log" >&2; rc_all=1; }
+
+  # Appendix A: the measure applied to representations with the answer planted directly in them,
+  # which is what separates "the measure missed it" from "the model did not build it".
+  echo
+  echo "[validate] -> data/validate_measure.csv"
+  "$PY" scripts/toy/validate_measure.py --workers "$TOY_WORKERS" 2>&1 | tee "$LOGDIR/validate.log"
+  rc="${PIPESTATUS[0]}"
+  [ "$rc" -eq 0 ] || { echo "[validate] FAILED (exit $rc)" >&2; rc_all=1; }
 fi
 
 # ---------------------------------------------------------------- Experiment 2
@@ -129,6 +153,45 @@ if [ "$SKIP_LLM" != "1" ]; then
   run_llm pos      data/llm_unified_form.csv --reps-dir "$REPS_DIR" --conllu "$CONLLU" --item-key form || rc_all=1
   run_llm role     data/llm_role.csv         --reps-dir "$REPS_DIR" --conllu "$CONLLU"                 || rc_all=1
   run_llm metaphor data/llm_metaphor.csv     --reps-dir "$VUA_DIR"                                     || rc_all=1
+  run_llm morphology data/llm_morph.csv      --reps-dir "$REPS_DIR" --conllu "$CONLLU"                 || rc_all=1
+fi
+
+# ---------------------------------------------------------------- derived analyses
+if [ "$SKIP_DERIVED" != "1" ]; then
+  echo
+  echo "[stats] -> data/methods_grid_stats.csv"
+  "$PY" scripts/llm/dataset_stats.py --reps-dir "$REPS_DIR" --vua-dir "$VUA_DIR" \
+        --conllu "$CONLLU" --min-cell "$MIN_CELL" 2>&1 | tee "$LOGDIR/stats.log"
+  rc="${PIPESTATUS[0]}"
+  [ "$rc" -eq 0 ] || { echo "[stats] FAILED (exit $rc)" >&2; rc_all=1; }
+
+  # decode appends, so a rerun would duplicate rows; retire the outputs and rebuild both.
+  for f in data/llm_decode_pos_form.csv data/llm_decode_interaction.csv; do
+    [ -s "$f" ] && mv "$f" "$OLDDIR/$(basename "$f" .csv).$stamp.csv" && \
+      echo "  [retire] $f (decode appends; rebuilt to avoid duplicate rows)"
+  done
+
+  echo
+  echo "[decode] -> data/llm_decode_pos_form.csv, data/llm_decode_interaction.csv"
+  {
+    "$PY" scripts/llm/decode_from_interaction.py --construction pos --reps-dir "$REPS_DIR" \
+          --conllu "$CONLLU" --item-key form --out data/llm_decode_pos_form.csv &&
+    "$PY" scripts/llm/decode_from_interaction.py --construction role --reps-dir "$REPS_DIR" \
+          --conllu "$CONLLU" --out data/llm_decode_interaction.csv &&
+    "$PY" scripts/llm/decode_from_interaction.py --construction metaphor --reps-dir "$VUA_DIR" \
+          --out data/llm_decode_interaction.csv
+  } 2>&1 | tee "$LOGDIR/decode.log"
+  rc="${PIPESTATUS[0]}"
+  [ "$rc" -eq 0 ] || { echo "[decode] FAILED (exit $rc)" >&2; rc_all=1; }
+fi
+
+# ---------------------------------------------------------------- position ablation
+if [ "$ABLATION" = "1" ]; then
+  echo
+  echo "[ablation] re-extracting with position embeddings zeroed"
+  bash scripts/llm/run_position_ablation.sh 2>&1 | tee "$LOGDIR/ablation.log"
+  rc="${PIPESTATUS[0]}"
+  [ "$rc" -eq 0 ] || { echo "[ablation] FAILED (exit $rc)" >&2; rc_all=1; }
 fi
 
 # ---------------------------------------------------------------- verify
@@ -142,8 +205,10 @@ from pathlib import Path
 runs_dir, nulls_dir = Path(sys.argv[1]), Path(sys.argv[2])
 NEW = ["between_share", "leak_item_into_class_null_med", "leak_int_into_margins_null_med"]
 
-for path in ("data/artificial_language_grid.csv", "data/llm_unified_form.csv",
-             "data/llm_role.csv", "data/llm_metaphor.csv"):
+for path in ("data/artificial_language_grid.csv", "data/validate_measure.csv",
+             "data/llm_unified_form.csv", "data/llm_role.csv", "data/llm_metaphor.csv",
+             "data/llm_morph.csv", "data/methods_grid_stats.csv",
+             "data/llm_decode_pos_form.csv", "data/llm_decode_interaction.csv"):
     p = Path(path)
     if not p.exists():
         print(f"  {path:<38} MISSING"); continue
@@ -151,16 +216,25 @@ for path in ("data/artificial_language_grid.csv", "data/llm_unified_form.csv",
     cols = rows[0].keys() if rows else {}
     hits = [c for c in cols if any(c.endswith(n) for n in NEW)]
     print(f"  {path:<38} {len(rows):>5} rows")
-    if not hits:
+    # only the measured grids carry nulls; the dataset counts and the decoding analysis are
+    # different kinds of output and warning about them would be noise
+    expects_nulls = any(k in path for k in ("artificial_language_grid", "llm_unified_form",
+                                            "llm_role", "llm_metaphor", "llm_morph"))
+    if expects_nulls and not hits:
         print("      NO NULL COLUMNS -- is the pulled code current?")
     for c in sorted(hits):
         filled = sum(1 for r in rows if str(r.get(c, "")).strip() not in ("", "NA"))
         print(f"      {c:<44} {filled:>5} filled")
     # every construction should be measured on all six pretrained models
-    if "llm_" in path:
+    if "llm_" in path and "decode" not in path:
         pre = {r["model"] for r in rows if r.get("init", "pretrained") == "pretrained"}
         flag = "" if len(pre) >= 6 else "   <-- UNDER-COVERED"
         print(f"      pretrained models: {len(pre)}{flag}")
+    if "methods_grid_stats" in path:
+        got = {r["construction"] for r in rows}
+        missing = {"pos_noun_verb", "metaphor"} - got
+        print(f"      constructions: {sorted(got)}"
+              + (f"   <-- MISSING {sorted(missing)}" if missing else ""))
 
 for d, what in ((runs_dir, "toy cells"), (nulls_dir, "llm null files")):
     n = len(list(d.glob("*.npz"))) if d.exists() else 0

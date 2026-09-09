@@ -45,6 +45,9 @@ representation-separability/
 
 ## Which script produced which result
 
+All of these are produced by `scripts/run_all_measurements.sh`; the third column is what to run
+if you want just one of them.
+
 | paper element | data file | script |
 |:--|:--|:--|
 | Experiment 1 | `artificial_language_grid.csv` | `toy/artificial_language_grid.py` |
@@ -74,20 +77,47 @@ first appendix gives the formal statement.
 
 ## Reproducing
 
+Extract the representations once, then run everything else with one command:
+
+```bash
+# once: build the corpus and extract. Needs a GPU and downloads the models.
+export HF_HOME=$TMPDIR/hf                       # the default cache is often read-only
+python scripts/llm/build_ud_corpus.py --out data/ud/en_all-ud.conllu
+python scripts/llm/extract_ud.py  --conllu data/ud/en_all-ud.conllu --device cuda
+python scripts/llm/extract_vua.py --device cuda
+
+# everything the paper reads, in dependency order
+mkdir -p logs
+nohup setsid bash scripts/run_all_measurements.sh > logs/all.out 2>&1 &
+tail -f logs/all.out
+```
+
+That produces all ten data files, runs Experiment 1 on the GPU, and finishes by reporting how many
+values landed in each column and whether every construction covers all six models. It is resumable
+and deletes nothing: a superseded file is moved to `old/` with a timestamp. `ABLATION=1` adds the
+position-ablation appendix, which is off by default because it re-extracts.
+
+It also writes two directories of artefacts, both gitignored:
+
+| | what | size |
+|:--|:--|:--|
+| `data/toy_runs/` | per toy cell: the hidden states the measure ran on, and the raw null draws | ~8 GB |
+| `data/llm_nulls/` | per model and construction: the raw null draws | a few hundred KB |
+
+These exist so that a change to how a number is *summarised* never costs another measurement pass.
+Twice it has, and once it cost retraining the whole toy grid, because only one quantile of a null
+distribution had been written down. `--no-save-runs` skips the 8 GB if you do not want it.
+
+### Running one piece
+
 **Experiment 1 and the validation appendix** (GPU helps, not required):
 ```bash
 python scripts/toy/artificial_language_grid.py     # ~7.5k cells; resumable
 python scripts/toy/validate_measure.py          # ~250k runs; resumable, parallel
 ```
 
-**Experiments 2 and 3.** Extraction needs a GPU; measurement is CPU only. Redirect the read-only HF
-cache first (`export HF_HOME=$TMPDIR/hf`):
+**Experiments 2 and 3.** Extraction needs a GPU; measurement is CPU only:
 ```bash
-python scripts/llm/build_ud_corpus.py --out data/ud/en_all-ud.conllu
-python scripts/llm/extract_ud.py --conllu data/ud/en_all-ud.conllu \
-       --reps-dir data/llm_reps --max-tokens 300000 --device cuda
-python scripts/llm/extract_vua.py --out-dir data/vua_reps --device cuda
-
 python scripts/llm/measure.py pos --reps-dir data/llm_reps --conllu data/ud/en_all-ud.conllu \
        --item-key form --out data/llm_unified_form.csv
 python scripts/llm/measure.py role  --reps-dir data/llm_reps --conllu data/ud/en_all-ud.conllu --out data/llm_role.csv

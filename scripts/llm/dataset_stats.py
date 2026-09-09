@@ -72,9 +72,11 @@ def corpus_stats(path):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--reps-dir", required=True)
-    ap.add_argument("--vua-dir", default=None)
-    ap.add_argument("--conllu", default=None)
+    # Defaults rather than required/None: --vua-dir being optional is why the file shipped with
+    # no metaphor rows, and gs() then wrote a silent NA into the rendered paper.
+    ap.add_argument("--reps-dir", default=str(REPO_ROOT / "data" / "llm_reps"))
+    ap.add_argument("--vua-dir", default=str(REPO_ROOT / "data" / "vua_reps"))
+    ap.add_argument("--conllu", default=str(REPO_ROOT / "data" / "ud" / "en_all-ud.conllu"))
     ap.add_argument("--min-cell", type=int, default=10)
     ap.add_argument("--out", default=str(REPO_ROOT / "data" / "methods_grid_stats.csv"))
     args = ap.parse_args()

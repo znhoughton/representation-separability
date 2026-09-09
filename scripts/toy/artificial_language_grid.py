@@ -370,12 +370,17 @@ def main():
     ap.add_argument("--device", default="cpu")
     ap.add_argument("--workers", type=int, default=None)
     ap.add_argument("--out", default=None)
-    ap.add_argument("--runs-dir", default=None,
+    ap.add_argument("--runs-dir", default=str(REPO_ROOT / "data" / "toy_runs"),
                     help="save each cell's hidden states and null draws here (~8 GB full grid); "
-                         "a later change to the measure then needs no retraining")
+                         "a later change to the measure then needs no retraining. Default on: "
+                         "dropping it is what made the last two measurement changes cost a "
+                         "retrain. --no-save-runs turns it off.")
+    ap.add_argument("--no-save-runs", action="store_true",
+                    help="do not save hidden states or null draws (saves ~8 GB, costs a retrain "
+                         "if what we measure ever changes)")
     args = ap.parse_args()
     cfg = dict(CONFIG, device=args.device)
-    if args.runs_dir:
+    if args.runs_dir and not args.no_save_runs:
         Path(args.runs_dir).mkdir(parents=True, exist_ok=True)
         cfg["runs_dir"] = args.runs_dir
     if args.workers:
