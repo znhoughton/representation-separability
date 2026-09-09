@@ -42,8 +42,8 @@ Resumable: cells already present in the output CSV are skipped, so an interrupte
 ON CPU VS GPU. Use the GPU; it is substantially faster here. An earlier version of this note
 claimed CPU workers would win because the models are small. That was wrong, and it misled a
 later reader into recommending a CPU run, so it is corrected rather than deleted. Each CUDA
-context does cost a few hundred MB before any tensors, so keep --workers modest with --device
-cuda. Note that CPU and GPU do not produce bitwise-identical results: float differences compound
+context does cost a few hundred MB before any tensors, so the ceiling on --workers is VRAM
+rather than anything about speed; check nvidia-smi if a large worker count fails to start. Note that CPU and GPU do not produce bitwise-identical results: float differences compound
 over ~1000 iterations and move where early stopping fires. Individual cells differ; the medians
 this grid reports do not, to about one part in a hundred.
 
