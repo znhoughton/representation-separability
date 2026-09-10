@@ -51,6 +51,9 @@ data/ud/
 paper/*.pdf
 !paper/fig-training.pdf
 !paper/fig-measurement.pdf
+!paper/fig-grid.pdf
+!paper/fig-projection.pdf
+!paper/fig-replication.pdf
 !paper/separability.pdf
 paper/*.tex
 # Quarto copies these out of the extension into paper/ at render time
