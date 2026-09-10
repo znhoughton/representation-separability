@@ -81,3 +81,6 @@ paper/*_files/
 /notes/figures/*.png
 /notes/figures/*.svg
 /notes/figures/*.pdf
+
+# Superseded scripts and analyses. On disk, out of the index; all of it is in git history.
+/archive/

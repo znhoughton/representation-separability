@@ -271,18 +271,6 @@ def _decompose(M):
     return mu, alpha, beta, gamma
 
 
-def _procrustes_gauge(Msrc, Mtgt):
-    """Orthogonal R aligning Msrc into Mtgt's frame, fit on the FULL grid (so the gauge is
-    recovered in EVERY direction, including the interaction's own axis -- a marginal-only fit
-    leaves R under-determined off the marginal span and misaligns own-axis interaction). The
-    noise this over-alignment introduces is removed downstream by an item-correspondence
-    permutation null on the cross-product (which, being a signed inner product, is permutation-
-    testable -- unlike the single-rep magnitude ||gamma||^2). Returns Msrc @ R."""
-    A = Msrc.reshape(-1, Msrc.shape[-1]); B = Mtgt.reshape(-1, Mtgt.shape[-1])
-    U, _, Vt = np.linalg.svd(A.T @ B)
-    return Msrc @ (U @ Vt)
-
-
 def _gated_report(aa, ga, ab, gb, al, be, gm, L, C, rng, n_boot, sig):
     """Shared gating + reporting from TWO estimates of the item(alpha) and interaction(gamma)
     effects -- (aa,ga) and (ab,gb), already in a common frame (toy: cross-fit aligned; LLM: two
@@ -342,9 +330,16 @@ def _gated_report(aa, ga, ab, gb, al, be, gm, L, C, rng, n_boot, sig):
 def unified_split(X, item_of, class_of, min_cell=10, classes=None, standardize=True,
                   n_boot=200, n_null=200, sig=0.05, seed=0, verbose=False,
                   keep_null_draws=False):
-    """LLM-side unified measure: the two independent estimates are two disjoint halves of each
-    cell's TOKEN CONTEXTS. Same model -> SAME frame, so NO gauge alignment is needed (unlike the
-    toy's two-init unified_cross). Removes context noise; same significance-gated reporting."""
+    """The measure. Both experiments call this, with the same arguments.
+
+    The two independent estimates are two disjoint, even-sized splits of each pairing's
+    observations: token contexts for the LLM, context draws for the toy. Both splits come from
+    one model, so they share a frame and no gauge alignment is needed. That is what let the two
+    experiments converge on a single measurement path.
+
+    Removes context noise via the cross-split product, gates the orientations on both components
+    being present, and reports every size and overlap against its own permutation distribution.
+    """
     X = np.asarray(X, np.float64)
     if standardize:
         X = standardize_columns(X)
@@ -430,129 +425,3 @@ def unified_split(X, item_of, class_of, min_cell=10, classes=None, standardize=T
 
     rep.update(_between_share(X, cells, items, classes))
     return rep
-
-
-def unified_cross(Xa, Xb, item_of, class_of, min_cell=1, classes=None, standardize=True,
-                  n_boot=300, sig=0.05, n_folds=5, seed=0, verbose=False):
-    """Unified measure from TWO INDEPENDENT reps of the SAME cells (Xa, Xb share item_of/class_of).
-    Sizes are CROSS-ESTIMATE DENOISED: s = <A_a, A_b> after gauge-aligning B into A's frame -- ~0
-    under independent noise, >0 for shared signal (a magnitude can't be permutation-tested, but this
-    signed inner product can). The gauge rotation is CROSS-FIT (K-fold): a held-out item's alignment
-    is fit on OTHER items, so the alignment never over-fits that item's own noise into a spurious
-    correspondence (fitting on all items does, and no per-item permutation can then undo it). Directions
-    /leaks come from the averaged grid; each leak/angle is reported only if its component is
-    significantly present by an item-permutation null on the (cross-fit) cross size. See NOTES.md.
-    LLM: pass two token-context halves. Toy: two init seeds, same task."""
-    Xa = np.asarray(Xa, np.float64); Xb = np.asarray(Xb, np.float64)
-    if standardize:
-        Xa, Xb = standardize_columns(Xa), standardize_columns(Xb)
-    items, classes, cells = build_balanced_grid(item_of, class_of, min_cell, classes, verbose)
-    L, C = len(items), len(classes)
-    if L < 2 or C < 2:
-        return {"error": f"balanced grid too small: {L} x {C}"}
-    Ma = _cell_means(Xa, cells, items, classes)[0]
-    Mb = _cell_means(Xb, cells, items, classes)[0]
-    d = Ma.shape[-1]
-    rng = np.random.default_rng(seed)
-
-    _, aa, ba, ga = _decompose(Ma)                          # A stays in its own (fixed) frame
-    # CROSS-FIT the gauge: for each fold, fit R on the OTHER items and apply to this fold's cells,
-    # so a fold item's own noise never shapes its alignment (kills the over-fit correspondence).
-    fold_of = np.array_split(rng.permutation(L), min(n_folds, L))
-    ab_cf = np.zeros_like(aa); gb_cf = np.zeros_like(ga)
-    for fold in fold_of:
-        train = np.setdiff1d(np.arange(L), fold)
-        if len(train) < 2:
-            train = np.arange(L)
-        A = Mb[train].reshape(-1, d); B = Ma[train].reshape(-1, d)
-        U, _, Vt = np.linalg.svd(A.T @ B); R = U @ Vt        # gauge fit on OTHER items only
-        _, abf, _, gbf = _decompose(Mb @ R)                 # decompose B aligned by this fold's R
-        ab_cf[fold] = abf[fold]; gb_cf[fold] = gbf[fold]
-    # averaged grid (for directions) uses the full-data alignment -- directions need no cross-fit
-    Af = Mb.reshape(-1, d); Bf = Ma.reshape(-1, d)
-    U, _, Vt = np.linalg.svd(Af.T @ Bf); Mb_full = Mb @ (U @ Vt)
-    _, al, be, gm = _decompose((Ma + Mb_full) / 2.0)
-
-    return _gated_report(aa, ga, ab_cf, gb_cf, al, be, gm, L, C, rng, n_boot, sig)
-
-
-def unified_separability(X, item_of, class_of, min_cell=5, classes=None,
-                         standardize=True, denoise=True, seed=0, verbose=False, leak_floor=0.03):
-    """Full unified measure on a balanced grid built from (item_of, class_of).
-
-    Returns a dict with:
-      sizes:  size_item, size_class, size_interaction (sum to 1; interaction is split-half
-              denoised if denoise=True, so it can read slightly below the raw share).
-      leaks:  leak_item_into_class (== frac), leak_class_into_item, leak_int_into_margins
-              (each 0 = that component avoids the other's axes = separable).
-      angles: overlap_item_class, overlap_item_int, overlap_class_int (symmetric, principal-angle).
-      meta:   n_items, n_classes, k_item, k_class, k_int, standardized, denoised.
-    A leak/angle is None when EITHER component it involves is below `leak_floor` (fraction of
-    total energy): an orientation is undefined for a component that doesn't exist. This auto-NAs
-    the interaction leak on additive data (size_interaction~0) AND the marginal leaks on pure-
-    interaction data (size_item, size_class ~0) -- the two degenerate ends -- with one rule,
-    instead of a separate degeneracy flag. Default 0.03 is calibrated to the additive noise floor.
-    Returns {"error": ...} if the balanced grid is too small to decompose."""
-    X = np.asarray(X, dtype=np.float64)
-    if standardize:
-        X = standardize_columns(X)
-    rng = np.random.default_rng(seed)
-
-    items, classes, cells = build_balanced_grid(item_of, class_of, min_cell, classes, verbose)
-    L, C = len(items), len(classes)
-    if L < 2 or C < 2:
-        return {"error": f"balanced grid too small: {L} items x {C} classes"}
-
-    M, MA, MB, ok = _cell_means(X, cells, items, classes, "split" if denoise else None, rng)
-    if not ok.all():
-        return {"error": "balanced grid has empty cells (raise min_cell or fix class set)"}
-
-    mu, alpha, beta, gamma = _decompose(M)
-
-    # ---- sizes: exact Pythagorean partition on the balanced grid (equal cell weights) ----
-    s_item = C * float((alpha ** 2).sum())
-    s_class = L * float((beta ** 2).sum())
-    s_int_raw = float((gamma ** 2).sum())
-    if denoise:
-        _, _, _, gammaA = _decompose(MA)
-        _, _, _, gammaB = _decompose(MB)
-        s_int = max(0.0, float((gammaA * gammaB).sum()))        # cross-half energy: noise cancels
-    else:
-        s_int = s_int_raw
-    total = s_item + s_class + s_int
-    if total <= 0:
-        return {"error": "degenerate: zero total centered energy"}
-
-    # ---- subspaces & orthogonality ----
-    S_item = _orthobasis(alpha, max_rank=L - 1)
-    S_class = _orthobasis(beta, max_rank=C - 1)
-    S_int = _orthobasis(gamma.reshape(L * C, -1), max_rank=(L - 1) * (C - 1))
-    S_margin = _orthobasis(np.vstack([alpha, beta]), max_rank=(L - 1) + (C - 1))
-
-    # component sizes as fractions of total; a leak/angle is meaningful only if BOTH components
-    # it relates exist (>= leak_floor). Otherwise it's the orientation of ~zero noise -> None.
-    fi, fc, fg = s_item / total, s_class / total, s_int / total
-    big = {"item": fi >= leak_floor, "class": fc >= leak_floor, "int": fg >= leak_floor}
-
-    def _gate(val, a, b):
-        return val if (big[a] and big[b]) else None
-
-    leaks = dict(
-        leak_item_into_class=_gate(_leak(alpha, S_class), "item", "class"),   # == frac
-        leak_class_into_item=_gate(_leak(beta, S_item), "class", "item"),
-        # interaction vs the marginal subspace: needs the interaction AND a real marginal to exist
-        leak_int_into_margins=(_leak(gamma.reshape(L * C, -1), S_margin)
-                               if (big["int"] and (big["item"] or big["class"])) else None),
-    )
-    angles = dict(
-        overlap_item_class=_gate(_principal_angle_overlap(S_item, S_class), "item", "class"),
-        overlap_item_int=_gate(_principal_angle_overlap(S_item, S_int), "item", "int"),
-        overlap_class_int=_gate(_principal_angle_overlap(S_class, S_int), "class", "int"),
-    )
-    return dict(
-        size_item=s_item / total, size_class=s_class / total, size_interaction=s_int / total,
-        size_interaction_raw=s_int_raw / (s_item + s_class + s_int_raw),
-        **leaks, **angles,
-        n_items=L, n_classes=C, k_item=S_item.shape[1], k_class=S_class.shape[1],
-        k_int=S_int.shape[1], standardized=standardize, denoised=denoise,
-    )
