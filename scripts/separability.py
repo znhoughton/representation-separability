@@ -119,29 +119,64 @@ def _leak_null(vectors, basis_rank, rng, n_draws=200):
     return out
 
 
-def _between_share(X, cells, items, classes):
-    """Share of the representation's total variance that the item-by-class grid accounts for.
+BETWEEN_FIELDS = ["between_share", "between_share_adj", "between_ss", "within_ss",
+                  "between_n_obs", "between_n_groups", "between_n0",
+                  "between_var", "within_var"]
 
-    The three reported sizes sum to one by construction because they partition the grid of
-    means, which has already averaged the contexts away. This is the missing denominator: how
-    much of the representation that grid is in the first place. The remainder is variation
-    across the contexts a word appears in at a fixed class level.
+
+def _between_share(X, cells, items, classes):
+    """How much of the representation the item-by-class grid is in the first place.
+
+    The three reported sizes sum to one because they partition the grid of means, which has
+    already averaged the contexts away. This is the missing denominator. The remainder is
+    variation across the contexts a word appears in at a fixed class level.
+
+    Two shares are returned and they answer different questions. `between_share` is the raw
+    fraction of observed squared deviation that sits between pairings rather than within them.
+    It is biased upward: each pairing mean is itself an average of finitely many observations,
+    so it carries d*sigma^2/n of context noise, and that noise lands in the between term. The
+    bias shrinks with tokens per pairing, so it differs across constructions and would corrupt
+    exactly the comparisons the paper makes.
+
+    `between_share_adj` removes it, as the standard unbalanced random-effects estimate: the
+    within mean square estimates the context variance directly, the between mean square
+    estimates it plus n0 times the true spread of pairing means, and subtracting gives the
+    spread alone. All the parts are returned as well, so a different correction can be tried
+    later without measuring again.
     """
-    idx = np.concatenate([cells[(it, c)] for it in items for c in classes])
-    if idx.size == 0:
-        return None
+    blank = {k: None for k in BETWEEN_FIELDS}
+    idx = np.concatenate([cells[(it, c)] for it in items for c in classes]) if items else None
+    if idx is None or idx.size == 0:
+        return blank
     Y = X[idx]
     gmean = Y.mean(0)
     total = float(((Y - gmean) ** 2).sum())
     if total <= 0:
-        return None
-    between = 0.0
+        return blank
+
+    between, sizes = 0.0, []
     for it in items:
         for c in classes:
             j = cells[(it, c)]
             if len(j):
                 between += len(j) * float(((X[j].mean(0) - gmean) ** 2).sum())
-    return between / total
+                sizes.append(len(j))
+    within = max(0.0, total - between)                 # exact: the cross term vanishes
+    N, G = int(idx.size), len(sizes)
+    rep = dict(blank, between_share=between / total, between_ss=between, within_ss=within,
+               between_n_obs=N, between_n_groups=G)
+    if G < 2 or N <= G:
+        return rep
+
+    ms_within = within / (N - G)
+    ms_between = between / (G - 1)
+    # effective group size for an unbalanced design; equals n when every pairing has n tokens
+    n0 = (N - sum(s * s for s in sizes) / N) / (G - 1)
+    var_between = max(0.0, (ms_between - ms_within) / n0) if n0 > 0 else 0.0
+    denom = var_between + ms_within
+    rep.update(between_n0=n0, between_var=var_between, within_var=ms_within,
+               between_share_adj=(var_between / denom) if denom > 0 else None)
+    return rep
 
 
 def _principal_angle_overlap(A, B):
@@ -393,7 +428,7 @@ def unified_split(X, item_of, class_of, min_cell=10, classes=None, standardize=T
         rep.pop("draws_size_item", None)
         rep.pop("draws_size_interaction", None)
 
-    rep["between_share"] = _between_share(X, cells, items, classes)
+    rep.update(_between_share(X, cells, items, classes))
     return rep
 
 

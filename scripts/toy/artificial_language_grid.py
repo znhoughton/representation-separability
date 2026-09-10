@@ -67,7 +67,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 for _sub in ("", "llm", "toy"):          # "" = scripts/, where the shared measure lives
     sys.path.insert(0, str(REPO_ROOT / "scripts" / _sub))
 from separability import unified_split  # noqa: E402
-from csv_repair import repair  # noqa: E402
+from csv_repair import repair, migrate_header  # noqa: E402
 
 
 # --------------------------------------------------------------------- generator
@@ -296,7 +296,10 @@ FIELDS = ["key",                                          # resume identifier; m
           "leak_item_into_class_null_hi", "leak_item_into_class_p",
           "leak_int_into_margins_null_lo", "leak_int_into_margins_null_med",
           "leak_int_into_margins_null_hi", "leak_int_into_margins_p",
-          "between_share",                                # how much of the representation the grid is
+          # how much of the representation the grid is. _adj removes the context noise the
+          # pairing means carry; the parts are kept so a different correction needs no re-run
+          "between_share", "between_share_adj", "between_ss", "within_ss",
+          "between_n_obs", "between_n_groups", "between_n0", "between_var", "within_var",
           "overlap_item_int", "overlap_class_int",
           "k_item", "k_class", "k_int", "n_items"]
 
@@ -415,6 +418,9 @@ def main():
     # A killed run can leave a half-written final row, and the resume below would skip it as
     # unparseable and then append the same cell twice. Fix both before reading.
     repair(str(out), ["key", "d", "activation", "seed"])
+    # The resume below appends rows built from FIELDS. If the file predates a column, those
+    # appended rows would misalign against its header, so bring the header forward first.
+    migrate_header(str(out), FIELDS)
     done = set()
     if out.exists():
         with open(out, newline="") as fh:

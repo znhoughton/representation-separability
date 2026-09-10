@@ -10,6 +10,44 @@ import csv
 import os
 
 
+def migrate_header(path, fields, verbose=True):
+    """Bring an existing CSV up to the current field list, blank-filling columns it lacks.
+
+    A resuming writer appends rows built from `fields`. If the file on disk was written with an
+    older, shorter header those appended rows misalign against it, silently and irrecoverably.
+    Rewriting the header first keeps a resumed run valid without discarding the rows already
+    there, which for the toy grid is the difference between a pass over disk and retraining
+    7,560 models. Columns no longer in `fields` are dropped.
+
+    Returns (added, dropped) column counts.
+    """
+    if not path or not os.path.exists(path) or os.path.getsize(path) == 0:
+        return 0, 0
+    with open(path, newline="", encoding="utf-8") as fh:
+        rdr = csv.DictReader(fh)
+        old = rdr.fieldnames or []
+        if old == list(fields):
+            return 0, 0
+        rows = list(rdr)
+
+    added = [c for c in fields if c not in old]
+    dropped = [c for c in old if c not in fields]
+    with open(path, "w", newline="", encoding="utf-8") as fh:
+        w = csv.DictWriter(fh, fieldnames=list(fields), extrasaction="ignore")
+        w.writeheader()
+        for r in rows:
+            w.writerow({c: r.get(c, "") for c in fields})
+    if verbose:
+        bits = []
+        if added:
+            bits.append(f"added {len(added)} column(s): {', '.join(added[:4])}"
+                        + ("..." if len(added) > 4 else ""))
+        if dropped:
+            bits.append(f"dropped {len(dropped)}")
+        print(f"  migrated {path}: {'; '.join(bits)}", flush=True)
+    return len(added), len(dropped)
+
+
 def repair(path, key_cols=None, verbose=True):
     """Drop an incomplete final row and any duplicate keys, keeping the last of each.
 

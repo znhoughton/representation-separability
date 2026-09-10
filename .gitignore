@@ -73,3 +73,11 @@ paper/*_files/
 
 # Run logs (regenerable, and noisy in diffs)
 /logs/
+
+# Working notes. The drawio sources under notes/figures/ stay tracked: they are the
+# editable originals for the paper's fig-grid, fig-projection, fig-splits and
+# fig-replication PDFs.
+/notes/how-the-measure-works.md
+/notes/figures/*.png
+/notes/figures/*.svg
+/notes/figures/*.pdf

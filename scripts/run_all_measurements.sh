@@ -61,9 +61,10 @@ SKIP_LLM="${SKIP_LLM:-0}"
 SKIP_DERIVED="${SKIP_DERIVED:-0}"     # dataset counts and the decoding analysis
 ABLATION="${ABLATION:-0}"             # re-extracts reps; off unless asked for
 
-# The column that marks the current format. A CSV without it predates the nulls and cannot be
-# resumed into, because every row needs the new fields.
-MARKER="leak_item_into_class_null_med"
+# The column that marks the current format. A CSV without it predates the current measure.
+# Bump this whenever a new column is added, so stale files rebuild instead of being resumed
+# into with a header that no longer matches what the writer emits.
+MARKER="between_share_adj"
 
 mkdir -p "$LOGDIR" "$OLDDIR" "$RUNS_DIR" "$NULLS_DIR" data
 
@@ -115,10 +116,20 @@ echo "  llm: workers=$LLM_WORKERS  nulls-dir=$NULLS_DIR"
 echo "  superseded CSVs go to $OLDDIR/ ; nothing is deleted"
 echo "=================================================================="
 
-for f in data/artificial_language_grid.csv data/llm_unified_form.csv \
-         data/llm_role.csv data/llm_metaphor.csv; do
+# The LLM CSVs rebuild from the saved reps, which is a pass over disk, so a stale one is
+# simply retired. The toy CSV is different: retiring it means retraining 7,560 models. While
+# saved runs exist it is exempt, because the grid migrates its header and skips the cells
+# already there, and the re-measure pass below then brings every row to the current format
+# from the saved hidden states. Without saved runs there is nothing to re-measure from and it
+# retires like the rest.
+for f in data/llm_unified_form.csv data/llm_role.csv data/llm_metaphor.csv; do
   retire_if_stale "$f"
 done
+if [ -d "$RUNS_DIR" ] && [ -n "$(ls -A "$RUNS_DIR" 2>/dev/null)" ]; then
+  echo "  [keep]  data/artificial_language_grid.csv -> re-measured from $RUNS_DIR, not retrained"
+else
+  retire_if_stale data/artificial_language_grid.csv
+fi
 
 rc_all=0
 

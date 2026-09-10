@@ -45,7 +45,7 @@ theme_paper <- function(base = 9) {
 
 # ---- Experiment 1: the artificial-language grid ----
 # 7,560 runs, measured with unified_split -- the SAME function and arguments Experiment 2
-# uses. The two independent estimates are two halves of the observations for each item at each level, so there is
+# uses. The two independent estimates are two even-sized splits of the observations for each item at each level, so there is
 # no alignment step and no projection. Capacity is a reported variable, never a filter.
 toy <- rd("artificial_language_grid.csv") |>
   mutate(act = factor(activation, c("identity", "relu"), c("linear", "ReLU")),
@@ -243,7 +243,7 @@ It is worth noting that entanglement is guaranteed under a specific subset of th
 
 The input to the learner model comprises three pieces of information: the form, the class, and the context. Each has its own embedding, and the three are concatenated and passed to a standard multi-layer perceptron (MLP) with a single hidden layer of width $d$ and either a linear or a ReLU activation function, which outputs a distribution over the vocabulary (@fig-training). The training objective is thus to minimize cross-entropy between the model's predicted distribution over the vocabulary and the true distribution.
 
-![What the learner sees. Every form is observed 24 times at each class, each time in a different context; that variation across contexts is what the measurement later splits in half.](fig-training.pdf){#fig-training width="100%" fig-env="figure*"}
+![What the learner sees. Every form is observed 24 times at each class, each time in a different context; that variation across contexts is what the measurement later splits in two.](fig-training.pdf){#fig-training width="100%" fig-env="figure*"}
 
 ### Decomposing a representation {#sec-measure}
 
@@ -255,9 +255,11 @@ $$ {#eq-decomp}
 
 where $\mu$ is the grand mean; $\alpha(i)$, item $i$'s mean across class levels minus $\mu$, carries the lexical information; $\beta(c)$, the mean across items at class level $c$ minus $\mu$, carries the class information; and $\gamma(i,c)$ carries the idiosyncratic information, what item $i$ at class level $c$ holds that neither marginal accounts for. Because every item is observed at every class level with equal weight, neither marginal absorbs part of the other. The four terms add back to $M[i,c]$ exactly, and no two of them vary together across the grid, so their squared lengths sum to the total and we report each as a share of it.
 
-Each of these averages is taken over finitely many observations, which differ only in context, so each carries some of the context term of @eq-toy as noise. For $\gamma$ this matters: a squared length is always positive, so its size would come out above zero even for a language with no idiosyncratic information in it at all. We therefore split the observations behind each average in half, run the decomposition on each half separately, and take the dot product of the two estimates of $\gamma$, $\langle \gamma_A, \gamma_B \rangle$, which is large when the halves agree about the idiosyncratic information and near zero when they do not. Noise that differs between the halves cancels, and unlike a squared length this can come out negative, which is what allows a test: significance comes from permuting which item of one half is paired with which item of the other, preserving each component's size while destroying the correspondence between them.
+Each of these averages is taken over finitely many observations, which differ only in context, so each carries some of the context term of @eq-toy as noise. For $\gamma$ this matters: a squared length is always positive, so its size would come out above zero even for a language with no idiosyncratic information in it at all. We therefore divide the observations behind each average into two even-sized splits, run the decomposition on each split separately, and take the dot product of the two estimates of $\gamma$, $\langle \gamma_A, \gamma_B \rangle$, which is large when the splits agree about the idiosyncratic information and near zero when they do not. It is the contexts that are divided and not the words, so every word appears in both splits, and the dot product compares two estimates of the same word built from different sentences. Noise that differs between the splits cancels, and unlike a squared length this can come out negative, so zero is a value it can take rather than a floor it sits above.
 
 For each representation we report two measurements. The first measures the fraction of the representation accounted for by lexical, class and idiosyncratic information: each component's squared length, summed over its vectors and divided by the total, so that the three fractions sum to one. The second measures whether those components occupy the same directions. In order to do so, we project the item vectors onto the class direction and record the fraction of their squared length that survives, and we project the interaction onto the smallest subspace containing both the item and the class vectors (i.e., the span of the two subspaces). A representation is separable if a word's representation is the sum of an item part and a class part with the two on their own axes, so it fails either when the components are non-orthogonal, so that projecting out the class also removes item information, or when there is a third component that is neither an item part nor a class part, whatever its orientation. The question is accordingly not whether class information is present, but how it is carried: on a single direction shared across words, or on a separate direction for each of them.
+
+In order to quantify the effect of size, we compare each to a random permutation distribution. For class, we permutate the class labels within each item: for a given word, whether a representation is labeled as a noun or as a verb is decided at random, independently for every word. Each word keeps both of its representations, so the item effect is untouched, but any systematic difference between the two classes is averaged away. For item and for the interaction, both measured as the agreement between two splits of the same words, we permutate which item of one split is paired with which item of the other. Each split is left exactly as measured, but each word is now matched with a different word instead of with its own second estimate, so there is no shared structure left for the comparison to find. For example, instead of matching *walk*'s representations from one split with *walk*'s from the other, we match them with some other word's, such as *run*, so that what we measure is the agreement two unrelated words happen to show by chance. We then recompute the same quantities we computed from @eq-decomp, two hundred times for each. The resulting distribution is what the size would be if that structure were absent, and we report how many measurements fall outside its 95% interval.
 
 In order to quantify whether the overlap is meaningful, we measure the overlap an effect has with a random subspace. We do so by holding the effect exactly as measured and projecting it onto a random subspace of the same rank, two hundred times, which leaves the effect untouched and varies only the subspace. These two hundred projections give us a distribution of overlaps that an unrelated subspace would yield. An effect lower than this baseline indicates meaningful orthogonality; an effect larger than it indicates meaningful non-orthogonality. We present each overlap as a multiple of the median of this distribution, together with how many measurements fall outside its 95% interval. This gives both the size of the effect and how consistently it holds across measurements.
 
@@ -360,7 +362,7 @@ tibble::tribble(
 
 Keying the item on the *lemma* instead admits more items (`r cm(gs("pos_noun_verb", "n_items_kept"))` rather than `r max(llm$n_items[llm$construction == "POS (noun/verb)"])`, drawn from `r cm(gs("pos_noun_verb", "n_items_eligible"))` lemmas attested as both), but a lemma pools every inflected form: *run* and *runs* as a noun against *run*, *runs*, *ran* and *running* as a verb. Those are different tokens, and the consequence shows up at the embedding layer, which has no context to work with and so can only distinguish levels that differ in their input. Keyed on the lemma the layer-0 interaction is 0.083 to 0.172 across models; keyed on the form it is 0.0010 to 0.0028. The difference is inflection rather than representation, and keying on the form removes it at the cost of a smaller item set. Appendix \ref{sec-appendix-morph} shows what the measure does on a distinction where the property cannot be arranged at all.
 
-**Identifiability.** The interaction $\gamma(i,c)$ is estimable only for an item observed at more than one level, since it is defined by how an item's representation shifts across levels, and we additionally require at least 10 tokens for each item at each level so that a mean can be estimated and then split in half. This restricts the scope for part of speech, where it selects forms genuinely used both ways, such as *run* or *hit*. Role and metaphor carry no such restriction, since any noun occurs as both subject and object and any content word occurs both literally and figuratively, which is one reason they broaden the claim. The median item holds around 24 tokens at each level across the three constructions, the sample size the measure is validated at in Appendix \ref{sec-appendix-validate}.
+**Identifiability.** The interaction $\gamma(i,c)$ is estimable only for an item observed at more than one level, since it is defined by how an item's representation shifts across levels, and we additionally require at least 10 tokens for each item at each level so that a mean can be estimated and then split in two. This restricts the scope for part of speech, where it selects forms genuinely used both ways, such as *run* or *hit*. Role and metaphor carry no such restriction, since any noun occurs as both subject and object and any content word occurs both literally and figuratively, which is one reason they broaden the claim. The median item holds around 24 tokens at each level across the three constructions, the sample size the measure is validated at in Appendix \ref{sec-appendix-validate}.
 
 We measure two model families at three matched scales: OPT-BabyLM, trained on developmentally plausible quantities of child-available language [@warstadt2023babylm], and Pythia, trained on the Pile [@biderman2023pythia], at 125M/160M, 350M/410M and 1.3B/1.4B parameters, with widths of 768, 1024 and 2048. Appendix \ref{sec-appendix-models} gives parameter counts and training-token estimates.
 
@@ -368,7 +370,7 @@ We measure two model families at three matched scales: OPT-BabyLM, trained on de
 
 The decomposition, the two reported quantities and the replication logic are those of @sec-exp1-method. For every token we take the hidden state of the word's **last subword** at every layer, from the embeddings through the final block, aligning subwords to corpus tokens with the tokenizer's word alignment. Sentences are drawn in a fixed random order and processed until roughly 300K tokens are extracted per model, so all models see the same material, and representations are extracted once with every analysis running offline from them.
 
-The two independent estimates come from the corpus itself: each item at a level is a word used across many sentences, so we split its token contexts into two disjoint halves and estimate the grid from each. What cancels is context noise, the variation in a word's hidden state across the sentences it appears in, which is the same thing the split cancels in Experiment 1.
+The two independent estimates come from the corpus itself: each item at a level is a word used across many sentences, so we divide its token contexts into two disjoint, even-sized splits and estimate the grid from each. What cancels is context noise, the variation in a word's hidden state across the sentences it appears in, which is the same thing the split cancels in Experiment 1.
 
 **Standardization.** Transformer hidden states contain a few *rogue* dimensions whose variance exceeds the rest by two to three orders of magnitude [@timkey2021bark], and these would otherwise dominate any subspace estimated from the raw scatter, so we divide each dimension by its standard deviation before decomposing. This is a diagonal rescaling rather than a whitening, so it needs no favorable ratio of samples to dimensions; the measure is accordingly invariant to per-dimension rescaling but not to arbitrary linear reparameterization, which we return to in Appendix \ref{sec-appendix-math}.
 
@@ -409,19 +411,19 @@ That balance is graded across distinctions. @tbl-llm reports it as the *portable
 
 # Experiment 3: Does the Interaction Carry the Class? {#sec-exp3}
 
-Experiment 2 shows that the interaction is large and that it replicates across independent halves of a word's occurrences, but neither shows what it is *about*. An item-by-class term captures any reliable difference between a word's uses at the two levels, and some of that difference is context correlated with the label rather than the label itself, since metaphorical uses occur in different sentences from literal ones and subjects appear in different constructions from objects. So $\gamma$ is an upper bound on class-binding, and the question is whether any of it is the class.
+Experiment 2 shows that the interaction is large and that it replicates across independent splits of a word's occurrences, but neither shows what it is *about*. An item-by-class term captures any reliable difference between a word's uses at the two levels, and some of that difference is context correlated with the label rather than the label itself, since metaphorical uses occur in different sentences from literal ones and subjects appear in different constructions from objects. So $\gamma$ is an upper bound on class-binding, and the question is whether any of it is the class.
 
 ## Method {#sec-exp3-method}
 
 We test it by decoding. If $\gamma$ encodes the class, the class should be recoverable from the part of a token's representation that is neither the item effect nor the shared class direction, and we remove both explicitly. All decoding happens *within* a single word, so we ask whether *plant*'s figurative uses can be told from *plant*'s literal ones, never whether *plant* can be told from *account*; the item effect is constant within a word and so cannot contribute. We then estimate $\beta$ as the difference between the two class means pooled over all items, normalize it, and remove that component from every token, so that whatever separates the classes afterwards is not the direction they share.
 
-What remains is the interaction: the part of a word-at-a-level that is neither a fact about the word nor a fact about the level. We decode it with a cross-validated logistic probe, five folds, classes balanced by subsampling within each word so that chance is 0.50, and average the resulting accuracies over words, with a word contributing only if it has at least eight tokens at each level. Accuracies are averaged unweighted over words and some words rest on few tokens, so the mean carries a percentile bootstrap interval over words. The whole procedure is then repeated with the class labels permuted within each word, which preserves every word's token count and class balance while destroying the labelling, and that null is where a probe reading its own cross-validation folds would land. We run this at the deepest layer of the largest model in each family, for all three constructions.
+What remains is the interaction: the part of a word-at-a-level that is neither a fact about the word nor a fact about the level. We decode it with a cross-validated logistic probe, five folds, classes balanced by subsampling within each word so that chance is 0.50, and average the resulting accuracies over words, with a word contributing only if it has at least eight tokens at each level. Accuracies are averaged unweighted over words and some words rest on few tokens, so the mean carries a percentile bootstrap interval over words. The whole procedure is then repeated with the class labels permutated within each word, which preserves every word's token count and class balance while destroying the labelling, and that null is where a probe reading its own cross-validation folds would land. We run this at the deepest layer of the largest model in each family, for all three constructions.
 
 ## Results {#sec-exp3-results}
 
 ```{r}
 #| label: tbl-decode
-#| tbl-cap: "Class decoded from the interaction, at the deepest layer of the largest model in each family. The item is held fixed and the shared class direction is projected out, so neither the item effect nor the class effect can contribute. *Class* is the accuracy of that decode and *null* permutes class labels within each word; brackets are percentile bootstrap intervals over words. Chance is 0.50."
+#| tbl-cap: "Class decoded from the interaction, at the deepest layer of the largest model in each family. The item is held fixed and the shared class direction is projected out, so neither the item effect nor the class effect can contribute. *Class* is the accuracy of that decode and *null* permutates class labels within each word; brackets are percentile bootstrap intervals over words. Chance is 0.50."
 dec <- bind_rows(
   rd("llm_decode_pos_form.csv") |> mutate(construction = "POS (noun/verb)"),
   rd("llm_decode_interaction.csv") |> filter(construction != "pos") |>
@@ -444,7 +446,7 @@ dec |>
   kable_styling(latex_options = c("HOLD_position"), font_size = 7)
 ```
 
-The interaction is about the class. In every construction and both families the class is recoverable from the interaction at well above chance while the permuted null sits on chance (@tbl-decode), reaching `r g(dec$class_peritem[dec$construction == "POS (noun/verb)" & dec$family == "Pythia"], 2)` for part of speech, `r g(dec$class_peritem[dec$construction == "role (subject/object)" & dec$family == "Pythia"], 2)` for grammatical role and `r g(dec$class_peritem[dec$construction == "metaphor (literal/figurative)" & dec$family == "Pythia"], 2)` for metaphor, with bootstrap intervals excluding the nulls by a wide margin in all six cases. The null landing on chance is what makes those accuracies interpretable, since it is the same probe, the same folds, the same word-level averaging and the same small per-word samples with only the labelling destroyed.
+The interaction is about the class. In every construction and both families the class is recoverable from the interaction at well above chance while the permutated null sits on chance (@tbl-decode), reaching `r g(dec$class_peritem[dec$construction == "POS (noun/verb)" & dec$family == "Pythia"], 2)` for part of speech, `r g(dec$class_peritem[dec$construction == "role (subject/object)" & dec$family == "Pythia"], 2)` for grammatical role and `r g(dec$class_peritem[dec$construction == "metaphor (literal/figurative)" & dec$family == "Pythia"], 2)` for metaphor, with bootstrap intervals excluding the nulls by a wide margin in all six cases. The null landing on chance is what makes those accuracies interpretable, since it is the same probe, the same folds, the same word-level averaging and the same small per-word samples with only the labelling destroyed.
 
 The effect is graded the same way the interaction's size is. Part of speech decodes best, role next, metaphor least, which is the ordering of the portable fraction in @tbl-llm read backwards: the distinctions whose class-relevant structure is least portable are also the ones whose interaction carries the class least strongly. Two measurements, one geometric and one functional, agree on the same ranking.
 
@@ -564,34 +566,42 @@ v_ov |>
   kable_styling(font_size = 9, latex_options = c("repeat_header"))
 ```
 
-# The Decomposition and Its Estimator {#sec-appendix-math}
+# The Decomposition {#sec-appendix-math}
+
+## The grid {#sec-appendix-math-grid}
+
+![Each word in each class is observed in many contexts, and those observations are averaged within the pairing to give one entry of the grid. Every entry is a vector in $\mathbb{R}^d$, and every item appears in every class, which is the balance the decomposition relies on.](fig-grid.pdf){#fig-grid width="100%" fig-env="figure*"}
+
+A word used in a given class is observed in many contexts, and the representation differs a little in each. Averaging those observations within the pairing gives one entry of the grid: for items $i \in \{1,\dots,I\}$ crossed with classes $c \in \{1,\dots,C\}$, $M[i,c] \in \mathbb{R}^d$ is the mean representation of item $i$ in class $c$ (@fig-grid). An item observed in only one class is dropped, as is an item with fewer than 10 tokens in either class, so the grid is complete and every entry rests on a comparable number of observations. The variation across contexts that the averaging sets aside is not discarded; it is what the two splits of @sec-measure are built from.
 
 ## The decomposition as a projection {#sec-appendix-math-proj}
 
-For items $i \in \{1,\dots,I\}$ crossed with class levels $c \in \{1,\dots,C\}$, let $M[i,c] \in \mathbb{R}^d$ be the mean representation of item $i$ at level $c$. Regard the grid as an element of $\mathbb{R}^{I}\otimes\mathbb{R}^{C}\otimes\mathbb{R}^{d}$ and define averaging and centering projectors on the first two factors:
+![Centering, drawn for a single hidden dimension read across the whole grid. The all-ones direction is where every position takes the same value, so it carries no differences and no variance, and $\mu$ is the projection onto it. Removing it leaves a hyperplane of dimension $N-1$, and every remaining component is a displacement inside it. The dashed copy is that displacement moved to the origin, where it lies in the hyperplane.](fig-projection.pdf){#fig-projection width="82%"}
 
-$$
-P_I = \tfrac{1}{I}\mathbf{1}_I\mathbf{1}_I^{\top}, \quad Q_I = \mathrm{Id}_I - P_I,
-\qquad
-P_C = \tfrac{1}{C}\mathbf{1}_C\mathbf{1}_C^{\top}, \quad Q_C = \mathrm{Id}_C - P_C .
-$$
+Two spaces are in play. The representations themselves live in $\mathbb{R}^d$. The decomposition happens in the grid index space: fix one hidden dimension, read it across all $IC$ positions of the grid, and it is a vector in $\mathbb{R}^{IC}$ (@fig-projection). Everything below is that operation carried out once per hidden dimension, with the results stacked back up into the vectors $\alpha_i$, $\beta_c$ and $\gamma_{ic}$.
 
-The four components of @eq-decomp are the four tensor-product projections of $M$:
+In that space the all-ones direction is the one in which every position of the grid takes the same value. Moving along it adds the same amount everywhere and creates no difference between any two positions, so it is the direction along which nothing distinguishes anything, and $\mu$ is the projection onto it. Removing it leaves the orthogonal complement, and the three remaining components are displacements inside that complement rather than raw values.
 
-$$
-\mu = (P_I\!\otimes\! P_C)M, \quad
-\alpha = (Q_I\!\otimes\! P_C)M, \quad
-\beta = (P_I\!\otimes\! Q_C)M, \quad
-\gamma = (Q_I\!\otimes\! Q_C)M ,
-$$
+Each component is fixed by two choices, one per axis: along the item axis either average or center, and along the class axis the same. Averaging keeps what is common and discards what makes positions differ along that axis; centering does the reverse. The four combinations are the four components of @eq-decomp:
 
-which sum to $M$ because $(P_I{+}Q_I)\otimes(P_C{+}Q_C) = \mathrm{Id}$. They are mutually orthogonal idempotents, so this is an orthogonal direct sum with dimensions $1$, $I{-}1$, $C{-}1$ and $(I{-}1)(C{-}1)$. This is a geometric construction rather than a statistical model: there is no error stratum, no $F$-ratio and no distributional assumption.
+| | varies over items | varies over classes |
+|:--|:--:|:--:|
+| $\mu$ | no | no |
+| $\alpha_i$ | yes | no |
+| $\beta_c$ | no | yes |
+| $\gamma_{ic}$ | yes | yes |
 
-Two consequences are used in the body. First, the side constraints $\sum_i\alpha_i = 0$, $\sum_c\beta_c = 0$ and $\sum_i\gamma_{ic} = \sum_c\gamma_{ic} = 0$ follow from the projectors rather than being imposed. Second, an **additive** grid, one of the form $M[i,c] = A(i) + B(c)$, has $\gamma = 0$ *identically*: writing $\bar A$ and $\bar B$ for the averages, $\mu = \bar A + \bar B$, $\alpha_i = A(i) - \bar A$, $\beta_c = B(c) - \bar B$, and the remainder cancels exactly. This is what makes the linear condition of Experiment 1 a negative control rather than an assumption.
+So $\alpha_i$ is what holds of an item in both classes, $\beta_c$ is what holds of a class for every item, and $\gamma_{ic}$ is what varies along both at once, which is why it cannot be a fact about either one alone. Since averaging and centering along an axis add back to what was there, the four reconstruct $M[i,c]$ exactly, and they are mutually orthogonal.
+
+Centering an axis costs one dimension, the all-ones direction along it. The four components therefore occupy $1$, $I{-}1$, $C{-}1$ and $(I{-}1)(C{-}1)$ of the grid's $IC$ positions, which is why two classes leave $\beta$ a single direction whatever $I$ is. Nothing is left over as error: $\gamma$ is not a residual in the sense of a model that failed to fit, but the part of the representation belonging to the pairing of a particular item with a particular class.
+
+Two consequences are used in the body. First, $\sum_i\alpha_i = 0$, $\sum_c\beta_c = 0$ and $\sum_i\gamma_{ic} = \sum_c\gamma_{ic} = 0$ follow from the centering rather than being imposed as constraints. Second, an **additive** grid, one of the form $M[i,c] = A(i) + B(c)$, has $\gamma = 0$ *identically*: writing $\bar A$ and $\bar B$ for the averages, $\mu = \bar A + \bar B$, $\alpha_i = A(i) - \bar A$, $\beta_c = B(c) - \bar B$, and the remainder cancels exactly. This is what makes the linear condition of Experiment 1 a negative control rather than an assumption.
 
 ## Sizes {#sec-appendix-math-sizes}
 
-Orthogonality gives an exact partition of the total squared length across the grid,
+![How many positions of the grid each component occupies. $\alpha_i$ does not depend on the class, so it occupies all $C$ positions of its row; $\beta_c$ does not depend on the item, so it occupies all $I$ positions of its column; $\gamma_{ic}$ takes its own value at every position and is never repeated. The multipliers are those occupancy counts and not a choice of scaling, which is why the interaction is summed while the two main effects are weighted.](fig-replication.pdf){#fig-replication width="100%" fig-env="figure*"}
+
+Because the three components are mutually orthogonal, their squared lengths add rather than overlapping, and the total squared length across the grid partitions exactly:
 
 $$
 \sum_{i,c}\lVert M[i,c]-\mu\rVert^{2}
@@ -600,13 +610,15 @@ $$
 + \sum_{i,c}\lVert\gamma_{ic}\rVert^{2},
 $$
 
-with $C$ and $I$ appearing as replication counts: $\alpha_i$ is shared across the $C$ levels and $\beta_c$ across the $I$ items. Sizes are reported as shares of the total. All three terms scale linearly in $I$, so the shares do not depend on how many items the grid contains and are comparable across constructions of different size.
+$C$ and $I$ are not a choice of scaling. They are how many positions of the grid each component occupies (@fig-replication): $\alpha_i$ does not depend on the class, so it sits at all $C$ positions of its row, and $\beta_c$ does not depend on the item, so it sits at all $I$ positions of its column. Every one of the $I$ items is displaced by the same $\beta_c$, so the displacement present in the grid is $I$ copies of it. The interaction is simply summed because it takes its own value at every position and is never repeated. Dividing all three by $IC$ would report averages per position instead of totals and leave every share unchanged; what the occupancy counts rule out is weighting the three differently from one another.
+
+Sizes are reported as shares of the total. All three terms scale linearly in $I$, so the shares do not depend on how many items the grid contains and are comparable across constructions of different size.
 
 ## Item-class overlap and its chance level {#sec-appendix-math-overlap}
 
 Subspaces are orthonormal bases from the leading right singular vectors, with rank set by the participation ratio $r = \operatorname{round}\!\big((\sum_k\lambda_k)^2/\sum_k\lambda_k^2\big)$ of the scatter eigenvalues, capped at the algebraic maxima above. With two class levels $\beta$ spans one direction, so $r_{\text{class}} = 1$ throughout Experiment 2.
 
-Overlap is the fraction of squared length inside a subspace, $\lVert V S\rVert_F^2 / \lVert V\rVert_F^2$. Its chance level is not zero: for a randomly oriented $V$,
+Overlap is the fraction of squared length that survives projection into a subspace, $\lVert V S\rVert_F^2 / \lVert V\rVert_F^2$. Unlike the sizes, it is not a partition of anything and its chance level is not zero: for a randomly oriented $V$,
 
 $$
 \mathbb{E}\big[\lVert V S\rVert_F^2\big] = \operatorname{tr}(V^{\top}V)/d \cdot r
@@ -616,32 +628,7 @@ $$
 
 whatever $V$'s rank or shape. At $d = 2048$ that is $0.0005$, and Appendix \ref{sec-appendix-validate} measures it directly at $0.0010$. Any overlap has to be read against that number, which moves by two orders of magnitude across the widths used in this paper.
 
-## Why the interaction is estimated as a cross-product {#sec-appendix-math-cross}
-
-The grid means are estimated from finitely many observations, $\hat M = M + E$ with $\mathbb{E}[E]=0$. The decomposition is linear, so $\hat\gamma = \gamma + (Q_I\otimes Q_C)E$ and
-
-$$
-\mathbb{E}\big[\lVert\hat\gamma\rVert^2\big] = \lVert\gamma\rVert^2 + (I{-}1)(C{-}1)\,d\,\sigma^2 .
-$$
-
-A squared length is therefore bounded below by its own noise floor and cannot read zero even when the true interaction is zero. Permutation does not repair this: a squared projection norm is a magnitude, its expectation under the null is that same floor, and the permuted replicates carry the floor too, so a real interaction and noise of the same size give the same statistic.
-
-Given two independent estimates $\hat\gamma_A = \gamma + G_A$ and $\hat\gamma_B = \gamma + G_B$ with $G_A \perp\!\!\!\perp G_B$,
-
-$$
-\mathbb{E}\langle\hat\gamma_A,\hat\gamma_B\rangle
-= \lVert\gamma\rVert^2 + \langle\gamma,\mathbb{E}G_B\rangle + \langle\mathbb{E}G_A,\gamma\rangle
-+ \langle\mathbb{E}G_A,\mathbb{E}G_B\rangle
-= \lVert\gamma\rVert^2 ,
-$$
-
-exactly unbiased at any noise level, and able to come out negative, which is what makes $>0$ a test rather than a threshold on a positively biased quantity. Significance permutes the item index of one estimate against the other, preserving every magnitude while destroying the correspondence, over 200 draws at the 5% level.
-
-The same construction is applied to the item effect. The **class effect is not cross-denoised**: it is reported as $I\sum_c\lVert\hat\beta_c\rVert^2$ from the full grid, on the grounds that $\hat\beta_c$ averages over all $I$ items and is well estimated. That addresses variance rather than bias, and Appendix \ref{sec-appendix-validate} measures the floor it leaves.
-
-## Invariance {#sec-appendix-math-invariance}
-
-The measure is exactly invariant to per-dimension rescaling, which the standardization absorbs, and the functionals are invariant to orthogonal rotation of already-standardized data. It is **not** invariant to general linear reparameterization: we do not whiten. Whitening would make a linear representation read separable in any basis, but it requires estimating a $d \times d$ covariance and it discards the basis the model actually computes in. LayerNorm and the feed-forward nonlinearities act coordinate-wise, and a downstream output layer operates on the unwhitened space, so the question of interest is whether item and class occupy separate axes *in the model's own basis*. Overlap values are therefore basis-relative, while the sizes, their growth with depth and their cross-denoised significance do not depend on the choice.
+The measure is exactly invariant to per-dimension rescaling, which the standardization absorbs, and to orthogonal rotation of already-standardized data. It is **not** invariant to general linear reparameterization: we do not whiten, because whitening would make a linear representation read separable in any basis and would discard the basis the model actually computes in. Overlap values are therefore basis-relative, while the sizes and their growth with depth do not depend on the choice.
 
 # A Construction That Is Not Same-Token {#sec-appendix-morph}
 

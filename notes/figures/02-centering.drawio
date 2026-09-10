@@ -1,0 +1,80 @@
+<mxfile host="app.diagrams.net">
+  <diagram name="centering" id="centering">
+    <mxGraphModel dx="1200" dy="900" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="820" pageHeight="740" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="onesline" style="endArrow=classic;html=1;strokeColor=#9673a6;strokeWidth=3;dashed=1;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="180" y="560" as="sourcePoint" />
+            <mxPoint x="700" y="158" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="oneslabel" value="all-ones line&#10;(1, 1, … , 1)" style="text;html=1;fontSize=16;align=left;fontColor=#9673a6;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="640" y="88" width="170" height="48" as="geometry" />
+        </mxCell>
+
+        <mxCell id="plane" style="endArrow=none;html=1;strokeColor=#82b366;strokeWidth=3;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="20" y="348" as="sourcePoint" />
+            <mxPoint x="330" y="734" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="planelabel" value="hyperplane,&#10;N − 1 dimensions" style="text;html=1;fontSize=16;align=left;fontColor=#82b366;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="330" y="668" width="220" height="48" as="geometry" />
+        </mxCell>
+
+        <mxCell id="origin" value="" style="ellipse;whiteSpace=wrap;html=1;fillColor=#000000;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="173" y="553" width="14" height="14" as="geometry" />
+        </mxCell>
+        <mxCell id="originlabel" value="0" style="text;html=1;fontSize=16;align=right;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="118" y="548" width="44" height="24" as="geometry" />
+        </mxCell>
+
+        <mxCell id="mu" style="endArrow=classic;html=1;strokeColor=#6c8ebf;strokeWidth=4;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="180" y="560" as="sourcePoint" />
+            <mxPoint x="430" y="367" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="mulabel" value="μ" style="text;html=1;fontSize=22;align=center;fontColor=#6c8ebf;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="330" y="452" width="40" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="Q" value="" style="ellipse;whiteSpace=wrap;html=1;fillColor=#6c8ebf;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="424" y="361" width="12" height="12" as="geometry" />
+        </mxCell>
+
+        <mxCell id="resid" style="endArrow=classic;html=1;strokeColor=#b85450;strokeWidth=4;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="430" y="367" as="sourcePoint" />
+            <mxPoint x="305" y="206" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="residlabel" value="α + β + γ" style="text;html=1;fontSize=19;align=right;fontColor=#b85450;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="140" y="262" width="150" height="28" as="geometry" />
+        </mxCell>
+
+        <mxCell id="P" value="" style="ellipse;whiteSpace=wrap;html=1;fillColor=#000000;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="298" y="199" width="16" height="16" as="geometry" />
+        </mxCell>
+        <mxCell id="Plabel" value="the data" style="text;html=1;fontSize=16;align=center;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="246" y="164" width="120" height="26" as="geometry" />
+        </mxCell>
+
+        <mxCell id="rightangle" value="" style="shape=mxgraph.electrical.signal_sources.right_angle;html=1;strokeColor=#666666;fillColor=none;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="406" y="344" width="22" height="22" as="geometry" />
+        </mxCell>
+
+        <mxCell id="trans" style="endArrow=classic;html=1;strokeColor=#b85450;strokeWidth=3;dashed=1;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="180" y="560" as="sourcePoint" />
+            <mxPoint x="55" y="399" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
