@@ -55,6 +55,8 @@ theme_paper <- function(base = 9) {
 # uses. The two independent estimates are two even-sized splits of the observations for each item in each class, so there is
 # no alignment step and no projection. Capacity is a reported variable, never a filter.
 toy <- rd("artificial_language_grid.csv") |>
+  ensure("obs_size_interaction", "size_interaction_null_lo", "size_interaction_null_hi",
+         "obs_size_class", "size_class_null_lo", "size_class_null_med", "size_class_null_hi") |>
   mutate(act = factor(activation, c("identity", "relu"), c("linear", "ReLU")),
          # An orthogonality reading means nothing on its own, so each overlap is carried
          # alongside the upper tail of its own null: the largest value an arbitrary orientation
@@ -111,11 +113,38 @@ ov <- function(v, med, lo, hi, digits = 3) {
   sprintf(paste0("%.", digits, "f  (%.1f×, %d/%d)"), m, ratio, out, sum(!is.na(v)))
 }
 
+# One size for a table: the share, and how many measurements fall outside its own permutation
+# distribution. `obs`, `lo` and `hi` are on the raw scale the draws are on, which is why the raw
+# observed value is stored alongside the share; the share alone cannot be compared with them.
+# A multiple of the median is given only for the class effect. The item and interaction nulls are
+# cross-split products centred on zero, so a ratio to their median is meaningless, while the class
+# null is a squared length sitting on a positive floor and a multiple of it reads sensibly.
+sz <- function(share, obs, lo, hi, med = NULL, digits = 3) {
+  m <- median(share, na.rm = TRUE)
+  if (is.na(m)) return("---")
+  n <- sum(!is.na(obs))
+  if (n == 0) return(sprintf(paste0("%.", digits, "f"), m))   # nulls not measured yet
+  out <- sum(!is.na(obs) & (obs > hi | obs < lo))
+  if (is.null(med) || all(is.na(med)) || median(med, na.rm = TRUE) <= 0)
+    return(sprintf(paste0("%.", digits, "f  (%d/%d)"), m, out, n))
+  sprintf(paste0("%.", digits, "f  (%.1f×, %d/%d)"),
+          m, median(obs, na.rm = TRUE) / median(med, na.rm = TRUE), out, n)
+}
+
+# "4 of 6", or "NA" before the nulls are measured, for use in prose.
+outof <- function(constr, stem) {
+  v <- llm_deep[[paste0(stem, "_outside")]][llm_deep$construction == constr]
+  if (!length(v) || all(is.na(v))) return("NA")
+  sprintf("%d of %d", sum(v %in% c(TRUE, "TRUE")), sum(!is.na(v)))
+}
+
 toy_cap <- toy |> filter(w_int > 0, w_item > 0, w_class > 0) |>
   group_by(act, capacity) |>
   # Formatted here rather than in the table, because `ov` needs the runs themselves to count how
   # many fall outside their null; a summarized row no longer has them.
   summarize(n = n(), size_int = median(size_interaction),
+            sz_int = sz(size_interaction, obs_size_interaction,
+                        size_interaction_null_lo, size_interaction_null_hi, digits = 3),
             ov_item = ov(leak_item_into_class, null_med, null_lo, null_hi, 4),
             ov_int = ov(leak_int_into_margins, null_int_med, null_int_lo, null_int, 3),
             overlap = median(leak_item_into_class, na.rm = TRUE),
@@ -194,7 +223,8 @@ MODELS <- tibble::tribble(
 # These carry the orientation nulls and the between-grid share. They also hold the random and
 # position-ablated inits, so all three sources need the pretrained filter.
 llm <- bind_rows(
-  rd("llm_unified_form.csv") |> ensure("std_between_share_adj") |>
+  rd("llm_unified_form.csv") |>
+    ensure("std_between_share_adj", "std_obs_size_class", "std_size_class_null_lo", "std_size_class_null_med", "std_size_class_null_hi", "std_size_class_outside", "std_obs_size_interaction", "std_size_interaction_null_lo", "std_size_interaction_null_med", "std_size_interaction_null_hi", "std_size_interaction_outside", "std_obs_size_item", "std_size_item_null_lo", "std_size_item_null_hi", "std_size_item_outside") |>
     filter(init == "pretrained") |>
     transmute(model, layer, d, n_items, construction = "POS (noun/verb)",
               size_item = std_size_item, size_class = std_size_class,
@@ -206,8 +236,24 @@ llm <- bind_rows(
               leak_int_null = std_leak_int_into_margins_null_hi,
               leak_int_null_lo = std_leak_int_into_margins_null_lo,
               leak_int_null_med = std_leak_int_into_margins_null_med,
-              between = std_between_share, between_adj = std_between_share_adj),
-  rd("llm_role.csv") |> ensure("between_share_adj") |> filter(init == "pretrained") |>
+              between = std_between_share, between_adj = std_between_share_adj,
+              obs_size_class = std_obs_size_class,
+              size_class_null_lo = std_size_class_null_lo,
+              size_class_null_med = std_size_class_null_med,
+              size_class_null_hi = std_size_class_null_hi,
+              size_class_outside = std_size_class_outside,
+              obs_size_interaction = std_obs_size_interaction,
+              size_interaction_null_lo = std_size_interaction_null_lo,
+              size_interaction_null_med = std_size_interaction_null_med,
+              size_interaction_null_hi = std_size_interaction_null_hi,
+              size_interaction_outside = std_size_interaction_outside,
+              obs_size_item = std_obs_size_item,
+              size_item_null_lo = std_size_item_null_lo,
+              size_item_null_hi = std_size_item_null_hi,
+              size_item_outside = std_size_item_outside),
+  rd("llm_role.csv") |>
+    ensure("between_share_adj", "obs_size_class", "size_class_null_lo", "size_class_null_med", "size_class_null_hi", "size_class_outside", "obs_size_interaction", "size_interaction_null_lo", "size_interaction_null_med", "size_interaction_null_hi", "size_interaction_outside", "obs_size_item", "size_item_null_lo", "size_item_null_hi", "size_item_outside") |>
+    filter(init == "pretrained") |>
     transmute(model, layer, d, n_items, construction = "role (subject/object)",
               size_item, size_class, size_int = size_interaction,
               sig = sig_interaction, leak = leak_item_into_class,
@@ -218,8 +264,24 @@ llm <- bind_rows(
               leak_int_null = leak_int_into_margins_null_hi,
               leak_int_null_lo = leak_int_into_margins_null_lo,
               leak_int_null_med = leak_int_into_margins_null_med,
-              between = between_share, between_adj = between_share_adj),
-  rd("llm_metaphor.csv") |> ensure("between_share_adj") |> filter(init == "pretrained") |>
+              between = between_share, between_adj = between_share_adj,
+              obs_size_class = obs_size_class,
+              size_class_null_lo = size_class_null_lo,
+              size_class_null_med = size_class_null_med,
+              size_class_null_hi = size_class_null_hi,
+              size_class_outside = size_class_outside,
+              obs_size_interaction = obs_size_interaction,
+              size_interaction_null_lo = size_interaction_null_lo,
+              size_interaction_null_med = size_interaction_null_med,
+              size_interaction_null_hi = size_interaction_null_hi,
+              size_interaction_outside = size_interaction_outside,
+              obs_size_item = obs_size_item,
+              size_item_null_lo = size_item_null_lo,
+              size_item_null_hi = size_item_null_hi,
+              size_item_outside = size_item_outside),
+  rd("llm_metaphor.csv") |>
+    ensure("between_share_adj", "obs_size_class", "size_class_null_lo", "size_class_null_med", "size_class_null_hi", "size_class_outside", "obs_size_interaction", "size_interaction_null_lo", "size_interaction_null_med", "size_interaction_null_hi", "size_interaction_outside", "obs_size_item", "size_item_null_lo", "size_item_null_hi", "size_item_outside") |>
+    filter(init == "pretrained") |>
     transmute(model, layer, d, n_items, construction = "metaphor (literal/figurative)",
               size_item, size_class, size_int = size_interaction,
               sig = sig_interaction, leak = leak_item_into_class,
@@ -230,7 +292,21 @@ llm <- bind_rows(
               leak_int_null = leak_int_into_margins_null_hi,
               leak_int_null_lo = leak_int_into_margins_null_lo,
               leak_int_null_med = leak_int_into_margins_null_med,
-              between = between_share, between_adj = between_share_adj)) |>
+              between = between_share, between_adj = between_share_adj,
+              obs_size_class = obs_size_class,
+              size_class_null_lo = size_class_null_lo,
+              size_class_null_med = size_class_null_med,
+              size_class_null_hi = size_class_null_hi,
+              size_class_outside = size_class_outside,
+              obs_size_interaction = obs_size_interaction,
+              size_interaction_null_lo = size_interaction_null_lo,
+              size_interaction_null_med = size_interaction_null_med,
+              size_interaction_null_hi = size_interaction_null_hi,
+              size_interaction_outside = size_interaction_outside,
+              obs_size_item = obs_size_item,
+              size_item_null_lo = size_item_null_lo,
+              size_item_null_hi = size_item_null_hi,
+              size_item_outside = size_item_outside)) |>
   left_join(MODELS, by = "model") |>
   mutate(construction = factor(construction, c("POS (noun/verb)", "role (subject/object)",
                                                "metaphor (literal/figurative)")),
@@ -374,7 +450,7 @@ Item and class effects entangle only when there is no room for them not to, and 
 #| tbl-cap: "What a learner builds from the same languages as its representation runs out of room. Capacity is the rank the structure needs divided by the hidden width, so the rows run from a width of 128 down to 8 while the languages are held fixed: the median interaction planted is 0.097 in every row, and the fall down the *interaction* column is therefore the width and not the language. *Interaction* is the interaction's share of the representation, a size. The last two columns are orientations, and a separate question: how much of the item effect lies in the class subspace, and how much of the interaction lies in the span of the two main effects. Each is the fraction that survives the projection, which is the quantity that matters, given as the median, then in parentheses how many times its own null's median it is and how many of the runs in that row fall outside that null's 95% interval, over the number of runs in the *runs* column. The null holds the effect fixed and rotates the target subspace at random 200 times. Reporting the multiple rather than the raw fraction is what makes the rows comparable: the null itself moves several-fold down this table as the width falls, so the fractions are not comparable across rows on their own. A value below one is more orthogonal than an arbitrary orientation would be, which with room to spare ReLU is. Table \ref{tbl-llm} reports the same three things for the language models. The linear arm has no interaction to orient, so its last column is empty. Below capacity one a fully separable solution is reachable by dimension counting; above one it is not."
 toy_cap |>
   transmute(condition = act, capacity = g(capacity, 3), runs = n,
-            interaction = g(size_int, 3),
+            interaction = sz_int,
             `item-class overlap` = ov_item,
             # the linear arm has no interaction to orient, so its direction is noise
             `interaction overlap` = ifelse(act == "linear", "---", ov_int)) |>
@@ -452,7 +528,7 @@ ggplot(plt, aes(depth, share, color = family, group = interaction(family, size))
 
 The two main effects sit on separate axes. At the deepest layer, item-class overlap runs `r g(0.0032, 4)` to `r g(0.0067, 4)` for part of speech and `r g(0.0025, 4)` to `r g(0.0062, 4)` for grammatical role, so projecting out the class direction leaves better than 99% of the item effect intact. Both sit above the upper end of their null, so the residual alignment is real rather than a by-product of the dimension count, but it is small enough that these representations do not achieve class structure by borrowing the directions that carry word identity. Where a shared class direction exists, it is its own direction.
 
-The interaction, however, does not have axes of its own, and this is what decides whether a third component could simply be added to the description and separability recovered in a wider sense. For part of speech `r g(ld("POS (noun/verb)", "leak_int"), 3)` of the interaction lies in the span of the two main effects, for role `r g(ld("role (subject/object)", "leak_int"), 3)` and for metaphor `r g(ld("metaphor (literal/figurative)", "leak_int"), 3)`, against nulls whose upper ends are `r g(ld("POS (noun/verb)", "leak_int_null"), 3)`, `r g(ld("role (subject/object)", "leak_int_null"), 3)` and `r g(ld("metaphor (literal/figurative)", "leak_int_null"), 3)` (@tbl-llm). The partition of the grid says nothing about direction, so these numbers are not implied by the decomposition: the item-by-class term reuses the very directions that carry item identity and class membership. Read with the first overlap, they say something more specific than "not separable". The failure is not that item and class have been collapsed onto shared axes, since those remain distinct; it is that the part of class structure specific to each word is written in the same directions as everything else. For metaphor the question does not arise, because the class effect never rises above the level at which an orientation is worth reporting, which is itself the first indication of how little of metaphoricity is carried by a shared direction.
+The interaction, however, does not have axes of its own, and this is what decides whether a third component could simply be added to the description and separability recovered in a wider sense. For part of speech `r g(ld("POS (noun/verb)", "leak_int"), 3)` of the interaction lies in the span of the two main effects, for role `r g(ld("role (subject/object)", "leak_int"), 3)` and for metaphor `r g(ld("metaphor (literal/figurative)", "leak_int"), 3)`, against nulls whose upper ends are `r g(ld("POS (noun/verb)", "leak_int_null"), 3)`, `r g(ld("role (subject/object)", "leak_int_null"), 3)` and `r g(ld("metaphor (literal/figurative)", "leak_int_null"), 3)` (@tbl-llm). The partition of the grid says nothing about direction, so these numbers are not implied by the decomposition: the item-by-class term reuses the very directions that carry item identity and class membership. Read with the first overlap, they say something more specific than "not separable". The failure is not that item and class have been collapsed onto shared axes, since those remain distinct; it is that the part of class structure specific to each word is written in the same directions as everything else. For metaphor the question does not arise, because the class effect never rises above the level at which an orientation is worth reporting, which is itself the first indication of how little of metaphoricity is carried by a shared direction. Against its own permutation distribution, metaphor's class effect falls outside the 95% interval in `r outof("metaphor (literal/figurative)", "size_class")` models, against `r outof("POS (noun/verb)", "size_class")` for part of speech and `r outof("role (subject/object)", "size_class")` for grammatical role (@tbl-llm). A class effect this small is exactly the case where a size cannot be read on its own, since a squared length sits above a floor set by how many observations went into it, and the permutation is what separates a small effect from no effect.
 
 A substantial interaction is there, and depth builds it. In all three distinctions the interaction is essentially absent at layer 0, between 0.0002 and 0.0051 across every construction and model, and rises monotonically with depth to between 0.023 and 0.246 (@fig-llm, top row). Because the item is keyed on the surface form, the token is identical in both classes, so the static embedding layer has nothing to distinguish them with, and it does not. Everything the measure finds is therefore created by contextualization rather than inherited from the input, and it is not positional: zeroing OPT-BabyLM's absolute position embeddings leaves the class structure more word-specific rather than less (Appendix \ref{sec-appendix-positions}). This is the component that breaks separability, since it is neither a fact about the word nor a fact about the class.
 
@@ -768,7 +844,7 @@ Table \ref{tbl-llm} gives the deepest-layer values behind the curves of @fig-llm
 
 ```{r}
 #| label: tbl-llm
-#| tbl-cap: "Every measurement the three distinctions are compared on, at the deepest layer of each model, over $n = 6$ models per distinction. The two overlaps are the two ways separability can fail by orientation: item-class overlap is the fraction of the item effect lying in the class subspace, and interaction overlap is the fraction of the interaction lying in the span of the two main effects. Each is given as the median, then in parentheses how many times its own null's median it is and how many of the six measurements fall outside that null's 95% interval. The null holds the effect fixed and rotates the target subspace at random 200 times, which preserves the effect's own spectrum where a closed-form interval assuming equally weighted directions would not. The multiple is what makes overlaps comparable across models of different width, since the null itself moves by two orders of magnitude across the widths used here; the count is what says the effect holds across models rather than resting on one. The portable fraction is the class effect's share of the class-relevant structure, the class effect divided by the sum of the class effect and the interaction: how much of what distinguishes the two classes is a direction shared across words rather than specific to each word."
+#| tbl-cap: "Every measurement the three distinctions are compared on, at the deepest layer of each model, over $n = 6$ models per distinction. The two overlaps are the two ways separability can fail by orientation: item-class overlap is the fraction of the item effect lying in the class subspace, and interaction overlap is the fraction of the interaction lying in the span of the two main effects. Each is given as the median, then in parentheses how many times its own null's median it is and how many of the six measurements fall outside that null's 95% interval. The null holds the effect fixed and rotates the target subspace at random 200 times, which preserves the effect's own spectrum where a closed-form interval assuming equally weighted directions would not. The multiple is what makes overlaps comparable across models of different width, since the null itself moves by two orders of magnitude across the widths used here; the count is what says the effect holds across models rather than resting on one. The class effect and the interaction are given the same way, against their own permutation distributions: class labels shuffled within each item for the class effect, item correspondence shuffled between the two splits for the interaction. The class effect also carries a multiple, because its null is a squared length sitting on a positive floor, while the interaction's null is a cross-split product centered on zero and only the count is meaningful. The portable fraction is the class effect's share of the class-relevant structure, the class effect divided by the sum of the class effect and the interaction: how much of what distinguishes the two classes is a direction shared across words rather than specific to each word."
 llm |> group_by(construction, model) |>
   filter(layer == max(layer)) |> ungroup() |>
   mutate(portable = size_class / (size_class + size_int)) |>
@@ -779,8 +855,10 @@ llm |> group_by(construction, model) |>
   summarize(`item-class overlap` = ov(leak, leak_null_med, leak_null_lo, leak_null, 4),
             `interaction overlap` = ov(leak_int, leak_int_null_med, leak_int_null_lo,
                                        leak_int_null, 3),
-            `class effect` = sprintf("%.3f", median(size_class)),
-            `interaction` = sprintf("%.3f", median(size_int)),
+            `class effect` = sz(size_class, obs_size_class, size_class_null_lo,
+                                size_class_null_hi, size_class_null_med),
+            `interaction` = sz(size_int, obs_size_interaction, size_interaction_null_lo,
+                               size_interaction_null_hi),
             `portable fraction` = sprintf("%.2f [%.2f, %.2f]", median(portable),
                                           min(portable), max(portable)),
             .groups = "drop") |>

@@ -86,11 +86,13 @@ sys.path[:0] = ["scripts", "scripts/llm", "scripts/toy"]
 from separability import REPORT_FIELDS, check_emits
 import measure as M
 from artificial_language_grid import FIELDS as TOY
+from validate_measure import FIELDS as VAL
 check_emits(M.POS_FIELDS,   ("std_", "raw_"), "measure.py pos")
 check_emits(M.ROLE_FIELDS,  ("",), "measure.py role")
 check_emits(M.MET_FIELDS,   ("",), "measure.py metaphor")
 check_emits(M.MORPH_FIELDS, ("",), "measure.py morphology")
 check_emits(TOY,            ("",), "toy grid")
+check_emits(VAL,            ("",), "validate_measure")
 print(f"  [preflight] all writers cover all {len(REPORT_FIELDS)} measured fields")
 PYCHK
 

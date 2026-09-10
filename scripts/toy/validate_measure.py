@@ -46,7 +46,7 @@ import numpy as np  # noqa: E402
 REPO_ROOT = Path(__file__).resolve().parents[2]
 for _sub in ("", "llm", "toy"):          # "" = scripts/, where the shared measure lives
     sys.path.insert(0, str(REPO_ROOT / "scripts" / _sub))
-from separability import unified_split  # noqa: E402
+from separability import unified_split, REPORT_FIELDS, check_emits  # noqa: E402
 
 
 def _centered(x, axes):
@@ -124,11 +124,12 @@ def build_planted(rng, n_item, n_class, d, share_item, share_class, share_int,
     return X, item_of, class_of, planted
 
 
-FIELDS = ["n_item", "n_class", "d", "n_obs", "noise_ratio", "seed",
-          "planted_item", "planted_class", "planted_int", "planted_overlap", "achieved_noise",
-          "size_item", "size_class", "size_interaction",
-          "sig_item", "sig_class", "sig_interaction",
-          "leak_item_into_class", "k_class", "k_int", "n_items"]
+# What was planted and under what conditions, then everything the measure returned. The second
+# half is not listed by hand: this appendix is where a null is shown to behave on data whose truth
+# is known, so dropping a null column here is how a claim about the measure loses its evidence.
+VAL_IDENT = ["n_item", "n_class", "d", "n_obs", "noise_ratio", "seed",
+             "planted_item", "planted_class", "planted_int", "planted_overlap", "achieved_noise"]
+FIELDS = VAL_IDENT + REPORT_FIELDS
 
 
 def run_one(spec, n_boot=200):
@@ -183,6 +184,7 @@ N_SEEDS = 5          # override with --seeds; medians are stable at 5 given the 
 
 
 def main():
+    check_emits(FIELDS, ("",), "validate_measure")
     ap = argparse.ArgumentParser()
     ap.add_argument("--probe", action="store_true")
     ap.add_argument("--out", default=str(REPO_ROOT / "data" / "validate_measure.csv"))

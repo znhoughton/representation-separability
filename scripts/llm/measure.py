@@ -268,6 +268,7 @@ def measure_morphology(path, args, layers):
     lemcls = {feat: _keep_lemmas(feat, up, pos, lem, feats[key], forms, levels[1])
               for feat, pos, levels, key in FEATURES}
     rows = []
+    draws = {}
     for li in [int(x) for x in z["layer_idxs"]]:
         if layers is not None and li not in layers:
             continue
@@ -279,9 +280,10 @@ def measure_morphology(path, args, layers):
                 if m.sum() < 2 * args.min_cell:
                     continue
                 r = unified_split(X[m], lem[m], feats[key][m], min_cell=args.min_cell,
-                                  classes=list(levels))
+                                  classes=list(levels), keep_null_draws=True)
                 if "error" in r:
                     continue
+                _stash_draws(draws, f"layer{li}__{feat}__{mode}", r)
                 rows.append(dict(model=model, init=init, feature=feat, regularity=mode,
                                  classes="+".join(levels), layer=li, d=d, n_points=int(m.sum()),
                                  min_cell=args.min_cell,
@@ -292,6 +294,7 @@ def measure_morphology(path, args, layers):
             print(f"  {model.split('/')[-1]:>26} L{li:>2}: " + "  ".join(
                 f"{rr['feature']}/{rr['regularity']}: sz_int={rr['size_interaction']:.3f} "
                 f"n_items={rr['n_items']}" for rr in this), flush=True)
+    _write_draws(args, model, init, "morphology", draws)
     return rows
 
 
