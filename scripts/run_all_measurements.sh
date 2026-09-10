@@ -106,6 +106,19 @@ fi
 
 stamp="$(date +%Y%m%d-%H%M%S)"
 
+# Per-step wall time, appended to logs/measurements/timings.tsv. The measure itself is about
+# 12 s per layer, so a run measured in hours is spending that time somewhere else, and until
+# now nothing recorded where. Costs nothing and makes the question answerable next time.
+TIMINGS="$LOGDIR/timings.tsv"
+[ -s "$TIMINGS" ] || printf 'step\tseconds\tstarted\n' > "$TIMINGS"
+step_t0=0
+step_begin() { step_t0=$SECONDS; printf '  [%s] started %s\n' "$1" "$(date +%H:%M:%S)"; }
+step_end() {
+  local secs=$((SECONDS - step_t0))
+  printf '%s\t%d\t%s\n' "$1" "$secs" "$(date -Iseconds)" >> "$TIMINGS"
+  printf '  [%s] %dm %ds\n' "$1" "$((secs / 60))" "$((secs % 60))"
+}
+
 # Move a stale-format CSV aside so the run rebuilds it. A current-format one is left alone and
 # resumed into. Returns 0 either way; only an actual mv is reported.
 retire_if_stale() {
@@ -139,23 +152,32 @@ echo "=================================================================="
 # already there, and the re-measure pass below then brings every row to the current format
 # from the saved hidden states. Without saved runs there is nothing to re-measure from and it
 # retires like the rest.
+# Decide BEFORE moving anything. A refusal that fires after three files have been retired leaves
+# the tree half-changed for a run that never starts, which is how testing this twice moved CSVs
+# that had just been measured.
+toy_needs_retrain=0
+if [ ! -d "$RUNS_DIR" ] || [ -z "$(ls -A "$RUNS_DIR" 2>/dev/null)" ]; then
+  if [ -s data/artificial_language_grid.csv ] &&
+     ! head -1 data/artificial_language_grid.csv | grep -q "$MARKER"; then
+    toy_needs_retrain=1
+  fi
+fi
+if [ "$toy_needs_retrain" = "1" ] && [ "${ALLOW_RETRAIN:-0}" != "1" ]; then
+  echo "  [STOP]  data/artificial_language_grid.csv is stale and $RUNS_DIR is empty." >&2
+  echo "          Bringing it current would retrain all 7,560 cells, so nothing has been moved." >&2
+  echo "          Either restore the saved runs so it can be re-measured from disk, or re-run" >&2
+  echo "          with ALLOW_RETRAIN=1." >&2
+  exit 1
+fi
+
+# Only now, with every refusal already checked, start moving files.
 for f in data/llm_unified_form.csv data/llm_role.csv data/llm_metaphor.csv; do
   retire_if_stale "$f"
 done
-if [ -d "$RUNS_DIR" ] && [ -n "$(ls -A "$RUNS_DIR" 2>/dev/null)" ]; then
+if [ "$toy_needs_retrain" = "1" ]; then
+  retire_if_stale data/artificial_language_grid.csv     # ALLOW_RETRAIN=1 was given
+else
   echo "  [keep]  data/artificial_language_grid.csv -> re-measured from $RUNS_DIR, not retrained"
-elif [ -s data/artificial_language_grid.csv ] &&
-     ! head -1 data/artificial_language_grid.csv | grep -q "$MARKER"; then
-  # Stale CSV and nothing to re-measure from: the only way to the current format is retraining
-  # every cell. That is hours of GPU time, so it is never done as a side effect of running this.
-  if [ "${ALLOW_RETRAIN:-0}" = "1" ]; then
-    retire_if_stale data/artificial_language_grid.csv
-  else
-    echo "  [STOP]  data/artificial_language_grid.csv is stale and $RUNS_DIR is empty." >&2
-    echo "          Bringing it current would retrain all 7,560 cells. Either restore the saved" >&2
-    echo "          runs so it can be re-measured from disk, or re-run with ALLOW_RETRAIN=1." >&2
-    exit 1
-  fi
 fi
 
 rc_all=0
@@ -164,18 +186,20 @@ rc_all=0
 if [ "$SKIP_TOY" != "1" ]; then
   echo
   echo "[toy] 7,560 cells -> data/artificial_language_grid.csv"
+  step_begin toy
   "$PY" scripts/toy/artificial_language_grid.py \
         --device "$TOY_DEVICE" --workers "$TOY_WORKERS" --runs-dir "$RUNS_DIR" \
         2>&1 | tee "$LOGDIR/toy.log"
-  rc="${PIPESTATUS[0]}"
+  rc="${PIPESTATUS[0]}"; step_end toy
   [ "$rc" -eq 0 ] || { echo "[toy] FAILED (exit $rc); see $LOGDIR/toy.log" >&2; rc_all=1; }
 
   # Appendix A: the measure applied to representations with the answer planted directly in them,
   # which is what separates "the measure missed it" from "the model did not build it".
   echo
   echo "[validate] -> data/validate_measure.csv"
+  step_begin validate
   "$PY" scripts/toy/validate_measure.py --workers "$TOY_WORKERS" 2>&1 | tee "$LOGDIR/validate.log"
-  rc="${PIPESTATUS[0]}"
+  rc="${PIPESTATUS[0]}"; step_end validate
   [ "$rc" -eq 0 ] || { echo "[validate] FAILED (exit $rc)" >&2; rc_all=1; }
 
   # The grid resumes by skipping cells already in the CSV, so a change to the measure part way
@@ -184,9 +208,10 @@ if [ "$SKIP_TOY" != "1" ]; then
   if [ -d "$RUNS_DIR" ] && [ -n "$(ls -A "$RUNS_DIR" 2>/dev/null)" ]; then
     echo
     echo "[re-measure] applying the current measure to every saved cell"
+    step_begin re-measure
     "$PY" scripts/toy/remeasure_from_runs.py --runs-dir "$RUNS_DIR" \
           --workers "$TOY_WORKERS" 2>&1 | tee "$LOGDIR/remeasure.log"
-    rc="${PIPESTATUS[0]}"
+    rc="${PIPESTATUS[0]}"; step_end re-measure
     [ "$rc" -eq 0 ] || { echo "[re-measure] FAILED (exit $rc)" >&2; rc_all=1; }
   fi
 fi
@@ -196,9 +221,11 @@ run_llm() {                       # construction, out, extra args...
   local name="$1" out="$2"; shift 2
   echo
   echo "[$name] -> $out"
+  step_begin "llm-$name"
   "$PY" scripts/llm/measure.py "$name" --min-cell "$MIN_CELL" --workers "$LLM_WORKERS" \
         --nulls-dir "$NULLS_DIR" --out "$out" "$@" 2>&1 | tee "$LOGDIR/$name.log"
   local rc="${PIPESTATUS[0]}"
+  step_end "llm-$name"
   if [ "$rc" -ne 0 ]; then
     echo "[$name] FAILED (exit $rc); see $LOGDIR/$name.log" >&2
     return 1
@@ -217,9 +244,10 @@ fi
 if [ "$SKIP_DERIVED" != "1" ]; then
   echo
   echo "[stats] -> data/methods_grid_stats.csv"
+  step_begin stats
   "$PY" scripts/llm/dataset_stats.py --reps-dir "$REPS_DIR" --vua-dir "$VUA_DIR" \
         --conllu "$CONLLU" --min-cell "$MIN_CELL" 2>&1 | tee "$LOGDIR/stats.log"
-  rc="${PIPESTATUS[0]}"
+  rc="${PIPESTATUS[0]}"; step_end stats
   [ "$rc" -eq 0 ] || { echo "[stats] FAILED (exit $rc)" >&2; rc_all=1; }
 
   # decode appends, so a rerun would duplicate rows; retire the outputs and rebuild both.
