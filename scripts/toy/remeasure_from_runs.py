@@ -25,7 +25,7 @@ import numpy as np
 REPO_ROOT = Path(__file__).resolve().parents[2]
 for _sub in ("", "llm", "toy"):
     sys.path.insert(0, str(REPO_ROOT / "scripts" / _sub))
-from separability import unified_split      # noqa: E402
+from separability import unified_split, check_emits  # noqa: E402
 from csv_repair import repair               # noqa: E402
 from artificial_language_grid import FIELDS, CONFIG  # noqa: E402
 
@@ -72,6 +72,7 @@ def main():
         print(f"missing {args.csv}: the grid CSV supplies the language and training columns", file=sys.stderr)
         return 1
 
+    check_emits(FIELDS, ("",), "toy re-measure")
     repair(args.csv, KEY_COLS)
     with open(args.csv, newline="") as fh:
         rows = {tuple(r[c] for c in KEY_COLS): r for r in csv.DictReader(fh)}

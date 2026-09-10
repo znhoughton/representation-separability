@@ -123,6 +123,51 @@ BETWEEN_FIELDS = ["between_share", "between_share_adj", "between_ss", "within_ss
                   "between_n_obs", "between_n_groups", "between_n0",
                   "between_var", "within_var"]
 
+# Every scalar unified_split can return. Writers build their column lists from this rather than
+# naming fields by hand, and check_emits() below refuses to start a run that would drop one.
+#
+# This exists because hand-maintained lists silently discarded 25 of 51 computed fields, so each
+# new question needed a fresh measurement pass to recover a number that had already been computed
+# and thrown away. Adding a field to the measure now breaks the run immediately instead.
+_LEAK_NULL = ["_null_lo", "_null_med", "_null_hi", "_p", "_outside", "_ratio"]
+_SIZE_NULL = ["_null_lo", "_null_med", "_null_hi", "_outside"]
+
+REPORT_FIELDS = (
+    ["size_item", "size_class", "size_interaction",
+     "obs_size_item", "obs_size_class", "obs_size_interaction", "size_total",
+     "sig_item", "sig_class", "sig_interaction",
+     "leak_item_into_class", "leak_class_into_item", "leak_int_into_margins",
+     "overlap_item_class", "overlap_item_int", "overlap_class_int",
+     "n_items", "n_classes", "k_item", "k_class", "k_int", "k_margin"]
+    + [f"leak_item_into_class{s}" for s in _LEAK_NULL]
+    + [f"leak_int_into_margins{s}" for s in _LEAK_NULL]
+    + [f"size_item{s}" for s in _SIZE_NULL]
+    + [f"size_interaction{s}" for s in _SIZE_NULL]
+    + [f"size_class{s}" for s in _SIZE_NULL]
+    + BETWEEN_FIELDS
+)
+
+
+def check_emits(columns, prefixes=("",), where=""):
+    """Fail unless every field the measure produces has somewhere to be written.
+
+    `prefixes` are the variants a writer uses, e.g. ("std_", "raw_") when it records a
+    standardized and an unstandardized read. A field counts as covered if any prefix carries it.
+    Raises rather than warns: a run that drops a column costs a full re-measure to recover, so
+    it should not be allowed to start.
+    """
+    cols = set(columns)
+    missing = [f for f in REPORT_FIELDS
+               if not any((p + f) in cols for p in prefixes)]
+    if missing:
+        raise SystemExit(
+            f"{where or 'writer'} would discard {len(missing)} of {len(REPORT_FIELDS)} measured "
+            f"fields, so they could not be recovered without measuring again:\n  "
+            + "\n  ".join(missing)
+            + "\n\nAdd them to the field list (they are in separability.REPORT_FIELDS)."
+        )
+    return True
+
 
 def _between_share(X, cells, items, classes):
     """How much of the representation the item-by-class grid is in the first place.
@@ -320,6 +365,11 @@ def _gated_report(aa, ga, ab, gb, al, be, gm, L, C, rng, n_boot, sig):
         _obs_item=obs_item, _obs_int=obs_int,
         draws_size_item=np.asarray(null_item), draws_size_interaction=np.asarray(null_int),
         size_item=s_item / total, size_class=s_class / total, size_interaction=s_int / total,
+        # The denoised sizes before normalization, and what they were divided by. The shares alone
+        # cannot be compared with the permutation draws, which are on the raw scale, so storing
+        # only the shares makes every flag below impossible to recompute without measuring again.
+        obs_size_item=s_item, obs_size_class=s_class, obs_size_interaction=s_int,
+        size_total=total,
         sig_item=big["item"], sig_class=big["class"], sig_interaction=big["int"],
         **leaks, **angles,
         n_items=L, n_classes=C, k_item=S_item.shape[1], k_class=S_class.shape[1], k_int=S_int.shape[1],

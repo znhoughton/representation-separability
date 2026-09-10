@@ -40,7 +40,7 @@ import numpy as np  # noqa: E402
 REPO_ROOT = Path(__file__).resolve().parents[2]
 for _sub in ("", "llm", "toy"):          # "" = scripts/, where the shared measure lives
     sys.path.insert(0, str(REPO_ROOT / "scripts" / _sub))
-from separability import unified_split  # noqa: E402
+from separability import unified_split, REPORT_FIELDS, check_emits  # noqa: E402
 from csv_repair import repair  # noqa: E402
 
 _blank = lambda v: "" if v is None else v
@@ -50,15 +50,6 @@ _blank = lambda v: "" if v is None else v
 # that null's mean, so unified_split now also returns the null's upper tail and a p-value. It
 # also returns how much of the representation the item-by-class grid accounts for at all: the
 # three sizes sum to one because they partition the grid of means, not the representation.
-NULL_FIELDS = ["between_share", "between_share_adj", "between_ss", "within_ss",
-               "between_n_obs", "between_n_groups", "between_n0",
-               "between_var", "within_var",
-               "leak_item_into_class_null_lo", "leak_item_into_class_null_med",
-               "leak_item_into_class_null_hi", "leak_item_into_class_p",
-               "leak_int_into_margins_null_lo", "leak_int_into_margins_null_med",
-               "leak_int_into_margins_null_hi", "leak_int_into_margins_p"]
-
-
 def _write_draws(args, model, init, tag, store):
     """One npz per (model, init, construction). Small -- a few hundred KB for a whole run."""
     d = getattr(args, "nulls_dir", None)
@@ -78,8 +69,12 @@ def _stash_draws(store, key, r):
             store[f"{key}__{k}"] = v
 
 
-def _null_cols(r, prefix=""):
-    return {prefix + k: _blank(r.get(k)) for k in NULL_FIELDS}
+def _report_cols(r, prefix=""):
+    """Every field the measure produced, under one prefix. Nothing is selected by hand, so a new
+    field in separability.py appears in the CSV without anyone remembering to add it."""
+    if r is None or "error" in r:
+        return {prefix + k: "" for k in REPORT_FIELDS}
+    return {prefix + k: _blank(r.get(k)) for k in REPORT_FIELDS}
 
 
 def _init_of(z):
@@ -90,12 +85,10 @@ def _init_of(z):
 
 
 # ------------------------------------------------------------------ pos (NOUN/VERB)
-POS_FIELDS = ["model", "init", "layer", "d", "n_points", "n_items", "classes", "min_cell",
-              "std_size_item", "std_size_class", "std_size_interaction",
-              "std_sig_interaction", "std_leak_item_into_class", "std_leak_int_into_margins",
-              "std_k_class", "std_k_int",
-              "raw_leak_item_into_class", "raw_k_class",       # raw = the un-fixed (rogue-dim) read
-              "raw_size_interaction"] + [f"std_" + k for k in NULL_FIELDS]
+# raw_ = the un-fixed (rogue-dimension) read, kept alongside the standardized one.
+POS_IDENT = ["model", "init", "layer", "d", "n_points", "classes", "min_cell"]
+POS_FIELDS = (POS_IDENT + [f"std_{k}" for k in REPORT_FIELDS]
+              + [f"raw_{k}" for k in REPORT_FIELDS])
 
 
 def _item_labels(z, item_key, conllu):
@@ -141,19 +134,11 @@ def measure_pos(path, args, layers):
         _stash_draws(draws, f"layer{li}", std)
         rows.append(dict(
             model=model, init=init, layer=li, d=d,
-            n_points=len(upos), n_items=std["n_items"], classes="+".join(use), min_cell=args.min_cell,
-            std_size_item=std["size_item"], std_size_class=std["size_class"],
-            std_size_interaction=std["size_interaction"], std_sig_interaction=std["sig_interaction"],
-            std_leak_item_into_class=_blank(std["leak_item_into_class"]),
-            std_leak_int_into_margins=_blank(std["leak_int_into_margins"]),
-            std_k_class=std["k_class"], std_k_int=std["k_int"],
-            raw_leak_item_into_class=(_blank(raw.get("leak_item_into_class")) if "error" not in raw else ""),
-            raw_k_class=(raw.get("k_class") if "error" not in raw else ""),
-            raw_size_interaction=(raw.get("size_interaction") if "error" not in raw else ""),
-            **_null_cols(std, "std_")))
+            n_points=len(upos), classes="+".join(use), min_cell=args.min_cell,
+            **_report_cols(std, "std_"), **_report_cols(raw, "raw_")))
         r = rows[-1]
         f = lambda v: "NA" if v in ("", None) else (f"{v:.3f}" if isinstance(v, float) else v)
-        print(f"  layer {li:>2}: n_items={r['n_items']:>3}  STD sz_int={r['std_size_interaction']:.3f} "
+        print(f"  layer {li:>2}: n_items={r['std_n_items']:>3}  STD sz_int={r['std_size_interaction']:.3f} "
               f"sig={r['std_sig_interaction']} leak_i>c={f(r['std_leak_item_into_class'])} "
               f"leak_int>m={f(r['std_leak_int_into_margins'])}  |  RAW leak_i>c={f(r['raw_leak_item_into_class'])}",
               flush=True)
@@ -162,9 +147,8 @@ def measure_pos(path, args, layers):
 
 
 # ------------------------------------------------------------------ role (nsubj/obj)
-ROLE_FIELDS = ["model", "init", "construction", "classes", "layer", "d", "n_points", "n_items",
-               "min_cell", "size_item", "size_class", "size_interaction", "sig_interaction",
-               "leak_item_into_class", "leak_int_into_margins", "k_class", "k_int"] + NULL_FIELDS
+ROLE_IDENT = ["model", "init", "construction", "classes", "layer", "d", "n_points", "min_cell"]
+ROLE_FIELDS = ROLE_IDENT + REPORT_FIELDS
 ROLE_POS, ROLE_CLASSES = "NOUN", ("nsubj", "obj")
 
 
@@ -189,13 +173,8 @@ def measure_role(path, args, layers):
                 _stash_draws(draws, f"layer{li}", r)
         rows.append(dict(model=model, init=init, construction="noun_role",
                                  classes="+".join(ROLE_CLASSES), layer=li, d=d,
-                                 n_points=int(m.sum()), n_items=r["n_items"], min_cell=args.min_cell,
-                                 size_item=r["size_item"], size_class=r["size_class"],
-                                 size_interaction=r["size_interaction"],
-                                 sig_interaction=r["sig_interaction"],
-                                 leak_item_into_class=_blank(r["leak_item_into_class"]),
-                                 leak_int_into_margins=_blank(r["leak_int_into_margins"]),
-                                 k_class=r["k_class"], k_int=r["k_int"], **_null_cols(r)))
+                                 n_points=int(m.sum()), min_cell=args.min_cell,
+                                 **_report_cols(r)))
         del X
         this = [rr for rr in rows if rr["layer"] == li]
         if this:
@@ -209,9 +188,8 @@ def measure_role(path, args, layers):
 
 
 # ------------------------------------------------------------------ metaphor (lit/met)
-MET_FIELDS = ["model", "init", "construction", "classes", "layer", "d", "n_points", "n_items",
-              "min_cell", "size_item", "size_class", "size_interaction", "sig_interaction",
-              "leak_item_into_class", "leak_int_into_margins", "k_class", "k_int"] + NULL_FIELDS
+MET_IDENT = ["model", "init", "construction", "classes", "layer", "d", "n_points", "min_cell"]
+MET_FIELDS = MET_IDENT + REPORT_FIELDS
 MET_CLASSES = ("lit", "met")
 
 
@@ -235,12 +213,8 @@ def measure_metaphor(path, args, layers):
         _stash_draws(draws, f"layer{li}", r)
         rows.append(dict(model=model, init=init, construction="metaphor",
                          classes="+".join(MET_CLASSES), layer=li, d=d, n_points=int(len(form)),
-                         n_items=r["n_items"], min_cell=args.min_cell,
-                         size_item=r["size_item"], size_class=r["size_class"],
-                         size_interaction=r["size_interaction"], sig_interaction=r["sig_interaction"],
-                         leak_item_into_class=_blank(r["leak_item_into_class"]),
-                         leak_int_into_margins=_blank(r["leak_int_into_margins"]),
-                         k_class=r["k_class"], k_int=r["k_int"], **_null_cols(r)))
+                         min_cell=args.min_cell,
+                         **_report_cols(r)))
         rr = rows[-1]
         print(f"  {model.split('/')[-1]:>26} L{li:>2}: lit/met sz_int={rr['size_interaction']:.3f} "
               f"leak_i>c={rr['leak_item_into_class'] or float('nan'):.4f} n_items={rr['n_items']}",
@@ -254,10 +228,8 @@ def measure_metaphor(path, args, layers):
 # AFFIXED form (Plur -s, Past -ed) whose regularity we classify -- order matters for that.
 FEATURES = [("Number", "NOUN", ("Sing", "Plur"), "number"),
             ("Tense", "VERB", ("Pres", "Past"), "tense")]
-MORPH_FIELDS = ["model", "init", "feature", "regularity", "classes", "layer", "d", "n_points",
-                "n_items", "min_cell", "size_item", "size_class", "size_interaction",
-                "sig_interaction", "leak_item_into_class", "leak_int_into_margins",
-                "k_class", "k_int"] + NULL_FIELDS
+MORPH_IDENT = ["model", "init", "feature", "regularity", "classes", "layer", "d", "n_points", "min_cell"]
+MORPH_FIELDS = MORPH_IDENT + REPORT_FIELDS
 
 
 def _regularity(feature, lemma, form):
@@ -312,13 +284,8 @@ def measure_morphology(path, args, layers):
                     continue
                 rows.append(dict(model=model, init=init, feature=feat, regularity=mode,
                                  classes="+".join(levels), layer=li, d=d, n_points=int(m.sum()),
-                                 n_items=r["n_items"], min_cell=args.min_cell,
-                                 size_item=r["size_item"], size_class=r["size_class"],
-                                 size_interaction=r["size_interaction"],
-                                 sig_interaction=r["sig_interaction"],
-                                 leak_item_into_class=_blank(r["leak_item_into_class"]),
-                                 leak_int_into_margins=_blank(r["leak_int_into_margins"]),
-                                 k_class=r["k_class"], k_int=r["k_int"], **_null_cols(r)))
+                                 min_cell=args.min_cell,
+                                 **_report_cols(r)))
         del X
         this = [rr for rr in rows if rr["layer"] == li]
         if this:
@@ -363,6 +330,11 @@ def main():
     args = ap.parse_args()
 
     worker, fields, npz_key, needs_conllu, default_out = CONSTRUCTIONS[args.construction]
+    # Before any work: refuse to run if a measured field has no column to land in. A dropped
+    # column is only discovered when someone wants the number, by which point recovering it costs
+    # another full pass over every model.
+    check_emits(fields, ("std_", "raw_") if args.construction == "pos" else ("",),
+                f"measure.py {args.construction}")
     if needs_conllu and not args.conllu:
         raise SystemExit(f"--conllu is required for {args.construction}")
     if not args.reps and not args.reps_dir:

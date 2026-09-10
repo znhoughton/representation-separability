@@ -66,7 +66,7 @@ import numpy as np
 REPO_ROOT = Path(__file__).resolve().parents[2]
 for _sub in ("", "llm", "toy"):          # "" = scripts/, where the shared measure lives
     sys.path.insert(0, str(REPO_ROOT / "scripts" / _sub))
-from separability import unified_split  # noqa: E402
+from separability import unified_split, REPORT_FIELDS, check_emits  # noqa: E402
 from csv_repair import repair, migrate_header  # noqa: E402
 
 
@@ -281,27 +281,16 @@ CONFIG = dict(
     out_csv=str(REPO_ROOT / "data" / "artificial_language_grid.csv"),
 )
 
-FIELDS = ["key",                                          # resume identifier; must be written
-          "w_item", "w_class", "w_int", "w_ctx",          # what was asked for (normalized)
-          "ach_item", "ach_class", "ach_int", "ach_ctx",  # what the generator achieved
-          "d", "rank", "capacity", "activation", "seed",
-          "n_form", "n_class", "n_obs",
-          "iters", "loss", "fit_gap", "converged",        # convergence, for the stopping check
-          "size_item", "size_class", "size_interaction",
-          "sig_item", "sig_class", "sig_interaction",
-          "leak_item_into_class", "leak_int_into_margins",
-          # each overlap against the upper tail of its own null, so Experiment 1 reads its
-          # orientations the same way Experiment 2 does rather than against r/d, the null's mean
-          "leak_item_into_class_null_lo", "leak_item_into_class_null_med",
-          "leak_item_into_class_null_hi", "leak_item_into_class_p",
-          "leak_int_into_margins_null_lo", "leak_int_into_margins_null_med",
-          "leak_int_into_margins_null_hi", "leak_int_into_margins_p",
-          # how much of the representation the grid is. _adj removes the context noise the
-          # pairing means carry; the parts are kept so a different correction needs no re-run
-          "between_share", "between_share_adj", "between_ss", "within_ss",
-          "between_n_obs", "between_n_groups", "between_n0", "between_var", "within_var",
-          "overlap_item_int", "overlap_class_int",
-          "k_item", "k_class", "k_int", "n_items"]
+# Everything the generator and the training loop record, then everything the measure returns.
+# The measurement half is not listed by hand: it comes from separability.REPORT_FIELDS, so a
+# field added to the measure lands in this CSV without anyone having to remember.
+GRID_IDENT = ["key",                                          # resume identifier; must be written
+              "w_item", "w_class", "w_int", "w_ctx",          # what was asked for (normalized)
+              "ach_item", "ach_class", "ach_int", "ach_ctx",  # what the generator achieved
+              "d", "rank", "capacity", "activation", "seed",
+              "n_form", "n_class", "n_obs",
+              "iters", "loss", "fit_gap", "converged"]        # convergence, for the stopping check
+FIELDS = GRID_IDENT + REPORT_FIELDS
 
 
 def _hms(sec):
@@ -417,6 +406,7 @@ def main():
     # so the key is rebuilt from the same tuple the scheduler uses
     # A killed run can leave a half-written final row, and the resume below would skip it as
     # unparseable and then append the same cell twice. Fix both before reading.
+    check_emits(FIELDS, ("",), "toy grid")   # refuse to train 7,560 models into a lossy CSV
     repair(str(out), ["key", "d", "activation", "seed"])
     # The resume below appends rows built from FIELDS. If the file predates a column, those
     # appended rows would misalign against its header, so bring the header forward first.

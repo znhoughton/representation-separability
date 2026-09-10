@@ -64,7 +64,7 @@ ABLATION="${ABLATION:-0}"             # re-extracts reps; off unless asked for
 # The column that marks the current format. A CSV without it predates the current measure.
 # Bump this whenever a new column is added, so stale files rebuild instead of being resumed
 # into with a header that no longer matches what the writer emits.
-MARKER="between_share_adj"
+MARKER="size_class_outside"
 
 mkdir -p "$LOGDIR" "$OLDDIR" "$RUNS_DIR" "$NULLS_DIR" data
 
@@ -77,6 +77,23 @@ if [ "$SKIP_LLM" != "1" ]; then
   [ -d "$VUA_DIR" ]  || { echo "missing VUA reps dir: $VUA_DIR" >&2; fail=1; }
   [ -f "$CONLLU" ]   || { echo "missing conllu: $CONLLU" >&2; fail=1; }
 fi
+# Every writer must have a column for every field the measure produces. Checked here, before any
+# work, because a dropped column is only noticed when someone wants the number and by then it
+# costs another full pass to recover. This check exists because that happened repeatedly.
+"$PY" - <<'PYCHK' || fail=1
+import sys
+sys.path[:0] = ["scripts", "scripts/llm", "scripts/toy"]
+from separability import REPORT_FIELDS, check_emits
+import measure as M
+from artificial_language_grid import FIELDS as TOY
+check_emits(M.POS_FIELDS,   ("std_", "raw_"), "measure.py pos")
+check_emits(M.ROLE_FIELDS,  ("",), "measure.py role")
+check_emits(M.MET_FIELDS,   ("",), "measure.py metaphor")
+check_emits(M.MORPH_FIELDS, ("",), "measure.py morphology")
+check_emits(TOY,            ("",), "toy grid")
+print(f"  [preflight] all writers cover all {len(REPORT_FIELDS)} measured fields")
+PYCHK
+
 [ "$fail" -eq 0 ] || { echo "preflight failed; nothing run." >&2; exit 1; }
 
 if [ "$SKIP_TOY" != "1" ] && [ "$TOY_DEVICE" = "cuda" ]; then
@@ -127,8 +144,18 @@ for f in data/llm_unified_form.csv data/llm_role.csv data/llm_metaphor.csv; do
 done
 if [ -d "$RUNS_DIR" ] && [ -n "$(ls -A "$RUNS_DIR" 2>/dev/null)" ]; then
   echo "  [keep]  data/artificial_language_grid.csv -> re-measured from $RUNS_DIR, not retrained"
-else
-  retire_if_stale data/artificial_language_grid.csv
+elif [ -s data/artificial_language_grid.csv ] &&
+     ! head -1 data/artificial_language_grid.csv | grep -q "$MARKER"; then
+  # Stale CSV and nothing to re-measure from: the only way to the current format is retraining
+  # every cell. That is hours of GPU time, so it is never done as a side effect of running this.
+  if [ "${ALLOW_RETRAIN:-0}" = "1" ]; then
+    retire_if_stale data/artificial_language_grid.csv
+  else
+    echo "  [STOP]  data/artificial_language_grid.csv is stale and $RUNS_DIR is empty." >&2
+    echo "          Bringing it current would retrain all 7,560 cells. Either restore the saved" >&2
+    echo "          runs so it can be re-measured from disk, or re-run with ALLOW_RETRAIN=1." >&2
+    exit 1
+  fi
 fi
 
 rc_all=0
