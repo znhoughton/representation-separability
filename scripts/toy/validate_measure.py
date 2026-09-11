@@ -220,7 +220,12 @@ def main():
     # flight, so if the worker count is too high for the machine it fails immediately rather
     # than eleven hours in, and the long tail of cheap small-d runs packs in behind them.
     specs.sort(key=lambda t: -(t[0] * t[1] * t[3] * t[2]))
-    peak_gb = max(t[0] * t[1] * t[3] * t[2] * 8 * 2 for t in specs) / 1e9
+    # The observation matrix, plus the re-split working set. The latter is capped by
+    # separability._RESPLIT_CHUNK_BYTES rather than growing with n_resplit, which is what stops a
+    # large spec from taking gigabytes per worker; a few arrays of that size are alive at once.
+    from separability import _RESPLIT_CHUNK_BYTES
+    obs_gb = max(t[0] * t[1] * t[3] * t[2] * 8 * 2 for t in specs) / 1e9
+    peak_gb = obs_gb + 6 * _RESPLIT_CHUNK_BYTES / 1e9
     out = Path(args.out); out.parent.mkdir(parents=True, exist_ok=True)
 
     # Resume. A spec is identified by everything that defines it. At roughly two hours a run,

@@ -119,6 +119,11 @@ def _leak_null(vectors, basis_rank, rng, n_draws=200):
     return out
 
 
+# Working-set cap for one chunk of re-splits. Peak is a small multiple of this because the
+# decomposition holds a few arrays of the same shape; 64 MB keeps a worker under ~0.5 GB even on
+# the largest grid, so the worker count is bounded by cores rather than by memory.
+_RESPLIT_CHUNK_BYTES = 64 * 1024 * 1024
+
 BETWEEN_FIELDS = ["between_share", "between_share_adj", "between_ss", "within_ss",
                   "between_n_obs", "between_n_groups", "between_n0",
                   "between_var", "within_var"]
@@ -413,28 +418,35 @@ def _resplit_intervals(X, cells, items, classes, n_resplit, seed):
     if n_resplit < 2:
         return out
     rng = np.random.default_rng(seed)
-    MA = np.empty((n_resplit, L, C, d))
-    MB = np.empty((n_resplit, L, C, d))
-    for a, it in enumerate(items):
-        for b, c in enumerate(classes):
-            idx = cells[(it, c)]
+    # In chunks, because a (n_resplit, L, C, d) array is 2.4 GB on the largest validation spec and
+    # the decomposition holds several of that size at once: 12 GB per worker, which OOM-killed a
+    # 100 GB box at 28 workers. Chunking bounds the working set without changing a single number,
+    # and keeps the batched matmul that makes 200 draws affordable in the first place.
+    per_split = L * C * d * 8
+    chunk = int(max(1, min(n_resplit, _RESPLIT_CHUNK_BYTES // max(1, per_split))))
+    stats = {k: np.empty(n_resplit) for k in ("size_item", "size_class", "size_interaction")}
+    cell_idx = [(a, b, cells[(it, c)]) for a, it in enumerate(items) for b, c in enumerate(classes)]
+    totals = {(a, b): X[idx].sum(0) for a, b, idx in cell_idx}
+    for start in range(0, n_resplit, chunk):
+        k = min(chunk, n_resplit - start)
+        MA = np.empty((k, L, C, d))
+        MB = np.empty((k, L, C, d))
+        for a, b, idx in cell_idx:
             Xc = X[idx]
             m = len(idx)
             h = max(1, m // 2)
-            sel = np.zeros((n_resplit, m))
-            for k in range(n_resplit):
-                sel[k, rng.permutation(m)[:h]] = 1.0
+            sel = np.zeros((k, m))
+            for j in range(k):
+                sel[j, rng.permutation(m)[:h]] = 1.0
             sa = sel @ Xc
-            total = Xc.sum(0)
             MA[:, a, b, :] = sa / h
-            MB[:, a, b, :] = (total - sa) / max(1, m - h)
-    alA, beA, gmA = _decompose_batch(MA)
-    alB, beB, gmB = _decompose_batch(MB)
-    stats = {
-        "size_item": C * (alA * alB).sum(axis=(1, 2)),      # occupancy counts, as in the sizes
-        "size_class": L * (beA * beB).sum(axis=(1, 2)),
-        "size_interaction": (gmA * gmB).sum(axis=(1, 2, 3)),
-    }
+            MB[:, a, b, :] = (totals[(a, b)] - sa) / max(1, m - h)
+        alA, beA, gmA = _decompose_batch(MA)
+        alB, beB, gmB = _decompose_batch(MB)
+        stats["size_item"][start:start + k] = C * (alA * alB).sum(axis=(1, 2))
+        stats["size_class"][start:start + k] = L * (beA * beB).sum(axis=(1, 2))
+        stats["size_interaction"][start:start + k] = (gmA * gmB).sum(axis=(1, 2, 3))
+        del MA, MB, alA, beA, gmA, alB, beB, gmB
     for name, v in stats.items():
         lo, med, hi = np.quantile(v, (0.025, 0.5, 0.975))
         out[name + "_ci_lo"] = float(lo)
