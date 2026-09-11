@@ -40,7 +40,13 @@ import numpy as np  # noqa: E402
 REPO_ROOT = Path(__file__).resolve().parents[2]
 for _sub in ("", "llm", "toy"):          # "" = scripts/, where the shared measure lives
     sys.path.insert(0, str(REPO_ROOT / "scripts" / _sub))
-from separability import unified_split, REPORT_FIELDS, check_emits  # noqa: E402
+from separability import REPORT_FIELDS, check_emits  # noqa: E402
+# SEP_DEVICE=cuda routes each layer's measure through the torch/GPU backend (per-spec, since LLM
+# cells are ragged token counts); anything else keeps the numpy path. Read before the worker pool.
+if os.environ.get("SEP_DEVICE", "").lower() == "cuda":
+    from separability_gpu import unified_split  # noqa: E402
+else:
+    from separability import unified_split  # noqa: E402
 from csv_repair import repair, migrate_header  # noqa: E402
 
 _blank = lambda v: "" if v is None else v

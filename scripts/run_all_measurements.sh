@@ -64,6 +64,24 @@ SKIP_LLM="${SKIP_LLM:-0}"
 SKIP_DERIVED="${SKIP_DERIVED:-0}"     # dataset counts and the decoding analysis
 ABLATION="${ABLATION:-0}"             # re-extracts reps; off unless asked for
 
+# GPU backend for the MEASURE. SEP_DEVICE=cuda routes every measurement -- the validation (batched
+# by shape), the LLM measure and the toy re-measure (per-spec) -- through the torch backend. It
+# changes only the device the arithmetic runs on, not any number it produces (checked component by
+# component in scripts/verify_backends.py). This is a MEASUREMENT switch only: it does NOT retrain
+# the toy models and does NOT re-extract LLM reps, both of which stay separate and untouched here.
+# Falls back to CPU automatically if torch reports no CUDA. Set SEP_DEVICE=cpu to force the numpy path.
+SEP_DEVICE="${SEP_DEVICE:-cuda}"
+export SEP_DEVICE
+# On the GPU each measurement script runs as ONE process (a CUDA context per CPU worker would
+# exhaust VRAM): the validation batches same-shape specs and ignores --workers, and the LLM and toy
+# re-measure collapse their pools to a single worker. The numpy path keeps the old worker counts.
+if [ "$SEP_DEVICE" = "cuda" ]; then
+  LLM_WORKERS=1
+  REMEASURE_WORKERS=1
+else
+  REMEASURE_WORKERS="${TOY_WORKERS:-8}"
+fi
+
 # The column that marks the current format. A CSV without it predates the current measure.
 # Bump this whenever a new column is added, so stale files rebuild instead of being resumed
 # into with a header that no longer matches what the writer emits.
@@ -172,6 +190,7 @@ echo "$PGID" > "$LOGDIR/pgid"
 echo "=== measurements ================================================="
 echo "  to stop everything:  kill -TERM -$PGID     (note the minus)"
 echo "                       or: kill -TERM -\$(cat $LOGDIR/pgid)"
+echo "  measure backend: SEP_DEVICE=$SEP_DEVICE  (cuda = torch/GPU: validation batched by shape, LLM+toy per-spec)"
 echo "  toy: device=$TOY_DEVICE workers=$TOY_WORKERS  runs-dir=$RUNS_DIR"
 echo "  llm: workers=$LLM_WORKERS  nulls-dir=$NULLS_DIR"
 echo "  superseded CSVs go to $OLDDIR/ ; nothing is deleted"
@@ -252,7 +271,7 @@ if [ "$SKIP_TOY" != "1" ]; then
     echo "[re-measure] applying the current measure to every saved cell"
     step_begin re-measure
     "$PY" scripts/toy/remeasure_from_runs.py --n-resplit "$N_RESPLIT" --runs-dir "$RUNS_DIR" \
-          --workers "$TOY_WORKERS" 2>&1 | tee "$LOGDIR/remeasure.log"
+          --workers "$REMEASURE_WORKERS" 2>&1 | tee "$LOGDIR/remeasure.log"
     rc="${PIPESTATUS[0]}"; step_end re-measure
     [ "$rc" -eq 0 ] || { echo "[re-measure] FAILED (exit $rc)" >&2; rc_all=1; }
   fi

@@ -25,7 +25,12 @@ import numpy as np
 REPO_ROOT = Path(__file__).resolve().parents[2]
 for _sub in ("", "llm", "toy"):
     sys.path.insert(0, str(REPO_ROOT / "scripts" / _sub))
-from separability import unified_split, check_emits  # noqa: E402
+import os  # noqa: E402
+from separability import check_emits  # noqa: E402
+if os.environ.get("SEP_DEVICE", "").lower() == "cuda":   # GPU backend when asked, else numpy
+    from separability_gpu import unified_split  # noqa: E402
+else:
+    from separability import unified_split  # noqa: E402
 from csv_repair import repair               # noqa: E402
 from artificial_language_grid import FIELDS, CONFIG  # noqa: E402
 

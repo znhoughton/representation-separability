@@ -46,7 +46,13 @@ import numpy as np  # noqa: E402
 REPO_ROOT = Path(__file__).resolve().parents[2]
 for _sub in ("", "llm", "toy"):          # "" = scripts/, where the shared measure lives
     sys.path.insert(0, str(REPO_ROOT / "scripts" / _sub))
-from separability import unified_split, REPORT_FIELDS, check_emits  # noqa: E402
+from separability import REPORT_FIELDS, check_emits  # noqa: E402
+# SEP_DEVICE=cuda routes the measure through the torch/GPU backend (identical results, GPU speed);
+# anything else keeps the numpy path. Read at import so it reaches spawned workers too.
+if os.environ.get("SEP_DEVICE", "").lower() == "cuda":
+    from separability_gpu import unified_split  # noqa: E402
+else:
+    from separability import unified_split  # noqa: E402
 from csv_repair import repair, migrate_header  # noqa: E402
 
 
@@ -149,6 +155,44 @@ def run_one(spec, n_boot=200, n_resplit=200):
     return row
 
 
+def run_batched(specs, w, fh, n_resplit=200, vram_gb=40.0):
+    """GPU path: specs of one shape share an identical grid, so a batch of them is one set of
+    kernels. Group by (n_item, n_class, d, n_obs), sub-batch by a VRAM budget (the re-split's
+    (B, k, L, C, d) working set dominates), and measure each sub-batch at once."""
+    import torch
+    from collections import defaultdict
+    from separability_batch import measure_batch
+    dev = "cuda" if torch.cuda.is_available() else "cpu"
+    groups = defaultdict(list)
+    for t in specs:
+        groups[(t[0], t[1], t[2], t[3])].append(t)
+    n_done, total = 0, len(specs)
+    for ni, nc, d, nb in sorted(groups, key=lambda s: -(s[0] * s[1] * s[2] * s[3])):
+        g = groups[(ni, nc, d, nb)]
+        per = 6 * n_resplit * ni * nc * d * 8 + ni * nc * nb * d * 8       # bytes/spec, re-split led
+        bmax = max(1, int(vram_gb * 1e9 // max(1, per)))
+        for i in range(0, len(g), bmax):
+            chunk = g[i:i + bmax]
+            Xs, metas = [], []
+            for t in chunk:
+                rng = np.random.default_rng(t[5])
+                X, _, _, planted = build_planted(rng, t[0], t[1], t[2], t[6][0], t[6][1], t[6][2],
+                                                 t[3], t[4], t[7])
+                Xs.append(X); metas.append((t, planted))
+            Xb = torch.as_tensor(np.stack(Xs), dtype=torch.float64, device=dev)
+            reps = measure_batch(Xb, ni, nc, nb, n_resplit=n_resplit, seed=0)
+            del Xb
+            for (t, planted), rep in zip(metas, reps):
+                row = dict(n_item=t[0], n_class=t[1], d=t[2], n_obs=t[3], noise_ratio=t[4],
+                           seed=t[5], **planted)
+                for k in FIELDS:
+                    if k not in row:
+                        row[k] = rep.get(k)
+                w.writerow(row)
+            fh.flush(); n_done += len(chunk)
+            print(f"  {n_done}/{total}  ({ni}x{nc} d={d} n={nb}, batch {len(chunk)})", flush=True)
+
+
 # Planted shares of between-cell energy, as (item, class, interaction).
 #
 # The first set is the SAME FULL FACTORIAL the toy grid runs, mapped into share space. The toy
@@ -222,10 +266,12 @@ def main():
     specs.sort(key=lambda t: -(t[0] * t[1] * t[3] * t[2]))
     # The observation matrix, plus the re-split working set. The latter is capped by
     # separability._RESPLIT_CHUNK_BYTES rather than growing with n_resplit, which is what stops a
-    # large spec from taking gigabytes per worker; a few arrays of that size are alive at once.
+    # large spec from taking gigabytes per worker; the gamma-free re-split holds about four arrays
+    # of that size at once (MA, MB, their centered copies and a product temporary), so 5x is a
+    # deliberate over-estimate in the safe direction.
     from separability import _RESPLIT_CHUNK_BYTES
     obs_gb = max(t[0] * t[1] * t[3] * t[2] * 8 * 2 for t in specs) / 1e9
-    peak_gb = obs_gb + 6 * _RESPLIT_CHUNK_BYTES / 1e9
+    peak_gb = obs_gb + 5 * _RESPLIT_CHUNK_BYTES / 1e9
     out = Path(args.out); out.parent.mkdir(parents=True, exist_ok=True)
 
     # Resume. A spec is identified by everything that defines it. At roughly two hours a run,
@@ -258,20 +304,25 @@ def main():
         print(f"All specs present in {out}."); return
     resuming = bool(done)
     specs = todo
+    on_gpu = os.environ.get("SEP_DEVICE", "").lower() == "cuda"
     with open(out, "a" if resuming else "w", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=FIELDS, extrasaction="ignore")
         if not resuming:
             w.writeheader()
-        with ProcessPoolExecutor(max_workers=args.workers,
-                                 mp_context=mp.get_context("spawn")) as ex:
-            futs = [ex.submit(run_one, s) for s in specs]
-            for n, fut in enumerate(as_completed(futs), 1):
-                try:
-                    w.writerow(fut.result()); fh.flush()
-                except Exception as e:
-                    print(f"  !! {type(e).__name__}: {e}", flush=True)
-                if n % 200 == 0 or n == len(specs):
-                    print(f"  {n}/{len(specs)}", flush=True)
+        if on_gpu:
+            # One process feeds the GPU in same-shape batches; no worker pool.
+            run_batched(specs, w, fh, n_resplit=args.n_resplit)
+        else:
+            with ProcessPoolExecutor(max_workers=args.workers,
+                                     mp_context=mp.get_context("spawn")) as ex:
+                futs = [ex.submit(run_one, s) for s in specs]
+                for n, fut in enumerate(as_completed(futs), 1):
+                    try:
+                        w.writerow(fut.result()); fh.flush()
+                    except Exception as e:
+                        print(f"  !! {type(e).__name__}: {e}", flush=True)
+                    if n % 200 == 0 or n == len(specs):
+                        print(f"  {n}/{len(specs)}", flush=True)
     print(f"Done -> {out}")
 
 

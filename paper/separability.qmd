@@ -396,11 +396,11 @@ $$ {#eq-decomp}
 
 where $\mu$ is the grand mean; $\alpha(i)$, item $i$'s mean across classes minus $\mu$, carries the lexical information; $\beta(c)$, the mean across items at class $c$ minus $\mu$, carries the class information; and $\gamma(i,c)$ carries the idiosyncratic information, what item $i$ at class $c$ holds that neither marginal accounts for (@fig-measurement). Because every item is observed in every class with equal weight, neither marginal absorbs part of the other. The four terms add back to $M[i,c]$ exactly, and no two of them vary together across the grid, so their squared lengths sum to the total and we report each as a share of it.
 
-Each of these averages is taken over finitely many observations, which differ only in context, so each carries some of the context term of @eq-toy as noise. For $\gamma$ this matters: a squared length is always positive, so its size would come out above zero even for a language with no idiosyncratic information in it at all. We therefore divide the observations behind each average into two even-sized splits, run the decomposition on each split separately, and take the dot product of the two estimates of $\gamma$, $\langle \gamma_A, \gamma_B \rangle$, which is large when the splits agree about the idiosyncratic information and near zero when they do not. It is the contexts that are divided and not the words, so every word appears in both splits, and the dot product compares two estimates of the same word built from different sentences. Noise that differs between the splits cancels, and unlike a squared length this can come out negative, so zero is a value it can take rather than a floor it sits above.
+Each of these averages is taken over finitely many observations, which differ only in context, so each carries some of the context term of @eq-toy as noise. We remove it by dividing the observations behind each average into two even-sized splits, running the decomposition on each split separately, and estimating each component's size as the dot product of its two half-estimates, which is large when the splits agree about the component and near zero when they do not. It is the contexts that are divided and not the words, so every word appears in both splits, and the dot product compares two estimates of the same word built from different sentences: noise that differs between the splits is independent and cancels.
 
 For each representation we report two measurements. The first measures the fraction of the representation accounted for by lexical, class and idiosyncratic information: each component's squared length, summed over its vectors and divided by the total, so that the three fractions sum to one. The second measures whether those components occupy the same directions. In order to do so, we project the item vectors onto the class direction and record the fraction of their squared length that survives, and we project the interaction onto the smallest subspace containing both the item and the class vectors (i.e., the span of the two subspaces). A representation is separable if a word's representation is the sum of an item part and a class part with the two on their own axes, so it fails either when the components are non-orthogonal, so that projecting out the class also removes item information, or when there is a third component that is neither an item part nor a class part, whatever its orientation. The question is accordingly not whether class information is present, but how it is carried: on a single direction shared across words, or on a separate direction for each of them.
 
-In order to quantify the effect of size, we compare each to a random permutation distribution. For class, we permutate the class labels within each item: for a given word, whether a representation is labeled as a noun or as a verb is decided at random, independently for every word. Each word keeps both of its representations, so the item effect is untouched, but any systematic difference between the two classes is averaged away. For item and for the interaction, both measured as the agreement between two splits of the same words, we permutate which item of one split is paired with which item of the other. Each split is left exactly as measured, but each word is now matched with a different word instead of with its own second estimate, so there is no shared structure left for the comparison to find. For example, instead of matching *walk*'s representations from one split with *walk*'s from the other, we match them with some other word's, such as *run*, so that what we measure is the agreement two unrelated words happen to show by chance. We then recompute the same quantities we computed from @eq-decomp, two hundred times for each. The resulting distribution is what the size would be if that structure were absent, and we report how many measurements fall outside its 95% interval.
+To quantify whether the effect of size is meaningful, we test each against zero. Size is estimated by taking the dot product of two independent half-estimates of the same component, so noise that differs between the halves cancels out and its value is zero in expectation when the component is absent, which is what makes zero the null. We repeat the measurement over two hundred re-samplings to estimate how much the size varies with which observations fall in which half, and we call a size meaningful when its confidence interval excludes zero. On representations with a component planted at exactly zero, this flags an effect about 5% of the time (Appendix \ref{sec-appendix-validate}), the false-positive rate expected of a 95% confidence interval.
 
 In order to quantify whether the overlap is meaningful, we measure the overlap an effect has with a random subspace. We do so by holding the effect exactly as measured and projecting it onto a random subspace of the same rank, two hundred times, which leaves the effect untouched and varies only the subspace. These two hundred projections give us a distribution of overlaps that an unrelated subspace would yield. An effect lower than this baseline indicates meaningful orthogonality; an effect larger than it indicates meaningful non-orthogonality. We present each overlap as a multiple of the median of this distribution, together with how many measurements fall outside its 95% interval. This gives both the size of the effect and how consistently it holds across measurements.
 
@@ -648,18 +648,20 @@ val <- rd("validate_measure.csv")
 v_rec <- val |> filter(n_obs == 24, d >= 768) |> group_by(planted_int) |>
   summarize(n = n(), measured = median(size_interaction),
             lo = quantile(size_interaction, .05), hi = quantile(size_interaction, .95),
-            flagged = mean(sig_interaction), .groups = "drop")
+            flagged = mean(size_interaction_excludes_zero), .groups = "drop")
 v_null <- bind_rows(
   val |> filter(planted_int == 0) |> group_by(n_obs) |>
     summarize(effect = "interaction", med = median(size_interaction),
               p95 = quantile(size_interaction, .95),
-              flagged = mean(sig_interaction), .groups = "drop"),
+              flagged = mean(size_interaction_excludes_zero), .groups = "drop"),
   val |> filter(planted_class == 0) |> group_by(n_obs) |>
     summarize(effect = "class effect", med = median(size_class),
-              p95 = quantile(size_class, .95), flagged = NA_real_, .groups = "drop"),
+              p95 = quantile(size_class, .95),
+              flagged = mean(size_class_excludes_zero), .groups = "drop"),
   val |> filter(planted_item == 0) |> group_by(n_obs) |>
     summarize(effect = "item effect", med = median(size_item),
-              p95 = quantile(size_item, .95), flagged = NA_real_, .groups = "drop"))
+              p95 = quantile(size_item, .95),
+              flagged = mean(size_item_excludes_zero), .groups = "drop"))
 v_ov <- val |> filter(!is.na(leak_item_into_class), n_obs == 24, planted_overlap == 0) |>
   group_by(d) |> summarize(measured = median(leak_item_into_class),
                            chance = median(k_class / d), .groups = "drop")
@@ -682,11 +684,11 @@ v_rec |> filter(planted_int == 0 | planted_int > 0.02) |> head(12) |>
   kable_styling(font_size = 9, latex_options = c("repeat_header"))
 ```
 
-**Floors.** The interaction and the item effect read essentially zero when nothing is planted, at every sample size. The class effect does not, and this is the one quantity in the paper that carries a floor worth knowing (Table \ref{tbl-val-null}): at 24 observations per item and class a true zero reads `r g(vget("class effect", 24, "med"), 4)`. This is the price of estimating the class effect as a squared length rather than a cross-product, and it is why the metaphor result in @sec-exp2-results is stated as an inability to distinguish the class effect from zero rather than as a measurement of something small. Metaphor's observed class effect, 0.0016 to 0.0062 at the deepest layer, sits at that floor.
+**Reading zero.** All three effects read essentially zero when nothing is planted, at every sample size, and each is flagged at about the nominal 5% (Table \ref{tbl-val-null}): at 24 observations per item and class a true zero class effect reads `r g(vget("class effect", 24, "med"), 4)`. This is why the metaphor result in @sec-exp2-results is stated as an inability to distinguish the class effect from zero: its interval includes zero, not that it measures something small.
 
 ```{r}
 #| label: tbl-val-null
-#| tbl-cap: "What the measure reports when an effect is planted at exactly zero, by observations per item and class, pooled over every other axis. The interaction is flagged well below the nominal 5%; the class effect is not cross-denoised and carries a floor that shrinks with sample size."
+#| tbl-cap: "What the measure reports when an effect is planted at exactly zero, by observations per item and class, pooled over every other axis. All three effects are cross-denoised dot products between splits, so each reads essentially zero and is flagged at about the nominal 5%."
 v_null |>
   transmute(effect, observations = n_obs,
             median = g(med, 5), `95th pct` = g(p95, 4),

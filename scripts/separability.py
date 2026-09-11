@@ -119,9 +119,16 @@ def _leak_null(vectors, basis_rank, rng, n_draws=200):
     return out
 
 
-# Working-set cap for one chunk of re-splits. Peak is a small multiple of this because the
-# decomposition holds a few arrays of the same shape; 64 MB keeps a worker under ~0.5 GB even on
-# the largest grid, so the worker count is bounded by cores rather than by memory.
+# Working-set cap for one chunk of re-splits. Peak is a small multiple of this: the gamma-free
+# form below holds MA, MB, their centered copies and one product temporary -- about four arrays of
+# this size at once, so 64 MB keeps a worker under ~0.5 GB even on the largest grid and the worker
+# count stays bounded by cores rather than by memory.
+#
+# Kept at 64 MB ON PURPOSE. The chunk size sets how the random stream is grouped across draws, so
+# changing it changes which observations land in which half -- different draws, though the same
+# calibration. At 64 MB the draws are byte-identical to the pre-gamma-free code, so dropping gamma
+# needed no re-measure. Raising it buys only a few percent (the win here is the gamma-free math,
+# not the chunk) and would force the planted-zero calibration to be re-checked; not worth it.
 _RESPLIT_CHUNK_BYTES = 64 * 1024 * 1024
 
 BETWEEN_FIELDS = ["between_share", "between_share_adj", "between_ss", "within_ss",
@@ -321,10 +328,11 @@ def _decompose(M):
     return mu, alpha, beta, gamma
 
 
-def _gated_report(aa, ga, ab, gb, al, be, gm, L, C, rng, n_boot, sig):
-    """Shared gating + reporting from TWO estimates of the item(alpha) and interaction(gamma)
-    effects -- (aa,ga) and (ab,gb), already in a common frame (toy: cross-fit aligned; LLM: two
-    same-model context halves) -- plus the AVERAGED decomposition (al,be,gm) for directions.
+def _gated_report(aa, ba, ga, ab, bb, gb, al, be, gm, L, C, rng, n_boot, sig):
+    """Shared gating + reporting from TWO estimates of the item(alpha), class(beta) and
+    interaction(gamma) effects -- (aa,ba,ga) and (ab,bb,gb), already in a common frame (toy:
+    cross-fit aligned; LLM: two same-model context halves) -- plus the AVERAGED decomposition
+    (al,be,gm) for directions.
     Cross-denoises each size via <A,B>; tests each component by an item-permutation null on that
     SIGNED cross-product; a leak/angle is reported only if BOTH components it relates are
     SIGNIFICANT (permutation) AND SUBSTANTIAL (denoised size >= floor). One rule NAs both
@@ -332,6 +340,13 @@ def _gated_report(aa, ga, ab, gb, al, be, gm, L, C, rng, n_boot, sig):
     def cross(Pa, Pb, mult):
         return mult * float((Pa * Pb).sum())
     obs_item, obs_int = cross(aa, ab, C), cross(ga, gb, 1)
+    # Class as a cross-split too, matching item and interaction: a squared length can never be
+    # negative and is almost never zero, so it cannot be tested against a zero null. The dot
+    # product of the two half-estimates of beta is unbiased and zero in expectation when the class
+    # effect is absent, so it shares the same zero null and the same re-split interval as the other
+    # two. There is no permutation null for it -- with only two classes the class index has a single
+    # non-trivial permutation -- so its significance comes from the re-split interval alone.
+    obs_class = cross(ba, bb, L)
     null_item, null_int = [], []
     for _ in range(n_boot):
         p = rng.permutation(L)
@@ -339,7 +354,7 @@ def _gated_report(aa, ga, ab, gb, al, be, gm, L, C, rng, n_boot, sig):
     hi = lambda v: float(np.percentile(v, 100 * (1 - sig)))
     s_item = max(0.0, obs_item - float(np.mean(null_item)))
     s_int = max(0.0, obs_int - float(np.mean(null_int)))
-    s_class = L * float((be ** 2).sum())                    # class marginal (robust); size-gated
+    s_class = max(0.0, obs_class)                           # unbiased cross-split; 0 when absent
     total = max(1e-12, s_item + s_class + s_int)
     FLOOR = 0.02                                            # floor on the DENOISED size ("orientable?")
     big = {"item": (obs_item > hi(null_item)) and (s_item / total >= FLOOR),
@@ -380,17 +395,6 @@ def _gated_report(aa, ga, ab, gb, al, be, gm, L, C, rng, n_boot, sig):
         n_items=L, n_classes=C, k_item=S_item.shape[1], k_class=S_class.shape[1], k_int=S_int.shape[1],
         k_margin=S_margin.shape[1],
     )
-
-
-def _decompose_batch(M):
-    """_decompose across a leading split axis. M is (S, L, C, d); returns alpha (S, L, d),
-    beta (S, C, d), gamma (S, L, C, d), matching _decompose for each slice."""
-    mu = M.mean(axis=(1, 2), keepdims=True)
-    Mc = M - mu
-    al = Mc.mean(axis=2)
-    be = Mc.mean(axis=1)
-    gm = Mc - al[:, :, None, :] - be[:, None, :, :]
-    return al, be, gm
 
 
 def _resplit_intervals(X, cells, items, classes, n_resplit, seed):
@@ -435,18 +439,28 @@ def _resplit_intervals(X, cells, items, classes, n_resplit, seed):
             Xc = X[idx]
             m = len(idx)
             h = max(1, m // 2)
+            # All k half-selections at once: argsort of uniform keys is a uniform permutation, and
+            # its first h entries pick a random half. Replaces a Python loop over the k draws.
+            pick = np.argsort(rng.random((k, m)), axis=1)[:, :h]
             sel = np.zeros((k, m))
-            for j in range(k):
-                sel[j, rng.permutation(m)[:h]] = 1.0
+            np.put_along_axis(sel, pick, 1.0, axis=1)
             sa = sel @ Xc
             MA[:, a, b, :] = sa / h
             MB[:, a, b, :] = (totals[(a, b)] - sa) / max(1, m - h)
-        alA, beA, gmA = _decompose_batch(MA)
-        alB, beB, gmB = _decompose_batch(MB)
-        stats["size_item"][start:start + k] = C * (alA * alB).sum(axis=(1, 2))
-        stats["size_class"][start:start + k] = L * (beA * beB).sum(axis=(1, 2))
-        stats["size_interaction"][start:start + k] = (gmA * gmB).sum(axis=(1, 2, 3))
-        del MA, MB, alA, beA, gmA, alB, beB, gmB
+        # Sizes without ever forming gamma. alpha, beta and gamma are each centered, so every
+        # cross-type term drops and  <gA,gB> = <McA,McB> - C<aA,aB> - L<bA,bB>  exactly, which
+        # frees the two (k,L,C,d) gamma arrays. einsum then fuses each multiply-and-sum so the big
+        # (k,L,C,d) product is never materialised, the step the profile showed dominating memory.
+        McA = MA - MA.mean(axis=(1, 2), keepdims=True); del MA
+        McB = MB - MB.mean(axis=(1, 2), keepdims=True); del MB
+        aA, aB = McA.mean(2), McB.mean(2)               # item marginals   (k, L, d)
+        bA, bB = McA.mean(1), McB.mean(1)               # class marginals  (k, C, d)
+        si = C * np.einsum('kld,kld->k', aA, aB)
+        sc = L * np.einsum('kcd,kcd->k', bA, bB)
+        stats["size_item"][start:start + k] = si
+        stats["size_class"][start:start + k] = sc
+        stats["size_interaction"][start:start + k] = np.einsum('klcd,klcd->k', McA, McB, optimize=True) - si - sc
+        del McA, McB, aA, aB, bA, bB
     for name, v in stats.items():
         lo, med, hi = np.quantile(v, (0.025, 0.5, 0.975))
         out[name + "_ci_lo"] = float(lo)
@@ -481,10 +495,10 @@ def unified_split(X, item_of, class_of, min_cell=10, classes=None, standardize=T
     M, MA, MB, ok = _cell_means(X, cells, items, classes, "split", rng)
     if not ok.all():
         return {"error": "balanced grid has empty cells (raise min_cell or fix class set)"}
-    _, aa, _, ga = _decompose(MA)                           # half A (same frame as B)
-    _, ab, _, gb = _decompose(MB)                           # half B
+    _, aa, ba, ga = _decompose(MA)                          # half A (same frame as B)
+    _, ab, bb, gb = _decompose(MB)                          # half B
     _, al, be, gm = _decompose(M)                           # full grid -> best directions
-    rep = _gated_report(aa, ga, ab, gb, al, be, gm, L, C, rng, n_boot, sig)
+    rep = _gated_report(aa, ba, ga, ab, bb, gb, al, be, gm, L, C, rng, n_boot, sig)
 
     # An overlap is only evidence of shared directions if it beats what arbitrary orientation
     # gives, and r/d is just that null's mean. Draw the null and report its upper tail.
