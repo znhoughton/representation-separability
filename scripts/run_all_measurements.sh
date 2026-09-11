@@ -53,6 +53,9 @@ NULLS_DIR="${NULLS_DIR:-data/llm_nulls}"
 LOGDIR="${LOGDIR:-logs/measurements}"
 OLDDIR="${OLDDIR:-old}"
 MIN_CELL="${MIN_CELL:-10}"
+# Re-splits behind each size interval. 200 is where the false-positive rate settles at ~5%
+# on planted zeros; fewer makes the 2.5th percentile too noisy and the test anti-conservative.
+N_RESPLIT="${N_RESPLIT:-200}"
 TOY_DEVICE="${TOY_DEVICE:-cuda}"
 TOY_WORKERS="${TOY_WORKERS:-32}"      # cells are independent, so this is just core/VRAM count
 LLM_WORKERS="${LLM_WORKERS:-4}"       # RAM-bound: ~12 GB peak per worker on a 1.4B
@@ -64,7 +67,7 @@ ABLATION="${ABLATION:-0}"             # re-extracts reps; off unless asked for
 # The column that marks the current format. A CSV without it predates the current measure.
 # Bump this whenever a new column is added, so stale files rebuild instead of being resumed
 # into with a header that no longer matches what the writer emits.
-MARKER="size_class_outside"
+MARKER="size_class_excludes_zero"
 
 mkdir -p "$LOGDIR" "$OLDDIR" "$RUNS_DIR" "$NULLS_DIR" data
 
@@ -192,7 +195,7 @@ if [ "$SKIP_TOY" != "1" ]; then
   echo
   echo "[toy] 7,560 cells -> data/artificial_language_grid.csv"
   step_begin toy
-  "$PY" scripts/toy/artificial_language_grid.py \
+  "$PY" scripts/toy/artificial_language_grid.py --n-resplit "$N_RESPLIT" \
         --device "$TOY_DEVICE" --workers "$TOY_WORKERS" --runs-dir "$RUNS_DIR" \
         2>&1 | tee "$LOGDIR/toy.log"
   rc="${PIPESTATUS[0]}"; step_end toy
@@ -203,7 +206,7 @@ if [ "$SKIP_TOY" != "1" ]; then
   echo
   echo "[validate] -> data/validate_measure.csv"
   step_begin validate
-  "$PY" scripts/toy/validate_measure.py --workers "$TOY_WORKERS" 2>&1 | tee "$LOGDIR/validate.log"
+  "$PY" scripts/toy/validate_measure.py --n-resplit "$N_RESPLIT" --workers "$TOY_WORKERS" 2>&1 | tee "$LOGDIR/validate.log"
   rc="${PIPESTATUS[0]}"; step_end validate
   [ "$rc" -eq 0 ] || { echo "[validate] FAILED (exit $rc)" >&2; rc_all=1; }
 
@@ -214,7 +217,7 @@ if [ "$SKIP_TOY" != "1" ]; then
     echo
     echo "[re-measure] applying the current measure to every saved cell"
     step_begin re-measure
-    "$PY" scripts/toy/remeasure_from_runs.py --runs-dir "$RUNS_DIR" \
+    "$PY" scripts/toy/remeasure_from_runs.py --n-resplit "$N_RESPLIT" --runs-dir "$RUNS_DIR" \
           --workers "$TOY_WORKERS" 2>&1 | tee "$LOGDIR/remeasure.log"
     rc="${PIPESTATUS[0]}"; step_end re-measure
     [ "$rc" -eq 0 ] || { echo "[re-measure] FAILED (exit $rc)" >&2; rc_all=1; }
@@ -228,6 +231,7 @@ run_llm() {                       # construction, out, extra args...
   echo "[$name] -> $out"
   step_begin "llm-$name"
   "$PY" scripts/llm/measure.py "$name" --min-cell "$MIN_CELL" --workers "$LLM_WORKERS" \
+        --n-resplit "$N_RESPLIT" \
         --nulls-dir "$NULLS_DIR" --out "$out" "$@" 2>&1 | tee "$LOGDIR/$name.log"
   local rc="${PIPESTATUS[0]}"
   step_end "llm-$name"

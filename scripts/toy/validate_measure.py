@@ -132,13 +132,14 @@ VAL_IDENT = ["n_item", "n_class", "d", "n_obs", "noise_ratio", "seed",
 FIELDS = VAL_IDENT + REPORT_FIELDS
 
 
-def run_one(spec, n_boot=200):
+def run_one(spec, n_boot=200, n_resplit=200):
     (n_item, n_class, d, n_obs, noise, seed, shares, overlap) = spec
     rng = np.random.default_rng(seed)
     X, item_of, class_of, planted = build_planted(
         rng, n_item, n_class, d, shares[0], shares[1], shares[2], n_obs, noise, overlap)
     r = unified_split(X, item_of, class_of, min_cell=max(2, n_obs // 2),
-                      classes=list(range(n_class)), standardize=True, n_boot=n_boot, seed=seed)
+                      classes=list(range(n_class)), standardize=True, n_boot=n_boot,
+                      n_resplit=n_resplit, seed=seed)
     row = dict(n_item=n_item, n_class=n_class, d=d, n_obs=n_obs, noise_ratio=noise, seed=seed,
                **planted)
     for k in FIELDS:
@@ -190,6 +191,8 @@ def main():
     ap.add_argument("--out", default=str(REPO_ROOT / "data" / "validate_measure.csv"))
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--seeds", type=int, default=N_SEEDS)
+    ap.add_argument("--n-resplit", type=int, default=200,
+                    help="re-splits behind each size interval; 200 is where the false-positive rate settles at ~5% on planted zeros")
     args = ap.parse_args()
 
     if args.probe:

@@ -125,8 +125,8 @@ def measure_pos(path, args, layers):
         # two independent estimates = two token-context halves (same model -> same frame).
         # raw = unstandardized, kept for the rogue-dimension contrast.
         std = unified_split(X, item, upos, min_cell=args.min_cell, classes=use, standardize=True,
-                            keep_null_draws=True)
-        raw = unified_split(X, item, upos, min_cell=args.min_cell, classes=use, standardize=False)
+                            keep_null_draws=True, n_resplit=getattr(args, "n_resplit", 200))
+        raw = unified_split(X, item, upos, min_cell=args.min_cell, classes=use, standardize=False, n_resplit=getattr(args, "n_resplit", 200))
         del X
         if "error" in std:
             print(f"  layer {li}: {std['error']}", flush=True)
@@ -168,7 +168,7 @@ def measure_role(path, args, layers):
         m = (up == ROLE_POS) & np.isin(deprel, ROLE_CLASSES)
         if m.sum() >= 2 * args.min_cell:
             r = unified_split(X[m], form[m], deprel[m], min_cell=args.min_cell,
-                              classes=list(ROLE_CLASSES), keep_null_draws=True)
+                              classes=list(ROLE_CLASSES), keep_null_draws=True, n_resplit=getattr(args, "n_resplit", 200))
             if "error" not in r:
                 _stash_draws(draws, f"layer{li}", r)
         rows.append(dict(model=model, init=init, construction="noun_role",
@@ -206,7 +206,7 @@ def measure_metaphor(path, args, layers):
             continue
         X = z[f"layer_{li}"]; d = int(X.shape[1])
         r = unified_split(X, form, cls, min_cell=args.min_cell, classes=list(MET_CLASSES),
-                          keep_null_draws=True)
+                          keep_null_draws=True, n_resplit=getattr(args, "n_resplit", 200))
         del X
         if "error" in r:
             continue
@@ -280,7 +280,7 @@ def measure_morphology(path, args, layers):
                 if m.sum() < 2 * args.min_cell:
                     continue
                 r = unified_split(X[m], lem[m], feats[key][m], min_cell=args.min_cell,
-                                  classes=list(levels), keep_null_draws=True)
+                                  classes=list(levels), keep_null_draws=True, n_resplit=getattr(args, "n_resplit", 200))
                 if "error" in r:
                     continue
                 _stash_draws(draws, f"layer{li}__{feat}__{mode}", r)
@@ -329,6 +329,8 @@ def main():
     ap.add_argument("--skip-random", action="store_true", help="only measure *pretrained* reps")
     ap.add_argument("--workers", type=int, default=6,
                     help="parallelize ACROSS FILES. RAM ~= workers x per-file peak (~12GB for a 1.4B)")
+    ap.add_argument("--n-resplit", type=int, default=200,
+                    help="re-splits behind each size interval; 200 is where the false-positive rate settles at ~5% on planted zeros")
     ap.add_argument("--out", default=None, help="default depends on the construction")
     args = ap.parse_args()
 

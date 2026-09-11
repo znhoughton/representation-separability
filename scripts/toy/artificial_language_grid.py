@@ -334,6 +334,7 @@ def run_cell(spec, cfg):
     runs_dir = cfg.get("runs_dir")
     r = unified_split(H, form_of, class_of, min_cell=max(2, cfg["n_obs"] // 2),
                       classes=list(range(cfg["n_class"])), standardize=True, seed=0,
+                      n_resplit=cfg.get("n_resplit", 200),
                       keep_null_draws=bool(runs_dir))
     if runs_dir:
         # written from the worker so the arrays are never pickled back to the parent
@@ -363,6 +364,8 @@ def main():
     ap.add_argument("--device", default="cpu")
     ap.add_argument("--workers", type=int, default=None)
     ap.add_argument("--out", default=None)
+    ap.add_argument("--n-resplit", type=int, default=200,
+                    help="re-splits behind each size interval; 200 is where the false-positive rate settles at ~5% on planted zeros")
     ap.add_argument("--runs-dir", default=str(REPO_ROOT / "data" / "toy_runs"),
                     help="save each cell's hidden states and null draws here (~8 GB full grid); "
                          "a later change to the measure then needs no retraining. Default on: "
@@ -372,7 +375,7 @@ def main():
                     help="do not save hidden states or null draws (saves ~8 GB, costs a retrain "
                          "if what we measure ever changes)")
     args = ap.parse_args()
-    cfg = dict(CONFIG, device=args.device)
+    cfg = dict(CONFIG, device=args.device, n_resplit=args.n_resplit)
     if args.runs_dir and not args.no_save_runs:
         Path(args.runs_dir).mkdir(parents=True, exist_ok=True)
         cfg["runs_dir"] = args.runs_dir

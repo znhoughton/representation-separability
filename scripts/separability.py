@@ -130,7 +130,7 @@ BETWEEN_FIELDS = ["between_share", "between_share_adj", "between_ss", "within_ss
 # new question needed a fresh measurement pass to recover a number that had already been computed
 # and thrown away. Adding a field to the measure now breaks the run immediately instead.
 _LEAK_NULL = ["_null_lo", "_null_med", "_null_hi", "_p", "_outside", "_ratio"]
-_SIZE_NULL = ["_null_lo", "_null_med", "_null_hi", "_outside"]
+_SIZE_CI = ["_ci_lo", "_ci_med", "_ci_hi", "_excludes_zero", "_n_resplit"]
 
 REPORT_FIELDS = (
     ["size_item", "size_class", "size_interaction",
@@ -141,9 +141,9 @@ REPORT_FIELDS = (
      "n_items", "n_classes", "k_item", "k_class", "k_int", "k_margin"]
     + [f"leak_item_into_class{s}" for s in _LEAK_NULL]
     + [f"leak_int_into_margins{s}" for s in _LEAK_NULL]
-    + [f"size_item{s}" for s in _SIZE_NULL]
-    + [f"size_interaction{s}" for s in _SIZE_NULL]
-    + [f"size_class{s}" for s in _SIZE_NULL]
+    + [f"size_item{s}" for s in _SIZE_CI]
+    + [f"size_interaction{s}" for s in _SIZE_CI]
+    + [f"size_class{s}" for s in _SIZE_CI]
     + BETWEEN_FIELDS
 )
 
@@ -377,8 +377,76 @@ def _gated_report(aa, ga, ab, gb, al, be, gm, L, C, rng, n_boot, sig):
     )
 
 
+def _decompose_batch(M):
+    """_decompose across a leading split axis. M is (S, L, C, d); returns alpha (S, L, d),
+    beta (S, C, d), gamma (S, L, C, d), matching _decompose for each slice."""
+    mu = M.mean(axis=(1, 2), keepdims=True)
+    Mc = M - mu
+    al = Mc.mean(axis=2)
+    be = Mc.mean(axis=1)
+    gm = Mc - al[:, :, None, :] - be[:, None, :, :]
+    return al, be, gm
+
+
+def _resplit_intervals(X, cells, items, classes, n_resplit, seed):
+    """Interval for each size from redrawing the split, and whether it excludes zero.
+
+    Why this and not a permutation null. A squared length is always positive, so it sits above a
+    floor and no amount of comparison tells a small effect from none. The cross-split product is
+    unbiased for the same quantity and free to go negative, so its null value is exactly zero and
+    no reference distribution has to be constructed at all: the question is only whether the
+    estimate is reliably on one side of it.
+
+    What varies here is which observations land in which half, which is the arbitrary choice the
+    reported number rests on. Redrawing it says how much the answer depends on that choice. This
+    is a resampling interval, not an analytic one: coverage was checked against planted zeros
+    rather than derived, and at 200 draws the false-positive rate is 4-5% for all three components
+    with full power when an effect is present. A permutation of the item index was tried first and
+    read 34% on the toy's linear arm, whose interaction is zero by algebra.
+
+    All the splits are taken at once. A cell's half-mean is a weighted sum of its observations, so
+    stacking the draws' indicator vectors turns n_resplit passes over the data into one matmul per
+    cell -- about 70x faster, which is what makes 200 draws affordable at LLM scale.
+    """
+    L, C, d = len(items), len(classes), X.shape[1]
+    out = {}
+    if n_resplit < 2:
+        return out
+    rng = np.random.default_rng(seed)
+    MA = np.empty((n_resplit, L, C, d))
+    MB = np.empty((n_resplit, L, C, d))
+    for a, it in enumerate(items):
+        for b, c in enumerate(classes):
+            idx = cells[(it, c)]
+            Xc = X[idx]
+            m = len(idx)
+            h = max(1, m // 2)
+            sel = np.zeros((n_resplit, m))
+            for k in range(n_resplit):
+                sel[k, rng.permutation(m)[:h]] = 1.0
+            sa = sel @ Xc
+            total = Xc.sum(0)
+            MA[:, a, b, :] = sa / h
+            MB[:, a, b, :] = (total - sa) / max(1, m - h)
+    alA, beA, gmA = _decompose_batch(MA)
+    alB, beB, gmB = _decompose_batch(MB)
+    stats = {
+        "size_item": C * (alA * alB).sum(axis=(1, 2)),      # occupancy counts, as in the sizes
+        "size_class": L * (beA * beB).sum(axis=(1, 2)),
+        "size_interaction": (gmA * gmB).sum(axis=(1, 2, 3)),
+    }
+    for name, v in stats.items():
+        lo, med, hi = np.quantile(v, (0.025, 0.5, 0.975))
+        out[name + "_ci_lo"] = float(lo)
+        out[name + "_ci_med"] = float(med)
+        out[name + "_ci_hi"] = float(hi)
+        out[name + "_excludes_zero"] = bool(lo > 0 or hi < 0)
+        out[name + "_n_resplit"] = int(n_resplit)
+    return out
+
+
 def unified_split(X, item_of, class_of, min_cell=10, classes=None, standardize=True,
-                  n_boot=200, n_null=200, sig=0.05, seed=0, verbose=False,
+                  n_boot=200, n_null=200, n_resplit=200, sig=0.05, seed=0, verbose=False,
                   keep_null_draws=False):
     """The measure. Both experiments call this, with the same arguments.
 
@@ -441,35 +509,9 @@ def unified_split(X, item_of, class_of, min_cell=10, classes=None, standardize=T
         _null_cols(gm.reshape(L * C, -1), rep["k_margin"],
                    rep["leak_int_into_margins"], "leak_int_into_margins")
 
-    # The class effect has no cross-product to permute, so its baseline comes from permuting
-    # class labels within each item: that destroys any systematic class difference while leaving
-    # each item's own representations intact. mu and the item effect are unchanged by it.
-    crng = np.random.default_rng(seed + 2)
-    Mc = M - M.mean((0, 1))
-    obs_class = L * float((be ** 2).sum())
-    nd_class = np.empty(n_boot)
-    for b in range(n_boot):
-        perm = np.stack([Mc[i][crng.permutation(C)] for i in range(L)])
-        nd_class[b] = L * float((perm.mean(0) ** 2).sum())
-
-    # Each size against its own baseline. Two things to know about these columns. The nulls are
-    # on the RAW scale (cross-product, or L*sum||beta||^2) while the reported sizes are shares of
-    # the total, so the *_null_* values are not comparable to size_* directly; the _outside flag
-    # is, because it is invariant to that denominator. And no multiple of the median is given:
-    # these nulls are centred on zero by construction, so the ratio is undefined.
-    for name, obs, draws in (("size_item", rep.pop("_obs_item"), rep["draws_size_item"]),
-                             ("size_interaction", rep.pop("_obs_int"),
-                              rep["draws_size_interaction"]),
-                             ("size_class", obs_class, nd_class)):
-        if draws.size:
-            lo, med, hi = np.quantile(draws, (0.025, 0.5, 0.975))
-            rep[name + "_null_lo"] = float(lo)
-            rep[name + "_null_med"] = float(med)
-            rep[name + "_null_hi"] = float(hi)
-            rep[name + "_outside"] = bool(obs < lo or obs > hi)
-    if keep_null_draws:
-        rep["draws_size_class"] = nd_class
-    else:
+    rep.pop("_obs_item", None); rep.pop("_obs_int", None)
+    rep.update(_resplit_intervals(X, cells, items, classes, n_resplit, seed + 2))
+    if not keep_null_draws:
         rep.pop("draws_size_item", None)
         rep.pop("draws_size_interaction", None)
 

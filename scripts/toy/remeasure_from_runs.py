@@ -44,7 +44,7 @@ def _parse_tag(stem):
     return key, d[1:], act, seed[1:]
 
 
-def remeasure(path):
+def remeasure(path, n_resplit=200):
     z = np.load(path, allow_pickle=False)
     for need in ("H", "form_of", "class_of"):
         if need not in z.files:
@@ -53,7 +53,8 @@ def remeasure(path):
     n_class = int(z["class_of"].max()) + 1
     return unified_split(H, z["form_of"], z["class_of"],
                          min_cell=max(2, CONFIG["n_obs"] // 2),
-                         classes=list(range(n_class)), standardize=True, seed=0)
+                         classes=list(range(n_class)), standardize=True, seed=0,
+                         n_resplit=n_resplit)
 
 
 def main():
@@ -63,6 +64,8 @@ def main():
     ap.add_argument("--csv", default=str(REPO_ROOT / "data" / "artificial_language_grid.csv"))
     ap.add_argument("--workers", type=int, default=8)
     args = ap.parse_args()
+    ap.add_argument("--n-resplit", type=int, default=200,
+                    help="re-splits behind each size interval; 200 is where the false-positive rate settles at ~5% on planted zeros")
 
     runs = sorted(Path(args.runs_dir).glob("*.npz"))
     if not runs:
@@ -82,7 +85,7 @@ def main():
     done = missing = failed = 0
     t0 = time.time()
     with ProcessPoolExecutor(max_workers=args.workers) as ex:
-        futs = {ex.submit(remeasure, p): p for p in runs}
+        futs = {ex.submit(remeasure, p, args.n_resplit): p for p in runs}
         for i, fut in enumerate(as_completed(futs), 1):
             p = futs[fut]
             tag = _parse_tag(p.stem)
