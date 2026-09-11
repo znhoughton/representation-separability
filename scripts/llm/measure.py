@@ -330,7 +330,7 @@ def main():
     ap.add_argument("--workers", type=int, default=6,
                     help="parallelize ACROSS FILES. RAM ~= workers x per-file peak (~12GB for a 1.4B)")
     ap.add_argument("--n-resplit", type=int, default=200,
-                    help="re-splits behind each size interval; 200 is where the false-positive rate settles at ~5% on planted zeros")
+                    help="re-splits behind each size interval; 200 is where the false-positive rate settles at ~5%% on planted zeros")
     ap.add_argument("--out", default=None, help="default depends on the construction")
     args = ap.parse_args()
 

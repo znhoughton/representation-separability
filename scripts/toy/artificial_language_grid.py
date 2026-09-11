@@ -365,7 +365,7 @@ def main():
     ap.add_argument("--workers", type=int, default=None)
     ap.add_argument("--out", default=None)
     ap.add_argument("--n-resplit", type=int, default=200,
-                    help="re-splits behind each size interval; 200 is where the false-positive rate settles at ~5% on planted zeros")
+                    help="re-splits behind each size interval; 200 is where the false-positive rate settles at ~5%% on planted zeros")
     ap.add_argument("--runs-dir", default=str(REPO_ROOT / "data" / "toy_runs"),
                     help="save each cell's hidden states and null draws here (~8 GB full grid); "
                          "a later change to the measure then needs no retraining. Default on: "

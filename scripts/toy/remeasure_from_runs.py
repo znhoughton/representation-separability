@@ -63,9 +63,10 @@ def main():
     ap.add_argument("--runs-dir", default=str(REPO_ROOT / "data" / "toy_runs"))
     ap.add_argument("--csv", default=str(REPO_ROOT / "data" / "artificial_language_grid.csv"))
     ap.add_argument("--workers", type=int, default=8)
-    args = ap.parse_args()
     ap.add_argument("--n-resplit", type=int, default=200,
-                    help="re-splits behind each size interval; 200 is where the false-positive rate settles at ~5% on planted zeros")
+                    help="re-splits behind each size interval; 200 is where the false-positive "
+                         "rate settles at ~5%% on planted zeros")
+    args = ap.parse_args()
 
     runs = sorted(Path(args.runs_dir).glob("*.npz"))
     if not runs:
