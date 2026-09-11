@@ -47,6 +47,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 for _sub in ("", "llm", "toy"):          # "" = scripts/, where the shared measure lives
     sys.path.insert(0, str(REPO_ROOT / "scripts" / _sub))
 from separability import unified_split, REPORT_FIELDS, check_emits  # noqa: E402
+from csv_repair import repair, migrate_header  # noqa: E402
 
 
 def _centered(x, axes):
@@ -227,6 +228,11 @@ def main():
     def key(t):
         return (t[0], t[1], t[2], t[3], float(t[4]), t[5],
                 float(t[6][0]), float(t[6][1]), float(t[6][2]), float(t[7]))
+    # This writer APPENDS when resuming. A file written before a column existed has a shorter
+    # header, and appending rows built from the current field list against it shifts every value
+    # silently, which is what happened to llm_morph.csv. Bring the header forward first.
+    repair(str(out))
+    migrate_header(str(out), FIELDS)
     done = set()
     if out.exists():
         with open(out, newline="") as fh:

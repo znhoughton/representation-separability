@@ -179,9 +179,17 @@ fi
 # Every measure output, not just the three the body reports. llm_morph.csv was omitted and
 # so was never rebuilt when the fields changed; it ended up with an old header and rows
 # written to the new one, which reads as plausible numbers in the wrong columns.
-for f in data/llm_unified_form.csv data/llm_role.csv data/llm_metaphor.csv \n         data/llm_morph.csv; do
-  retire_if_stale "$f"
-done
+# Retire only what this run will actually rebuild. SKIP_LLM=1 or SKIP_TOY=1 previously still
+# moved every CSV aside, so a run that then measured nothing left the tree stripped -- which is
+# how a dry run kept displacing freshly measured data.
+if [ "$SKIP_LLM" != "1" ]; then
+  for f in data/llm_unified_form.csv data/llm_role.csv data/llm_metaphor.csv data/llm_morph.csv; do
+    retire_if_stale "$f"
+  done
+fi
+if [ "$SKIP_TOY" != "1" ]; then
+  retire_if_stale data/validate_measure.csv
+fi
 if [ "$toy_needs_retrain" = "1" ]; then
   retire_if_stale data/artificial_language_grid.csv     # ALLOW_RETRAIN=1 was given
 else
