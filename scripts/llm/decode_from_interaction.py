@@ -146,21 +146,20 @@ def load(construction, path, layer, conllu, item_key="form"):
         if item_key == "lemma":
             item = z["lemma"]
         else:
-            from extraction import parse_conllu, derive_labels
-            up, lem, n = z["upos"], z["lemma"], len(z["upos"])
-            lab = derive_labels(model, list(parse_conllu(conllu)))
-            if not (np.array_equal(lab["upos"][:n], up) and np.array_equal(lab["lemma"][:n], lem)):
-                raise RuntimeError(f"{model}: alignment mismatch on POS labels")
-            item = np.array([f.lower() for f in lab["form"][:n]])
+            # aligned_labels, not derive_labels: extraction order depends on the batch size, so
+            # re-deriving with the default one reproduces it only by luck. aligned_labels tries
+            # the sizes actually used and keeps the one that matches exactly, raising if none
+            # does. Calling derive_labels directly here lost whole models to a mismatch the
+            # measure had already solved.
+            from extraction import aligned_labels
+            lab, _bs = aligned_labels(z, conllu)
+            item = np.array([f.lower() for f in lab["form"]])
     elif construction == "role":
-        from extraction import parse_conllu, derive_labels
-        up = z["upos"]; lem = z["lemma"]; n = len(up)
-        lab = derive_labels(model, list(parse_conllu(conllu)))
-        du, dl = lab["upos"][:n], lab["lemma"][:n]
-        if not (np.array_equal(du, up) and np.array_equal(dl, lem)):
-            raise RuntimeError(f"{model}: alignment mismatch on role labels")
-        X = z[f"layer_{layer}"]; form = np.array([f.lower() for f in lab["form"][:n]])
-        deprel = lab["deprel"][:n]
+        from extraction import aligned_labels
+        up = z["upos"]
+        lab, _bs = aligned_labels(z, conllu)       # verifies the order; raises if it cannot
+        X = z[f"layer_{layer}"]; form = np.array([f.lower() for f in lab["form"]])
+        deprel = lab["deprel"]
         m = (up == "NOUN")                                  # nouns as subject vs object (same token)
         X, item, cls, classes = X[m], form[m], deprel[m], ("nsubj", "obj")
     elif construction == "metaphor":
