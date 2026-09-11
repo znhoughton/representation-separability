@@ -154,12 +154,12 @@ def run_one(spec, n_boot=200, n_resplit=200):
             row[k] = ("" if "error" in r else r.get(k))
     return row
 
-
 def _run_chunk_with_backoff(chunk, ni, nc, d, nb, n_resplit, dev):
     """Runs one chunk on GPU; on OOM, halves it and retries recursively.
     Returns (metas, reps) same shape as a direct measure_batch call would produce."""
-    import torch
+    import torch, gc
     from separability_batch import measure_batch
+    oom = False
     try:
         Xs, metas = [], []
         for t in chunk:
@@ -170,17 +170,22 @@ def _run_chunk_with_backoff(chunk, ni, nc, d, nb, n_resplit, dev):
         Xb = torch.as_tensor(np.stack(Xs), dtype=torch.float64, device=dev)
         reps = measure_batch(Xb, ni, nc, nb, n_resplit=n_resplit, seed=0)
         del Xb
-        return metas, reps
     except torch.cuda.OutOfMemoryError:
-        torch.cuda.empty_cache()
-        if len(chunk) == 1:
-            raise   # a single spec doesn't fit -- that's a config problem, not a batching one
-        mid = len(chunk) // 2
-        print(f"    OOM on batch of {len(chunk)} ({ni}x{nc} d={d}, n={nb}) -- "
-              f"splitting into {mid} + {len(chunk) - mid}", flush=True)
-        metas1, reps1 = _run_chunk_with_backoff(chunk[:mid], ni, nc, d, nb, n_resplit, dev)
-        metas2, reps2 = _run_chunk_with_backoff(chunk[mid:], ni, nc, d, nb, n_resplit, dev)
-        return metas1 + metas2, reps1 + reps2
+        oom = True
+    if not oom:
+        return metas, reps
+    # Everything below runs OUTSIDE the try/except -- the failed frame and its exception
+    # object are fully gone by now, so nothing keeps their tensors referenced during retries.
+    gc.collect()
+    torch.cuda.empty_cache()
+    if len(chunk) == 1:
+        raise torch.cuda.OutOfMemoryError(f"single spec doesn't fit: {ni}x{nc} d={d} n={nb}")
+    mid = len(chunk) // 2
+    print(f"    OOM on batch of {len(chunk)} ({ni}x{nc} d={d}, n={nb}) -- "
+          f"splitting into {mid} + {len(chunk) - mid}", flush=True)
+    metas1, reps1 = _run_chunk_with_backoff(chunk[:mid], ni, nc, d, nb, n_resplit, dev)
+    metas2, reps2 = _run_chunk_with_backoff(chunk[mid:], ni, nc, d, nb, n_resplit, dev)
+    return metas1 + metas2, reps1 + reps2
 
 
 def run_batched(specs, w, fh, n_resplit=200, vram_gb=40.0):
