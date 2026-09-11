@@ -129,13 +129,39 @@ step_end() {
 retire_if_stale() {
   local f="$1"
   [ -s "$f" ] || return 0
-  if head -1 "$f" 2>/dev/null | grep -q "$MARKER"; then
-    local n; n=$(( $(wc -l < "$f") - 1 ))
-    echo "  [keep]  $f is current format, $n rows present; will resume"
-    return 0
-  fi
+  # Current format means the marker column exists AND carries values. A header alone is not
+  # enough: migrate_header adds new columns empty, so a file whose re-measure then failed looks
+  # current while containing nothing, and would be kept and resumed into forever.
+  local state
+  state=$("$PY" - "$f" "$MARKER" <<'PYSTATE'
+import csv, sys
+path, marker = sys.argv[1], sys.argv[2]
+try:
+    with open(path, newline="", encoding="utf-8") as fh:
+        rdr = csv.DictReader(fh)
+        if marker not in (rdr.fieldnames or []):
+            print("old"); raise SystemExit
+        for row in rdr:
+            if str(row.get(marker, "")).strip() not in ("", "NA"):
+                print("current"); raise SystemExit
+    print("empty")
+except SystemExit:
+    raise
+except Exception:
+    print("old")
+PYSTATE
+)
+  case "$state" in
+    current)
+      local n; n=$(( $(wc -l < "$f") - 1 ))
+      echo "  [keep]  $f is current format, $n rows present; will resume"
+      return 0 ;;
+    empty)
+      echo "  [retire] $f -> $OLDDIR/$(basename "$f" .csv).$stamp.csv ($MARKER present but unfilled)" ;;
+    *)
+      echo "  [retire] $f -> $OLDDIR/$(basename "$f" .csv).$stamp.csv (old format)" ;;
+  esac
   mv "$f" "$OLDDIR/$(basename "$f" .csv).$stamp.csv"
-  echo "  [retire] $f -> $OLDDIR/$(basename "$f" .csv).$stamp.csv (old format)"
 }
 
 # Killing this cleanly means killing the whole process group, not just the parent: the toy's
