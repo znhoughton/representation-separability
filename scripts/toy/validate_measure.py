@@ -155,13 +155,40 @@ def run_one(spec, n_boot=200, n_resplit=200):
     return row
 
 
+def _run_chunk_with_backoff(chunk, ni, nc, d, nb, n_resplit, dev):
+    """Runs one chunk on GPU; on OOM, halves it and retries recursively.
+    Returns (metas, reps) same shape as a direct measure_batch call would produce."""
+    import torch
+    from separability_batch import measure_batch
+    try:
+        Xs, metas = [], []
+        for t in chunk:
+            rng = np.random.default_rng(t[5])
+            X, _, _, planted = build_planted(rng, t[0], t[1], t[2], t[6][0], t[6][1], t[6][2],
+                                             t[3], t[4], t[7])
+            Xs.append(X); metas.append((t, planted))
+        Xb = torch.as_tensor(np.stack(Xs), dtype=torch.float64, device=dev)
+        reps = measure_batch(Xb, ni, nc, nb, n_resplit=n_resplit, seed=0)
+        del Xb
+        return metas, reps
+    except torch.cuda.OutOfMemoryError:
+        torch.cuda.empty_cache()
+        if len(chunk) == 1:
+            raise   # a single spec doesn't fit -- that's a config problem, not a batching one
+        mid = len(chunk) // 2
+        print(f"    OOM on batch of {len(chunk)} ({ni}x{nc} d={d}, n={nb}) -- "
+              f"splitting into {mid} + {len(chunk) - mid}", flush=True)
+        metas1, reps1 = _run_chunk_with_backoff(chunk[:mid], ni, nc, d, nb, n_resplit, dev)
+        metas2, reps2 = _run_chunk_with_backoff(chunk[mid:], ni, nc, d, nb, n_resplit, dev)
+        return metas1 + metas2, reps1 + reps2
+
+
 def run_batched(specs, w, fh, n_resplit=200, vram_gb=40.0):
     """GPU path: specs of one shape share an identical grid, so a batch of them is one set of
     kernels. Group by (n_item, n_class, d, n_obs), sub-batch by a VRAM budget (the re-split's
     (B, k, L, C, d) working set dominates), and measure each sub-batch at once."""
     import torch
     from collections import defaultdict
-    from separability_batch import measure_batch
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     groups = defaultdict(list)
     for t in specs:
@@ -173,15 +200,7 @@ def run_batched(specs, w, fh, n_resplit=200, vram_gb=40.0):
         bmax = max(1, int(vram_gb * 1e9 // max(1, per)))
         for i in range(0, len(g), bmax):
             chunk = g[i:i + bmax]
-            Xs, metas = [], []
-            for t in chunk:
-                rng = np.random.default_rng(t[5])
-                X, _, _, planted = build_planted(rng, t[0], t[1], t[2], t[6][0], t[6][1], t[6][2],
-                                                 t[3], t[4], t[7])
-                Xs.append(X); metas.append((t, planted))
-            Xb = torch.as_tensor(np.stack(Xs), dtype=torch.float64, device=dev)
-            reps = measure_batch(Xb, ni, nc, nb, n_resplit=n_resplit, seed=0)
-            del Xb
+            metas, reps = _run_chunk_with_backoff(chunk, ni, nc, d, nb, n_resplit, dev)
             for (t, planted), rep in zip(metas, reps):
                 row = dict(n_item=t[0], n_class=t[1], d=t[2], n_obs=t[3], noise_ratio=t[4],
                            seed=t[5], **planted)
