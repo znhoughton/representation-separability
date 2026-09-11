@@ -25,8 +25,13 @@ representation-separability/
 ├── paper/                          # ACL Quarto draft (separability.qmd + refs.bib)
 ├── scripts/
 │   ├── separability.py             # THE measure: decomposition, sizes, overlaps, split-half gate
+│   ├── run_all_measurements.sh     # every measurement in one command; resumable, deletes nothing
+│   ├── csv_repair.py               # repairs a killed run's CSV and migrates a stale header
+│   ├── check_paper_data.py         # columns the paper reads vs the data; and what goes unreported
+│   ├── check_paper_renders.R       # runs the paper's R against the data, no LaTeX needed
 │   ├── toy/
 │   │   ├── artificial_language_grid.py  # Experiment 1
+│   │   ├── remeasure_from_runs.py       # re-measures the grid from saved states, no retraining
 │   │   └── validate_measure.py          # Appendix: components planted directly in a representation
 │   └── llm/
 │       ├── build_ud_corpus.py           # concatenate 6 UD English treebanks -> one CoNLL-U
@@ -40,6 +45,8 @@ representation-separability/
 │       ├── finalize_position_ablation.sh  # its post-processing, runnable on its own
 │       └── test_measurement_pipeline.py # regression test for the chain (seconds, no GPU)
 ├── data/                           # result CSVs are tracked; reps and corpora are gitignored
+├── notes/                          # drawio sources for the appendix figures (exports gitignored)
+├── old/                            # CSVs a rerun superseded, timestamped; gitignored, kept on disk
 └── archive/                        # earlier versions, gitignored (see archive/README.md)
 ```
 

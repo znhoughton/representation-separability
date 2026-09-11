@@ -1,6 +1,0 @@
-model,construction,layer,n_items,n_points,k_int,class_int,class_rand,class_full,class_chance,class_peritem,class_peritem_null,n_peritem,class_peritem_lo,class_peritem_hi,class_peritem_null_lo,class_peritem_null_hi,item_int,item_rand,item_chance
-EleutherAI/pythia-1.4b,role,24,49,2150,30,0.8714,0.7829,0.9536,0.5,0.841,0.5229,49,0.8152,0.8665,0.492,0.5544,0.426,0.6122,0.0204
-znhoughton/opt-babylm-1.3B-20eps-seed964,role,24,49,2150,35,0.8607,0.771,0.9444,0.5,0.8499,0.4988,49,0.8233,0.8742,0.4655,0.5338,0.514,0.7797,0.0204
-EleutherAI/pythia-1.4b,metaphor,24,180,14871,52,0.6827,0.6342,0.7133,0.5,0.6965,0.494,180,0.6768,0.7144,0.4785,0.5087,0.3524,0.6058,0.0056
-znhoughton/opt-babylm-1.3B-20eps-seed964,metaphor,24,180,14871,89,0.671,0.6374,0.6819,0.5,0.6464,0.4877,180,0.6286,0.6634,0.4711,0.5036,0.6164,0.9191,0.0056
-znhoughton/opt-babylm-1.3B-20eps-seed964,metaphor,24,180,14871,101,0.6208,0.6205,0.6557,0.5,0.5932,0.4947,180,0.5743,0.6113,0.477,0.5112,0.7154,0.9442,0.0056
