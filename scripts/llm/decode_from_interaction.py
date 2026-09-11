@@ -39,7 +39,16 @@ for _sub in ("", "llm", "toy"):          # "" = scripts/, where the shared measu
 from separability import (standardize_columns, build_balanced_grid, _cell_means,  # noqa: E402
                                   _decompose, _orthobasis)
 
-FIELDS = ["model", "construction", "layer", "n_items", "n_points", "k_int",
+def _init_of_name(name):
+    """The condition a reps file holds, from its filename: pretrained, random, or either with
+    position embeddings zeroed. measure.py reads this from inside the npz; here the name is
+    enough and avoids opening every file just to filter."""
+    randomed = "__random" in name
+    zeroed = "noposemb" in name
+    return ("random" if randomed else "pretrained") + ("_noposemb" if zeroed else "")
+
+
+FIELDS = ["model", "init", "construction", "layer", "n_items", "n_points", "k_int",
           "class_int", "class_rand", "class_full", "class_chance",
           "class_peritem", "class_peritem_null", "n_peritem",
           "class_peritem_lo", "class_peritem_hi",
@@ -227,13 +236,21 @@ def main():
     ap.add_argument("--n-rand", type=int, default=8)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--out", default=str(REPO_ROOT / "data" / "llm_decode_interaction.csv"))
+    ap.add_argument("--inits", default="pretrained",
+                    help="comma-separated conditions to decode; default keeps only the intact "
+                         "models, since the ablation has its own appendix")
     args = ap.parse_args()
     if args.construction in ("role", "pos") and not args.conllu and args.item_key == "form":
         raise SystemExit("--conllu is required for role, and for pos with --item-key form")
 
     files = sorted(Path(args.reps_dir).glob("*.npz"))
-    files = [p for p in files if "__random" not in p.name
-             and any(m in p.name for m in args.models)]
+    files = [p for p in files if any(m in p.name for m in args.models)]
+    # A reps directory holds the intact file and, where the ablation has been run, a
+    # position-zeroed one for the same model. Both match the model filter, and without an init
+    # column the two are indistinguishable in the output: one model appears twice with different
+    # numbers and nothing says which is which. Keep only the intact condition unless asked.
+    keep = set(args.inits.split(","))
+    files = [p for p in files if _init_of_name(p.name) in keep]
     out = Path(args.out); out.parent.mkdir(parents=True, exist_ok=True)
     write_header = not out.exists()
     with open(out, "a", newline="") as fh:
@@ -243,7 +260,8 @@ def main():
         for p in files:
             z = np.load(p, allow_pickle=True)
             layer = args.layer if args.layer is not None else max(int(li) for li in z["layer_idxs"])
-            print(f"=== {p.name} L{layer} ({args.construction}) ===", flush=True)
+            init = _init_of_name(p.name)
+            print(f"=== {p.name} [{init}] L{layer} ({args.construction}) ===", flush=True)
             try:
                 r = decode_file(args.construction, str(p), layer, args.conllu, args.min_cell,
                                 args.n_rand, args.seed, args.item_key)
@@ -251,7 +269,7 @@ def main():
                 print(f"  !! failed: {type(e).__name__}: {e}", flush=True); continue
             if r is None:
                 print("  (no balanced grid)", flush=True); continue
-            w.writerow(r); fh.flush()
+            w.writerow(dict(r, init=init)); fh.flush()
             print(f"  class keep-only: int={r['class_int']:.3f} rand={r['class_rand']:.3f} full={r['class_full']:.3f}"
                   f"  |  class per-item(beta-removed): {r['class_peritem']:.3f} null={r['class_peritem_null']:.3f}"
                   f"  |  item keep-only: int={r['item_int']:.3f} rand={r['item_rand']:.3f} chance={r['item_chance']:.4f}"

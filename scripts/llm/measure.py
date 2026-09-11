@@ -41,7 +41,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 for _sub in ("", "llm", "toy"):          # "" = scripts/, where the shared measure lives
     sys.path.insert(0, str(REPO_ROOT / "scripts" / _sub))
 from separability import unified_split, REPORT_FIELDS, check_emits  # noqa: E402
-from csv_repair import repair  # noqa: E402
+from csv_repair import repair, migrate_header  # noqa: E402
 
 _blank = lambda v: "" if v is None else v
 
@@ -354,6 +354,11 @@ def main():
     # unablated files as the same work and silently skip the second one.
     # drop a half-written final row left by a killed run, before the resume reads it
     repair(str(out))
+    # The writer below APPENDS when resuming. A file written before a column existed has a
+    # shorter header, and appending rows built from the current field list against it shifts
+    # every value silently: llm_morph.csv ended up with a 17-column header and 64-field rows.
+    # Bring the header forward first, exactly as the toy grid does.
+    migrate_header(str(out), fields)
     done = set()
     if out.exists():
         with open(out, newline="") as fh:

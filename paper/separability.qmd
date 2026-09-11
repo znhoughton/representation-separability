@@ -811,7 +811,8 @@ Number and tense provide that distinction. A plural or a past tense is spelled w
 #| label: tbl-morph
 #| tbl-cap: "Number and tense, which are marked by an affix and therefore read at a different subword in the two classes. Unlike every construction in the body, the interaction is large at layer 0 and does not grow, which is what a distinction visible in the input looks like."
 rd("llm_morph.csv") |>
-  filter(regularity == "regular") |>
+  # the file also holds the random and position-zeroed conditions, which have their own appendix
+  filter(init == "pretrained", regularity == "regular") |>
   group_by(model, feature) |>
   summarize(L0 = size_interaction[layer == 0],
             deep = size_interaction[layer == max(layer)], .groups = "drop") |>

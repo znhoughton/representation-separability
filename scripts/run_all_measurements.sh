@@ -173,7 +173,10 @@ if [ "$toy_needs_retrain" = "1" ] && [ "${ALLOW_RETRAIN:-0}" != "1" ]; then
 fi
 
 # Only now, with every refusal already checked, start moving files.
-for f in data/llm_unified_form.csv data/llm_role.csv data/llm_metaphor.csv; do
+# Every measure output, not just the three the body reports. llm_morph.csv was omitted and
+# so was never rebuilt when the fields changed; it ended up with an old header and rows
+# written to the new one, which reads as plausible numbers in the wrong columns.
+for f in data/llm_unified_form.csv data/llm_role.csv data/llm_metaphor.csv \n         data/llm_morph.csv; do
   retire_if_stale "$f"
 done
 if [ "$toy_needs_retrain" = "1" ]; then
