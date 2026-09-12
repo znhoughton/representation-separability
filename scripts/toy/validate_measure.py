@@ -154,45 +154,46 @@ def run_one(spec, n_boot=200, n_resplit=200):
             row[k] = ("" if "error" in r else r.get(k))
     return row
 
-
-def _run_chunk(chunk, ni, nc, nb, n_resplit, dev):
-    """Builds one chunk's inputs and runs measure_batch on it. Raises torch.cuda.OutOfMemoryError
-    straight through -- no internal handling -- so the caller is the ONLY place that catches OOM
-    and decides what to do about it. Returns (metas, reps)."""
-    import torch
+def _run_chunk_with_backoff(chunk, ni, nc, d, nb, n_resplit, dev):
+    """Runs one chunk on GPU; on OOM, halves it and retries recursively.
+    Returns (metas, reps) same shape as a direct measure_batch call would produce."""
+    import torch, gc
     from separability_batch import measure_batch
-    Xs, metas = [], []
-    for t in chunk:
-        rng = np.random.default_rng(t[5])
-        X, _, _, planted = build_planted(rng, t[0], t[1], t[2], t[6][0], t[6][1], t[6][2],
-                                         t[3], t[4], t[7])
-        Xs.append(X); metas.append((t, planted))
-    Xb = torch.as_tensor(np.stack(Xs), dtype=torch.float64, device=dev)
-    reps = measure_batch(Xb, ni, nc, nb, n_resplit=n_resplit, seed=0)
-    del Xb
-    return metas, reps
+    oom = False
+    try:
+        Xs, metas = [], []
+        for t in chunk:
+            rng = np.random.default_rng(t[5])
+            X, _, _, planted = build_planted(rng, t[0], t[1], t[2], t[6][0], t[6][1], t[6][2],
+                                             t[3], t[4], t[7])
+            Xs.append(X); metas.append((t, planted))
+        Xb = torch.as_tensor(np.stack(Xs), dtype=torch.float64, device=dev)
+        reps = measure_batch(Xb, ni, nc, nb, n_resplit=n_resplit, seed=0)
+        del Xb
+    except torch.cuda.OutOfMemoryError:
+        oom = True
+    if not oom:
+        return metas, reps
+    # Everything below runs OUTSIDE the try/except -- the failed frame and its exception
+    # object are fully gone by now, so nothing keeps their tensors referenced during retries.
+    gc.collect()
+    torch.cuda.empty_cache()
+    if len(chunk) == 1:
+        raise torch.cuda.OutOfMemoryError(f"single spec doesn't fit: {ni}x{nc} d={d} n={nb}")
+    mid = len(chunk) // 2
+    print(f"    OOM on batch of {len(chunk)} ({ni}x{nc} d={d}, n={nb}) -- "
+          f"splitting into {mid} + {len(chunk) - mid}", flush=True)
+    metas1, reps1 = _run_chunk_with_backoff(chunk[:mid], ni, nc, d, nb, n_resplit, dev)
+    metas2, reps2 = _run_chunk_with_backoff(chunk[mid:], ni, nc, d, nb, n_resplit, dev)
+    return metas1 + metas2, reps1 + reps2
 
 
-def run_batched(specs, w, fh, n_resplit=200, vram_gb=None):
+def run_batched(specs, w, fh, n_resplit=200, vram_gb=40.0):
     """GPU path: specs of one shape share an identical grid, so a batch of them is one set of
     kernels. Group by (n_item, n_class, d, n_obs), sub-batch by a VRAM budget (the re-split's
-    (B, k, L, C, d) working set dominates), and measure each sub-batch at once. The bigger the
-    batch, the more the cuSOLVER overhead in the null/rank decompositions is amortised, so aim the
-    budget at the whole card -- SEP_VRAM_GB defaults to 80.
-
-    Batch size for a shape only ever shrinks, and a shrink persists for the rest of that shape's
-    specs: an OOM at some batch size means that size doesn't fit THIS shape, not just this one
-    chunk, so retrying the same size on the next chunk is guaranteed to fail again. It resets to
-    the formula's guess at the start of the next shape, since the underestimate is shape-dependent.
-
-    The chunk itself (_run_chunk) does NOT catch its own OOMs -- this loop is the only place that
-    does, and it retries the same slice position rather than recursing, so there's no nested
-    exception-handling to keep a failed frame's tensors alive across retries."""
-    import gc
+    (B, k, L, C, d) working set dominates), and measure each sub-batch at once."""
     import torch
     from collections import defaultdict
-    if vram_gb is None:
-        vram_gb = float(os.environ.get("SEP_VRAM_GB", "80"))
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     groups = defaultdict(list)
     for t in specs:
@@ -200,31 +201,11 @@ def run_batched(specs, w, fh, n_resplit=200, vram_gb=None):
     n_done, total = 0, len(specs)
     for ni, nc, d, nb in sorted(groups, key=lambda s: -(s[0] * s[1] * s[2] * s[3])):
         g = groups[(ni, nc, d, nb)]
-        # Two components: the re-split/null working set (n_resplit- and bootstrap-driven -- this
-        # is what the (B, k, L, C, n_obs) selection-mask allocation in measure_batch scales with,
-        # and is what actually OOM'd on the heaviest shape when this term was dropped) plus the
-        # raw-input term (X and its standardized copy, 3x for margin, plus the decomposition grids).
-        # Unverified whether measure_batch's internals now bound the resplit term independently of
-        # n_resplit -- until confirmed, keep modeling it explicitly rather than relying on the
-        # OOM backoff alone to cover a potentially large, currently-invisible cost.
-        per = (6 * n_resplit * ni * nc * d * 8            # re-split / null working set
-               + 3 * ni * nc * nb * d * 8                 # raw input (x2) + margin
-               + 8 * ni * nc * d * 8)                     # decomposition grids
-        batch = max(1, int(max(1e9, (vram_gb - 12.0) * 1e9) // max(1, per)))
-        i = 0
-        while i < len(g):
-            chunk = g[i:i + batch]
-            try:
-                metas, reps = _run_chunk(chunk, ni, nc, nb, n_resplit, dev)
-            except torch.cuda.OutOfMemoryError:
-                gc.collect()
-                torch.cuda.empty_cache()
-                if batch == 1:
-                    raise
-                batch = max(1, batch // 2)
-                print(f"    OOM on batch of {len(chunk)} ({ni}x{nc} d={d}, n={nb}) -- "
-                      f"dropping batch size to {batch} for the rest of this shape", flush=True)
-                continue    # retry same i at the smaller batch, don't advance
+        per = 6 * n_resplit * ni * nc * d * 8 + ni * nc * nb * d * 8       # bytes/spec, re-split led
+        bmax = max(1, int(vram_gb * 1e9 // max(1, per)))
+        for i in range(0, len(g), bmax):
+            chunk = g[i:i + bmax]
+            metas, reps = _run_chunk_with_backoff(chunk, ni, nc, d, nb, n_resplit, dev)
             for (t, planted), rep in zip(metas, reps):
                 row = dict(n_item=t[0], n_class=t[1], d=t[2], n_obs=t[3], noise_ratio=t[4],
                            seed=t[5], **planted)
@@ -232,7 +213,7 @@ def run_batched(specs, w, fh, n_resplit=200, vram_gb=None):
                     if k not in row:
                         row[k] = rep.get(k)
                 w.writerow(row)
-            fh.flush(); n_done += len(chunk); i += len(chunk)
+            fh.flush(); n_done += len(chunk)
             print(f"  {n_done}/{total}  ({ni}x{nc} d={d} n={nb}, batch {len(chunk)})", flush=True)
 
 
