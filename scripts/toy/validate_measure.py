@@ -188,12 +188,17 @@ def _run_chunk_with_backoff(chunk, ni, nc, d, nb, n_resplit, dev):
     return metas1 + metas2, reps1 + reps2
 
 
-def run_batched(specs, w, fh, n_resplit=200, vram_gb=40.0):
+def run_batched(specs, w, fh, n_resplit=200, vram_gb=None):
     """GPU path: specs of one shape share an identical grid, so a batch of them is one set of
     kernels. Group by (n_item, n_class, d, n_obs), sub-batch by a VRAM budget (the re-split's
-    (B, k, L, C, d) working set dominates), and measure each sub-batch at once."""
+    (B, k, L, C, d) working set dominates), and measure each sub-batch at once. The bigger the
+    batch, the more the cuSOLVER overhead in the null/rank decompositions is amortised, so aim the
+    budget at the whole card -- SEP_VRAM_GB defaults to 80. The OOM backoff halves any shape that
+    overflows, so starting aggressive costs at most one wasted attempt on the very largest shapes."""
     import torch
     from collections import defaultdict
+    if vram_gb is None:
+        vram_gb = float(os.environ.get("SEP_VRAM_GB", "80"))
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     groups = defaultdict(list)
     for t in specs:
@@ -201,8 +206,14 @@ def run_batched(specs, w, fh, n_resplit=200, vram_gb=40.0):
     n_done, total = 0, len(specs)
     for ni, nc, d, nb in sorted(groups, key=lambda s: -(s[0] * s[1] * s[2] * s[3])):
         g = groups[(ni, nc, d, nb)]
-        per = 6 * n_resplit * ni * nc * d * 8 + ni * nc * nb * d * 8       # bytes/spec, re-split led
-        bmax = max(1, int(vram_gb * 1e9 // max(1, per)))
+        # Per-spec memory is dominated by the RAW INPUT X: ni*nc*nb observations x d, which
+        # standardization briefly doubles -- ~2.4 GB/spec on the n_obs=100 heavy shape. This is the
+        # term that OOMs the heavy shapes, so it leads the estimate (the 3x covers X + its
+        # standardized copy + margin). The 200-draw arrays are all chunked/bounded now, so the only
+        # other B-scaling cost is the small decomposition grids. Cap so light shapes don't over-batch;
+        # the backoff guards whatever this under-estimates.
+        per = 3 * ni * nc * nb * d * 8 + 8 * ni * nc * d * 8               # raw input (x2) + decomposition
+        bmax = max(1, min(64, int(max(1e9, (vram_gb - 12.0) * 1e9) // max(1, per))))
         for i in range(0, len(g), bmax):
             chunk = g[i:i + bmax]
             metas, reps = _run_chunk_with_backoff(chunk, ni, nc, d, nb, n_resplit, dev)

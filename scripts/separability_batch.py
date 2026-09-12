@@ -71,23 +71,29 @@ def _leak(V, bases, ranks):
 
 
 def _leak_null(V, ranks, gen, n_draws):
-    """Overlap under randomly oriented subspaces, pad-batched: one (B, n, d, max_rank) draw, each
-    spec's surplus columns masked to zero so it is projected onto a rank_b-dim random subspace."""
+    """Overlap under randomly oriented subspaces, pad-batched: each spec's surplus columns masked to
+    zero so it is projected onto a rank_b-dim random subspace. Chunked over the draws, because the
+    (B, nc, d, max_rank) Gaussian and its QR are the batched measure's memory hog at large B -- the
+    same reason the re-split is chunked -- so bounding them is what lets B stay large."""
     B, m, d = V.shape
     tot = (V ** 2).sum(dim=(1, 2))
     max_rank = int(ranks.max()) if B else 0
     out = V.new_zeros((B, n_draws))
     if max_rank == 0:
         return out
-    G = torch.randn((B, n_draws, d, max_rank), dtype=V.dtype, device=V.device, generator=gen)
-    Q, _ = torch.linalg.qr(G)                                  # (B, n, d, max_rank)
-    cols = torch.arange(max_rank, device=V.device)
-    keep = (cols[None, None, None, :] < ranks[:, None, None, None]).to(V.dtype)
-    Q = Q * keep
-    proj = torch.einsum('bmd,bndr->bnmr', V, Q)
-    num = (proj ** 2).sum(dim=(2, 3))                          # (B, n)
     valid = (tot > 0) & (ranks > 0) & (ranks < d)
-    return torch.where(valid[:, None], num / tot[:, None].clamp(min=1e-300), out)
+    keep = (torch.arange(max_rank, device=V.device)[None, :] < ranks[:, None]).to(V.dtype)  # (B, rank)
+    NC = max(1, min(n_draws, int(6e8 // max(1, B * d * max_rank * 8))))    # ~0.6 GB of G per chunk
+    for n0 in range(0, n_draws, NC):
+        nn = min(NC, n_draws - n0)
+        G = torch.randn((B, nn, d, max_rank), dtype=V.dtype, device=V.device, generator=gen)
+        Q, _ = torch.linalg.qr(G)
+        Q = Q * keep[:, None, None, :]
+        num = (torch.einsum('bmd,bndr->bnmr', V, Q) ** 2).sum(dim=(2, 3))   # (B, nn)
+        out[:, n0:n0 + nn] = torch.where(valid[:, None], num / tot[:, None].clamp(min=1e-300),
+                                         out[:, n0:n0 + nn])
+        del G, Q, num
+    return out
 
 
 def _angle(A, Ar, Bb, Br):
@@ -128,11 +134,15 @@ def measure_batch(Xb, L, C, n_obs, n_boot=200, n_null=200, n_resplit=200, sig=0.
     obs_int = cross(ga, gb, 1, (1, 2, 3))
     obs_class = cross(ba, bb, L, (1, 2))
 
+    # Permutation nulls via the (B, L, L) inner-product matrices, so the permuted interaction grid
+    # gb[:, perms] -- which is (B, n_boot, L, C, d), gigabytes on the largest shape -- is never formed.
+    # null[b,n] = sum_l <ga[b,l], gb[b, perms[n,l]]> is exactly a gather-and-sum over those matrices.
     perms = torch.stack([torch.randperm(L, device=device, generator=gen) for _ in range(n_boot)])
-    ab_p = ab[:, perms, :]                                     # (B, n_boot, L, d)
-    gb_p = gb[:, perms, :, :]
-    null_item = C * torch.einsum('bld,bnld->bn', aa, ab_p)
-    null_int = torch.einsum('blcd,bnlcd->bn', ga, gb_p)
+    G_item = torch.einsum('bld,bmd->blm', aa, ab)             # (B, L, L)
+    G_int = torch.einsum('blcd,bmcd->blm', ga, gb)            # (B, L, L)
+    idx = perms.t().unsqueeze(0).expand(B, L, n_boot)         # idx[b,l,n] = perms[n,l]
+    null_item = C * G_item.gather(2, idx).sum(1)              # (B, n_boot)
+    null_int = G_int.gather(2, idx).sum(1)
     hi_item = torch.quantile(null_item, 1 - sig, dim=1)
     hi_int = torch.quantile(null_int, 1 - sig, dim=1)
     s_item = (obs_item - null_item.mean(1)).clamp(min=0)
@@ -162,22 +172,28 @@ def measure_batch(Xb, L, C, n_obs, n_boot=200, n_null=200, n_resplit=200, sig=0.
     nd_ic = _leak_null(al, r_class, gen, n_null)
     nd_im = _leak_null(gm.reshape(B, L * C, d), r_margin, gen, n_null)
 
-    # re-split intervals, batched: (B, k, L, C, d). Same 0/1-mask einsum, so the working set is the
-    # half-means and not a (B, k, L, C, h, d) gather (which is ~100 GB on the largest shape).
-    keys2 = torch.rand((B, n_resplit, L, C, n_obs), dtype=X.dtype, device=device, generator=gen)
-    selm = (keys2.argsort(4).argsort(4) < h).to(X.dtype)      # (B, k, L, C, n_obs), h ones per cell
-    RA = torch.einsum('bklcn,blcnd->bklcd', selm, cells) / h  # (B, k, L, C, d) half-means
-    RB = (tot_cell.unsqueeze(1) - RA * h) / max(1, n_obs - h)
-    McA = RA - RA.mean(dim=(2, 3), keepdim=True)
-    McB = RB - RB.mean(dim=(2, 3), keepdim=True)
-    aRA, aRB = McA.mean(3), McB.mean(3)
-    bRA, bRB = McA.mean(2), McB.mean(2)
-    si = C * torch.einsum('bkld,bkld->bk', aRA, aRB)
-    sc = L * torch.einsum('bkcd,bkcd->bk', bRA, bRB)
-    sg = torch.einsum('bklcd,bklcd->bk', McA, McB) - si - sc
+    # Re-split intervals, batched AND chunked over the redraws. The (B, k, L, C, d) half-mean arrays
+    # are the memory hog on the largest shape, so cap k per chunk to a fixed byte budget: the working
+    # set then stops scaling with n_resplit or with B, which is what lets B be large enough to
+    # amortise the cuSOLVER overhead above. Chunking reorders the RNG stream (different draws, same
+    # calibration), like the numpy path.
+    KC = max(1, min(n_resplit, int(1.5e9 // max(1, B * L * C * d * 8))))    # ~1.5 GB of half-means/chunk
+    si_a, sc_a, sg_a = (X.new_empty((B, n_resplit)) for _ in range(3))
+    for k0 in range(0, n_resplit, KC):
+        kk = min(KC, n_resplit - k0)
+        keys2 = torch.rand((B, kk, L, C, n_obs), dtype=X.dtype, device=device, generator=gen)
+        selm = (keys2.argsort(4).argsort(4) < h).to(X.dtype)  # (B, kk, L, C, n_obs), h ones per cell
+        RA = torch.einsum('bklcn,blcnd->bklcd', selm, cells) / h
+        RB = (tot_cell.unsqueeze(1) - RA * h) / max(1, n_obs - h)
+        McA = RA - RA.mean(dim=(2, 3), keepdim=True)
+        McB = RB - RB.mean(dim=(2, 3), keepdim=True)
+        si_a[:, k0:k0 + kk] = C * torch.einsum('bkld,bkld->bk', McA.mean(3), McB.mean(3))
+        sc_a[:, k0:k0 + kk] = L * torch.einsum('bkcd,bkcd->bk', McA.mean(2), McB.mean(2))
+        sg_a[:, k0:k0 + kk] = torch.einsum('bklcd,bklcd->bk', McA, McB) - si_a[:, k0:k0 + kk] - sc_a[:, k0:k0 + kk]
+        del keys2, selm, RA, RB, McA, McB
     q = torch.tensor([0.025, 0.5, 0.975], dtype=X.dtype, device=device)
     ci = {n: torch.quantile(v, q, dim=1) for n, v in
-          (("size_item", si), ("size_class", sc), ("size_interaction", sg))}
+          (("size_item", si_a), ("size_class", sc_a), ("size_interaction", sg_a))}
 
     # between-share, batched over the regular grid
     Y = X
@@ -204,6 +220,8 @@ def measure_batch(Xb, L, C, n_obs, n_boot=200, n_null=200, n_resplit=200, sig=0.
     r_item, r_class, r_int, r_margin = (t.detach().cpu().tolist() for t in (r_item, r_class, r_int, r_margin))
     between_share = tolist(between / tot_ss.clamp(min=1e-300))
     between_share_adj = tolist(torch.where(denom_b > 0, var_between / denom_b.clamp(min=1e-300), torch.zeros_like(denom_b)))
+    between_l, within_l = tolist(between), tolist(within)          # raw parts, so a different
+    ms_within_l, var_between_l = tolist(ms_within), tolist(var_between)   # correction can be tried later
     ci_np = {k: v.detach().cpu().numpy() for k, v in ci.items()}
     ndic_np, ndim_np = nd_ic.detach().cpu().numpy(), nd_im.detach().cpu().numpy()
 
@@ -217,6 +235,9 @@ def measure_batch(Xb, L, C, n_obs, n_boot=200, n_null=200, n_resplit=200, sig=0.
             n_items=L, n_classes=C, k_item=int(r_item[b]), k_class=int(r_class[b]),
             k_int=int(r_int[b]), k_margin=int(r_margin[b]),
             between_share=between_share[b], between_share_adj=between_share_adj[b],
+            between_ss=between_l[b], within_ss=within_l[b], between_n_obs=int(N),
+            between_n_groups=int(G), between_n0=float(n_obs),
+            between_var=var_between_l[b], within_var=ms_within_l[b],
         )
         gate = lambda val, x, y: val if (x and y) else None
         rep["leak_item_into_class"] = gate(leak_ic[b], big_item[b], big_class[b])
