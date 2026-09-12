@@ -62,6 +62,7 @@ LLM_WORKERS="${LLM_WORKERS:-4}"       # RAM-bound: ~12 GB peak per worker on a 1
 SKIP_TOY="${SKIP_TOY:-0}"
 SKIP_LLM="${SKIP_LLM:-0}"
 SKIP_DERIVED="${SKIP_DERIVED:-0}"     # dataset counts and the decoding analysis
+SKIP_VALIDATE="${SKIP_VALIDATE:-0}"  # the appendix estimator-validation grid; longest step, runs LAST
 ABLATION="${ABLATION:-0}"             # re-extracts reps; off unless asked for
 
 # GPU backend for the MEASURE. SEP_DEVICE=cuda routes every measurement -- the validation (batched
@@ -232,7 +233,7 @@ if [ "$SKIP_LLM" != "1" ]; then
     retire_if_stale "$f"
   done
 fi
-if [ "$SKIP_TOY" != "1" ]; then
+if [ "$SKIP_VALIDATE" != "1" ]; then
   retire_if_stale data/validate_measure.csv
 fi
 if [ "$toy_needs_retrain" = "1" ]; then
@@ -253,15 +254,6 @@ if [ "$SKIP_TOY" != "1" ]; then
         2>&1 | tee "$LOGDIR/toy.log"
   rc="${PIPESTATUS[0]}"; step_end toy
   [ "$rc" -eq 0 ] || { echo "[toy] FAILED (exit $rc); see $LOGDIR/toy.log" >&2; rc_all=1; }
-
-  # Appendix A: the measure applied to representations with the answer planted directly in them,
-  # which is what separates "the measure missed it" from "the model did not build it".
-  echo
-  echo "[validate] -> data/validate_measure.csv"
-  step_begin validate
-  "$PY" scripts/toy/validate_measure.py --n-resplit "$N_RESPLIT" --workers "$TOY_WORKERS" 2>&1 | tee "$LOGDIR/validate.log"
-  rc="${PIPESTATUS[0]}"; step_end validate
-  [ "$rc" -eq 0 ] || { echo "[validate] FAILED (exit $rc)" >&2; rc_all=1; }
 
   # The grid resumes by skipping cells already in the CSV, so a change to the measure part way
   # through would leave early rows measured one way and later rows another. Re-measuring every
@@ -330,6 +322,20 @@ if [ "$SKIP_DERIVED" != "1" ]; then
   } 2>&1 | tee "$LOGDIR/decode.log"
   rc="${PIPESTATUS[0]}"
   [ "$rc" -eq 0 ] || { echo "[decode] FAILED (exit $rc)" >&2; rc_all=1; }
+fi
+
+# ---------------------------------------------------------------- Appendix: validate the measure
+# The estimator check on planted representations (~252k specs). This is the appendix and by far the
+# longest step, so it runs LAST -- every main-text result (toy grid, LLM, decode) has landed by now,
+# so the paper's body can be finalized while this finishes. SKIP_VALIDATE=1 skips it entirely; run
+# scripts/toy/validate_measure.py on its own later (optionally --seeds 3 / trimmed) if you prefer.
+if [ "$SKIP_VALIDATE" != "1" ]; then
+  echo
+  echo "[validate] -> data/validate_measure.csv  (appendix; longest step, runs last)"
+  step_begin validate
+  "$PY" scripts/toy/validate_measure.py --n-resplit "$N_RESPLIT" --workers "$TOY_WORKERS" 2>&1 | tee "$LOGDIR/validate.log"
+  rc="${PIPESTATUS[0]}"; step_end validate
+  [ "$rc" -eq 0 ] || { echo "[validate] FAILED (exit $rc)" >&2; rc_all=1; }
 fi
 
 # ---------------------------------------------------------------- position ablation

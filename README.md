@@ -24,11 +24,15 @@ Only scripts that produce something in the paper live under `scripts/`.
 representation-separability/
 ├── paper/                          # ACL Quarto draft (separability.qmd + refs.bib)
 ├── scripts/
-│   ├── separability.py             # THE measure: decomposition, sizes, overlaps, split-half gate
+│   ├── separability.py             # THE measure (numpy): decomposition, sizes, overlaps, 200-re-split CI
+│   ├── separability_gpu.py         # torch per-spec backend (LLM + toy re-measure); SEP_DEVICE=cuda
+│   ├── separability_batch.py       # torch batched backend (validation): same-shape specs in one batch
+│   ├── verify_backends.py          # checks the two GPU backends match numpy, component by component
 │   ├── run_all_measurements.sh     # every measurement in one command; resumable, deletes nothing
 │   ├── csv_repair.py               # repairs a killed run's CSV and migrates a stale header
 │   ├── check_paper_data.py         # columns the paper reads vs the data; and what goes unreported
 │   ├── check_paper_renders.R       # runs the paper's R against the data, no LaTeX needed
+│   ├── dev/                        # developer tooling, not part of the pipeline (GPU benchmarks)
 │   ├── toy/
 │   │   ├── artificial_language_grid.py  # Experiment 1
 │   │   ├── remeasure_from_runs.py       # re-measures the grid from saved states, no retraining
@@ -76,11 +80,19 @@ overlaps**: how much of the item marginal lies in the class subspace, and how mu
 interaction lies in the span of the two marginals. Both are read against a chance level of subspace
 rank over width, which is measured rather than assumed in the validation appendix.
 
-Because a squared length has a positive noise floor, the interaction is estimated as a **cross
-product of two independent half-estimates** of the same grid and tested by permutation. Both
-experiments obtain those halves the same way, by splitting a cell's observations, so the toy and the
-language models are measured by the same function with the same arguments. The paper's
+Because a squared length has a positive noise floor, **each of the three sizes** (item, class and
+interaction) is estimated as a **cross product of two independent half-estimates** of the same grid,
+whose null is exactly zero. Significance is a **200-draw re-split confidence interval**: the split of
+each cell's observations is redrawn 200 times and a size counts as present when that interval
+excludes zero, calibrated to a ~5% false-positive rate on planted zeros. The two overlaps are read
+against a random-orientation null instead. Both experiments obtain the halves the same way, so the
+toy and the language models are measured by the same function with the same arguments. The paper's
 first appendix gives the formal statement.
+
+The measure runs identically on CPU (numpy) or GPU (torch): set `SEP_DEVICE=cuda` and every
+measurement routes through the torch backends (`separability_gpu.py` per-spec, `separability_batch.py`
+batched for the validation grid), which `verify_backends.py` checks against numpy component by
+component. The default is CPU.
 
 ## Reproducing
 
@@ -123,7 +135,8 @@ python scripts/toy/artificial_language_grid.py     # ~7.5k cells; resumable
 python scripts/toy/validate_measure.py          # ~250k runs; resumable, parallel
 ```
 
-**Experiments 2 and 3.** Extraction needs a GPU; measurement is CPU only:
+**Experiments 2 and 3.** Extraction needs a GPU; measurement runs on CPU by default, or on GPU with
+`SEP_DEVICE=cuda`:
 ```bash
 python scripts/llm/measure.py pos --reps-dir data/llm_reps --conllu data/ud/en_all-ud.conllu \
        --item-key form --out data/llm_unified_form.csv

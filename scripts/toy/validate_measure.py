@@ -188,12 +188,14 @@ def _run_chunk_with_backoff(chunk, ni, nc, d, nb, n_resplit, dev):
     return metas1 + metas2, reps1 + reps2
 
 
-def run_batched(specs, w, fh, n_resplit=200, vram_gb=40.0):
+def run_batched(specs, w, fh, n_resplit=200, vram_gb=None):
     """GPU path: specs of one shape share an identical grid, so a batch of them is one set of
-    kernels. Group by (n_item, n_class, d, n_obs), sub-batch by a VRAM budget (the re-split's
-    (B, k, L, C, d) working set dominates), and measure each sub-batch at once."""
+    kernels. Group by (n_item, n_class, d, n_obs), sub-batch by a VRAM budget, and measure each
+    sub-batch at once. SEP_VRAM_GB (default 80) sets the budget; the OOM backoff guards the rest."""
     import torch
     from collections import defaultdict
+    if vram_gb is None:
+        vram_gb = float(os.environ.get("SEP_VRAM_GB", "80"))
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     groups = defaultdict(list)
     for t in specs:
@@ -201,8 +203,15 @@ def run_batched(specs, w, fh, n_resplit=200, vram_gb=40.0):
     n_done, total = 0, len(specs)
     for ni, nc, d, nb in sorted(groups, key=lambda s: -(s[0] * s[1] * s[2] * s[3])):
         g = groups[(ni, nc, d, nb)]
-        per = 6 * n_resplit * ni * nc * d * 8 + ni * nc * nb * d * 8       # bytes/spec, re-split led
-        bmax = max(1, int(vram_gb * 1e9 // max(1, per)))
+        # The re-split, permutation null and leak-null are all chunked in separability_batch now, so
+        # they no longer reserve n_resplit*... memory -- that first term is exactly what pinned this
+        # to batch 2. What remains is the RAW INPUT X (ni*nc*nb observations x d), which standardize
+        # briefly doubles (the real driver on the heavy n_obs=100 shapes), plus small decomposition.
+        # Standardize and between-share no longer make a full copy of the input (fused einsums), so
+        # per-spec memory is ~1x the raw input X (ni*nc*nb obs x d) plus small decomposition; the
+        # 1.5x covers X and headroom. The 200-draw arrays are all chunked/bounded. Backoff guards it.
+        per = int(1.5 * ni * nc * nb * d * 8) + 8 * ni * nc * d * 8        # raw input + decomposition
+        bmax = max(1, min(64, int(max(1e9, (vram_gb - 8.0) * 1e9) // max(1, per))))
         for i in range(0, len(g), bmax):
             chunk = g[i:i + bmax]
             metas, reps = _run_chunk_with_backoff(chunk, ni, nc, d, nb, n_resplit, dev)

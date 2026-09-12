@@ -21,9 +21,26 @@ import torch
 from separability import BETWEEN_FIELDS
 
 
-def _standardize(Xb, eps=1e-8):                      # (B, N, d) -> per-spec column standardize
-    sd = Xb.std(1, unbiased=False, keepdim=True)
-    return Xb / torch.where(sd < eps, torch.ones_like(sd), sd)
+def _sumsq_over_N(A):
+    """sum(A**2) over axis 1 of (B, N, d), accumulated in chunks so A**2 is never materialised in
+    full -- that copy of the raw input is ~28 GB on the heavy shape and is what OOMs it. Returns
+    (B, d). torch's einsum/`*` both materialise the product first, so an explicit chunk loop is the
+    only way to bound the temporary."""
+    B, N, d = A.shape
+    out = A.new_zeros((B, d))
+    step = max(1, int(2e8 // max(1, B * d * 8)))          # ~0.2 GB per chunk
+    for n0 in range(0, N, step):
+        out += (A[:, n0:n0 + step] ** 2).sum(1)
+    return out
+
+
+def _standardize(Xb, eps=1e-8):                      # (B, N, d) -> per-spec column standardize, IN PLACE
+    N = Xb.shape[1]
+    mean = Xb.mean(1, keepdim=True)                                        # (B, 1, d)
+    var = (_sumsq_over_N(Xb) / N).unsqueeze(1) - mean ** 2                 # (B, 1, d), bounded temp
+    sd = var.clamp(min=0).sqrt()
+    Xb /= torch.where(sd < eps, torch.ones_like(sd), sd)                   # in place: input is the driver
+    return Xb
 
 
 def _decompose(M):                                   # M (B, L, C, d)
@@ -198,7 +215,9 @@ def measure_batch(Xb, L, C, n_obs, n_boot=200, n_null=200, n_resplit=200, sig=0.
     # between-share, batched over the regular grid
     Y = X
     gmean = Y.mean(1, keepdim=True)
-    tot_ss = ((Y - gmean) ** 2).sum(dim=(1, 2))               # (B,)
+    # tot_ss = sum_{n,d} (Y - gmean)^2 = sum_d [ sum_n Y^2 ] - N * sum_d gmean_d^2. sum_n Y^2 is the
+    # chunked _sumsq_over_N, so no full ~28 GB copy of the raw input is ever held.
+    tot_ss = _sumsq_over_N(Y).sum(1) - N * (gmean.squeeze(1) ** 2).sum(1)            # (B,)
     between = (n_obs * ((M - gmean.reshape(B, 1, 1, d)) ** 2).sum(dim=3)).sum(dim=(1, 2))
     within = (tot_ss - between).clamp(min=0)
     G = L * C
