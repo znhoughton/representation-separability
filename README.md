@@ -44,7 +44,8 @@ representation-separability/
 │       ├── extract_vua.py               # the same for VUA20 metaphor (GPU)
 │       ├── measure.py                    # all four constructions: pos, role, metaphor, morphology
 │       ├── decode_from_interaction.py   # Experiment 3
-│       ├── dataset_stats.py             # the counts quoted in the Dataset sections
+│       ├── dataset_stats.py             # the counts quoted in the Dataset/Stimuli sections,
+│       │                                #   plus the per-item stimulus lists (stimuli_items.csv)
 │       ├── run_position_ablation.sh     # Appendix: the ablation end to end, everything to CSV
 │       ├── finalize_position_ablation.sh  # its post-processing, runnable on its own
 │       └── test_measurement_pipeline.py # regression test for the chain (seconds, no GPU)
@@ -66,8 +67,8 @@ if you want just one of them.
 | Experiment 2, role | `llm_role.csv` | `llm/measure.py role` |
 | Experiment 2, metaphor | `llm_metaphor.csv` | `llm/measure.py metaphor` |
 | Experiment 3 | `llm_decode_pos_form.csv`, `llm_decode_interaction.csv` | `llm/decode_from_interaction.py` |
-| Dataset counts | `methods_grid_stats.csv` | `llm/dataset_stats.py` |
-| Appendix: validation | `validate_measure.csv` | `toy/validate_measure.py` |
+| Dataset counts | `methods_grid_stats.csv`, `stimuli_items.csv` | `llm/dataset_stats.py` |
+| Appendix: validation | `validate_measure.csv.gz` (uncompressed is gitignored) | `toy/validate_measure.py` |
 | Appendix: morphology | `llm_morph.csv` | `llm/measure.py morphology` |
 | Appendix: position ablation | `llm_*_ablation.csv`, `position_ablation_*.csv` | `llm/run_position_ablation.sh` |
 
@@ -160,8 +161,10 @@ seconds without a GPU. Worth running before spending hours on an extraction.
 
 ## Notes
 
-- **Data policy:** result CSVs under `data/` are versioned; representation directories
-  (`data/*_reps/`) and corpora (`data/ud/`) are gitignored, being large and regenerable.
+- **Data policy:** result CSVs under `data/` are versioned, the one exception being the
+  validation grid, which is versioned compressed (`validate_measure.csv.gz`; its uncompressed
+  working copy is gitignored). Representation directories (`data/*_reps/`) and corpora
+  (`data/ud/`) are gitignored, being large and regenerable.
 - **Item keying:** every construction in the paper keys the item on the **surface form**, so the
   token is identical at both levels of a distinction. Keying part of speech on the lemma instead
   pools inflected forms and inflates the layer-0 interaction by 50–100×, which is a fact about

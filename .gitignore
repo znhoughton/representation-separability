@@ -99,3 +99,6 @@ paper/*_files/
 # reproducible from the pipeline and useful locally, but they are not part of it. Kept on disk.
 /scripts/dev/
 /scripts/preflight_validation.py
+
+# uncompressed copy of the canonical validate_measure.csv.gz (local working file)
+/data/validate_measure.csv

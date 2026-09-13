@@ -51,6 +51,13 @@ def qmd_body(text):
     return re.sub(r"#.*", "", body)                       # comments name columns they do not read
 
 
+def gsf_fallbacks(body):
+    """Columns the paper reads only through gsf(), the soft getter whose second argument is a
+    typed fallback. Those are deliberately optional -- the paper renders today from the fallback
+    and switches to the data on the next stats regeneration -- so they are not broken reads."""
+    return set(re.findall(r'gsf\(\s*"[^"]*"\s*,\s*"([a-z][a-z0-9_]+)"', body))
+
+
 def qmd_tokens(body):
     """snake_case identifiers in the R chunks, which is where columns are named."""
     return {t for t in re.findall(r"\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b", body)} - IGNORE
@@ -96,8 +103,10 @@ def main():
     # paper -> data. Only flag tokens that look like data columns: a name the paper uses that is
     # not in any CSV but IS a measured field, or shares a stem with one, is the dangerous kind.
     stems = {c.split("_")[0] for c in every}
+    optional = gsf_fallbacks(body)
     suspicious = sorted(t for t in used
-                        if t not in every and t not in made and t.split("_")[0] in stems)
+                        if t not in every and t not in made and t not in optional
+                        and t.split("_")[0] in stems)
     # data -> paper, restricted to what the measure computes, since that is what costs a run.
     prefixed = {p + f for f in REPORT_FIELDS for p in ("", "std_", "raw_")}
     present = sorted(f for f in prefixed if f in every)

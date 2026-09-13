@@ -4,8 +4,9 @@ This is a different question from the one Experiment 1 answers, and separating t
 Experiment 1 plants structure in a LANGUAGE, trains a model on it, and measures the model's
 representation. If the measured sizes fail to track the planted weights there, we cannot say
 whether the measure missed something or the model simply built a representation that does not
-mirror the language -- and we know the second happens, since the linear arm cannot represent an
-interaction at all. Experiment 1 therefore tests the whole pipeline, which is the interesting
+mirror the language -- and we know the second happens: the linear arm cannot compute an
+interaction, yet its observed grid carries a trace of each cell's contexts. Experiment 1
+therefore tests the whole pipeline, which is the interesting
 scientific question but is not a check on the estimator.
 
 Here the components are planted DIRECTLY IN THE REPRESENTATION. There is no model and no
