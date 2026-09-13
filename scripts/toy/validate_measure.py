@@ -15,7 +15,8 @@ and hand the result to `unified_split` exactly as the LLM scripts do. Ground tru
 the level the measure operates on, so any discrepancy belongs to the estimator and nothing else.
 
 What it is for is the regime Experiment 2 actually reports in, which has never been checked:
-around 24 observations per cell, in 768-2048 dimensions, with far more within-cell variance
+10 to 100 observations per cell (the LLM grids' median cells run 17 to 23), in 8 to 2048
+dimensions, with far more within-cell variance
 than between-cell structure. The questions are
 
   1. does the measured size of each effect match the planted size, and over what range;
