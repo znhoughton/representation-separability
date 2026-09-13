@@ -161,6 +161,14 @@ seconds without a GPU. Worth running before spending hours on an extraction.
 
 ## Notes
 
+- **Stimuli:** the words the Experiment 2 grids are built from are listed in
+  `data/stimuli_items.csv`, one row per kept item per model, with its two class labels and the
+  token count behind each grid cell of it (`pos_noun_verb_form`: 78 noun/verb conversion forms
+  like *run*, *hit*, *claims*; `role_nsubj_obj`: 49 UD nouns attested as both subject and
+  object; `metaphor`: 180 VUA nouns, verbs, adjectives and adverbs annotated both literally and
+  figuratively). All three are same-token, keyed on the lowercased surface form, min 10 tokens
+  per class. Regenerate with `python scripts/llm/dataset_stats.py` on the box holding the reps;
+  the paper's Stimuli section (@sec-exp2-stimuli) summarizes the same file.
 - **Data policy:** result CSVs under `data/` are versioned, the one exception being the
   validation grid, which is versioned compressed (`validate_measure.csv.gz`; its uncompressed
   working copy is gitignored). Representation directories (`data/*_reps/`) and corpora
