@@ -73,11 +73,12 @@ ABLATION="${ABLATION:-0}"             # re-extracts reps; off unless asked for
 # Falls back to CPU automatically if torch reports no CUDA. Set SEP_DEVICE=cpu to force the numpy path.
 SEP_DEVICE="${SEP_DEVICE:-cuda}"
 export SEP_DEVICE
-# On the GPU each measurement script runs as ONE process (a CUDA context per CPU worker would
-# exhaust VRAM): the validation batches same-shape specs and ignores --workers, and the LLM and toy
-# re-measure collapse their pools to a single worker. The numpy path keeps the old worker counts.
+# On the GPU the batched validation ignores --workers (it batches same-shape specs itself). The LLM
+# measure is per-spec on ragged cells, so a single process underuses the card; it runs several
+# workers instead (the pool is spawned, so each worker is a fresh CUDA context of ~10 GB -- keep
+# LLM_WORKERS * 10 GB under VRAM, and note CPU RAM at ~12 GB/worker is the tighter limit of the two).
+# The toy re-measure stays single-process on the GPU. The numpy path keeps the old CPU worker counts.
 if [ "$SEP_DEVICE" = "cuda" ]; then
-  LLM_WORKERS=1
   REMEASURE_WORKERS=1
 else
   REMEASURE_WORKERS="${TOY_WORKERS:-8}"

@@ -46,7 +46,9 @@ import numpy as np  # noqa: E402
 REPO_ROOT = Path(__file__).resolve().parents[2]
 for _sub in ("", "llm", "toy"):          # "" = scripts/, where the shared measure lives
     sys.path.insert(0, str(REPO_ROOT / "scripts" / _sub))
+import time  # noqa: E402
 from separability import REPORT_FIELDS, check_emits  # noqa: E402
+from progress import bar  # noqa: E402
 # SEP_DEVICE=cuda routes the measure through the torch/GPU backend (identical results, GPU speed);
 # anything else keeps the numpy path. Read at import so it reaches spawned workers too.
 if os.environ.get("SEP_DEVICE", "").lower() == "cuda":
@@ -155,8 +157,11 @@ def run_one(spec, n_boot=200, n_resplit=200):
     return row
 
 def _run_chunk_with_backoff(chunk, ni, nc, d, nb, n_resplit, dev):
-    """Runs one chunk on GPU; on OOM, halves it and retries recursively.
-    Returns (metas, reps) same shape as a direct measure_batch call would produce."""
+    """Runs one chunk on GPU; on OOM, halves it and retries recursively. Returns
+    (metas, reps, eff), where eff is the largest sub-batch that actually fit. The caller uses eff to
+    shrink the batch for the rest of THIS shape, so a shape that overshoots stops re-discovering the
+    same OOM on every chunk -- without carrying the reduction to the next shape, which recomputes its
+    own batch and may fit far more."""
     import torch, gc
     from separability_batch import measure_batch
     oom = False
@@ -173,7 +178,7 @@ def _run_chunk_with_backoff(chunk, ni, nc, d, nb, n_resplit, dev):
     except torch.cuda.OutOfMemoryError:
         oom = True
     if not oom:
-        return metas, reps
+        return metas, reps, len(chunk)
     # Everything below runs OUTSIDE the try/except -- the failed frame and its exception
     # object are fully gone by now, so nothing keeps their tensors referenced during retries.
     gc.collect()
@@ -183,9 +188,9 @@ def _run_chunk_with_backoff(chunk, ni, nc, d, nb, n_resplit, dev):
     mid = len(chunk) // 2
     print(f"    OOM on batch of {len(chunk)} ({ni}x{nc} d={d}, n={nb}) -- "
           f"splitting into {mid} + {len(chunk) - mid}", flush=True)
-    metas1, reps1 = _run_chunk_with_backoff(chunk[:mid], ni, nc, d, nb, n_resplit, dev)
-    metas2, reps2 = _run_chunk_with_backoff(chunk[mid:], ni, nc, d, nb, n_resplit, dev)
-    return metas1 + metas2, reps1 + reps2
+    metas1, reps1, eff1 = _run_chunk_with_backoff(chunk[:mid], ni, nc, d, nb, n_resplit, dev)
+    metas2, reps2, eff2 = _run_chunk_with_backoff(chunk[mid:], ni, nc, d, nb, n_resplit, dev)
+    return metas1 + metas2, reps1 + reps2, min(eff1, eff2)
 
 
 def run_batched(specs, w, fh, n_resplit=200, vram_gb=None):
@@ -200,7 +205,7 @@ def run_batched(specs, w, fh, n_resplit=200, vram_gb=None):
     groups = defaultdict(list)
     for t in specs:
         groups[(t[0], t[1], t[2], t[3])].append(t)
-    n_done, total = 0, len(specs)
+    n_done, total, t0 = 0, len(specs), time.time()
     for ni, nc, d, nb in sorted(groups, key=lambda s: -(s[0] * s[1] * s[2] * s[3])):
         g = groups[(ni, nc, d, nb)]
         # The re-split, permutation null and leak-null are all chunked in separability_batch now, so
@@ -211,10 +216,15 @@ def run_batched(specs, w, fh, n_resplit=200, vram_gb=None):
         # per-spec memory is ~1x the raw input X (ni*nc*nb obs x d) plus small decomposition; the
         # 1.5x covers X and headroom. The 200-draw arrays are all chunked/bounded. Backoff guards it.
         per = int(1.5 * ni * nc * nb * d * 8) + 8 * ni * nc * d * 8        # raw input + decomposition
-        bmax = max(1, min(64, int(max(1e9, (vram_gb - 8.0) * 1e9) // max(1, per))))
-        for i in range(0, len(g), bmax):
-            chunk = g[i:i + bmax]
-            metas, reps = _run_chunk_with_backoff(chunk, ni, nc, d, nb, n_resplit, dev)
+        # Let the VRAM budget, not a fixed count, set the batch. The old cap of 64 left most of the
+        # card idle at every width except the heaviest 2048 shapes (which are already VRAM-bound below
+        # 64). The one batch-scaling array not in `per` is the B x n_item x n_item permutation null,
+        # ~0.1 GB even at B=512, n_item=180; the OOM backoff halves any shape that still overshoots.
+        bmax = max(1, min(512, int(max(1e9, (vram_gb - 8.0) * 1e9) // max(1, per))))
+        cur, i = bmax, 0
+        while i < len(g):
+            chunk = g[i:i + cur]
+            metas, reps, eff = _run_chunk_with_backoff(chunk, ni, nc, d, nb, n_resplit, dev)
             for (t, planted), rep in zip(metas, reps):
                 row = dict(n_item=t[0], n_class=t[1], d=t[2], n_obs=t[3], noise_ratio=t[4],
                            seed=t[5], **planted)
@@ -222,8 +232,9 @@ def run_batched(specs, w, fh, n_resplit=200, vram_gb=None):
                     if k not in row:
                         row[k] = rep.get(k)
                 w.writerow(row)
-            fh.flush(); n_done += len(chunk)
-            print(f"  {n_done}/{total}  ({ni}x{nc} d={d} n={nb}, batch {len(chunk)})", flush=True)
+            fh.flush(); n_done += len(chunk); i += len(chunk)
+            cur = min(cur, eff)   # this shape overshot -> keep the size that fit for its rest; resets next shape
+            bar(n_done, total, t0, label=f"validate d={d:>4} b={len(chunk):>3} ")
 
 
 # Planted shares of between-cell energy, as (item, class, interaction).
@@ -349,13 +360,14 @@ def main():
             with ProcessPoolExecutor(max_workers=args.workers,
                                      mp_context=mp.get_context("spawn")) as ex:
                 futs = [ex.submit(run_one, s) for s in specs]
+                t0c, nfail = time.time(), 0
                 for n, fut in enumerate(as_completed(futs), 1):
                     try:
                         w.writerow(fut.result()); fh.flush()
                     except Exception as e:
+                        nfail += 1
                         print(f"  !! {type(e).__name__}: {e}", flush=True)
-                    if n % 200 == 0 or n == len(specs):
-                        print(f"  {n}/{len(specs)}", flush=True)
+                    bar(n, len(specs), t0c, fails=nfail, label="validate ")
     print(f"Done -> {out}")
 
 

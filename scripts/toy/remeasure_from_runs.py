@@ -27,6 +27,7 @@ for _sub in ("", "llm", "toy"):
     sys.path.insert(0, str(REPO_ROOT / "scripts" / _sub))
 import os  # noqa: E402
 from separability import check_emits  # noqa: E402
+from progress import bar  # noqa: E402
 if os.environ.get("SEP_DEVICE", "").lower() == "cuda":   # GPU backend when asked, else numpy
     from separability_gpu import unified_split  # noqa: E402
 else:
@@ -112,8 +113,7 @@ def main():
                 if k not in KEY_COLS and k in r:
                     row[k] = r[k]
             done += 1
-            if i % 500 == 0:
-                print(f"  {i}/{len(runs)}  {time.time() - t0:.0f}s", flush=True)
+            bar(i, len(runs), t0, fails=failed, label="re-measure ")
 
     tmp = Path(args.csv).with_suffix(".csv.tmp")
     with open(tmp, "w", newline="") as fh:

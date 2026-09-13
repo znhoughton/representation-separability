@@ -48,6 +48,8 @@ if os.environ.get("SEP_DEVICE", "").lower() == "cuda":
 else:
     from separability import unified_split  # noqa: E402
 from csv_repair import repair, migrate_header  # noqa: E402
+from progress import bar  # noqa: E402
+import time  # noqa: E402
 
 _blank = lambda v: "" if v is None else v
 
@@ -316,7 +318,7 @@ CONSTRUCTIONS = {
 
 def main():
     import multiprocessing as mp
-    from concurrent.futures import ProcessPoolExecutor, as_completed
+    from concurrent.futures import ProcessPoolExecutor, as_completed, wait, FIRST_COMPLETED
 
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -333,8 +335,10 @@ def main():
                          "re-summarised without measuring again. Default on; pass '' to disable.")
     ap.add_argument("--layers", default=None, help="comma list to restrict (default all)")
     ap.add_argument("--skip-random", action="store_true", help="only measure *pretrained* reps")
-    ap.add_argument("--workers", type=int, default=6,
-                    help="parallelize ACROSS FILES. RAM ~= workers x per-file peak (~12GB for a 1.4B)")
+    ap.add_argument("--workers", type=int, default=int(os.environ.get("LLM_WORKERS", "6")),
+                    help="parallelize ACROSS FILES; also read from $LLM_WORKERS so a direct call honors "
+                         "it like the runner does. RAM ~= workers x per-file peak (~12GB for a 1.4B); "
+                         "on GPU the SEP_VRAM_GB budget throttles below this as model size grows")
     ap.add_argument("--n-resplit", type=int, default=200,
                     help="re-splits behind each size interval; 200 is where the false-positive rate settles at ~5%% on planted zeros")
     ap.add_argument("--out", default=None, help="default depends on the construction")
@@ -388,23 +392,91 @@ def main():
         todo.append(p)
 
     nw = max(1, min(args.workers, len(todo)))
-    print(f"measuring {args.construction} on {len(todo)} files with {nw} workers", flush=True)
-    write_header = not out.exists()
+    on_gpu = os.environ.get("SEP_DEVICE", "").lower() == "cuda"
+
+    def _peak_gb(p):
+        """Conservative GPU peak for one rep file, from its width. The re-split arrays scale with d,
+        and a worker at d=2048 was measured at ~17.6 GB, at d=768 at ~10 GB; 6 + 0.006*d sits at or
+        above every observed peak. Reads only the .npy header, never the array. Falls back to the
+        widest case so an unreadable header throttles rather than overcommits."""
+        try:
+            import zipfile
+            from numpy.lib import format as _npf
+            with zipfile.ZipFile(p) as zf:
+                nm = next(n for n in zf.namelist() if n.startswith("layer_") and n[6:7].isdigit())
+                with zf.open(nm) as f:
+                    shp, _, _ = _npf._read_array_header(f, _npf.read_magic(f))
+            d = int(shp[1])
+        except Exception:
+            d = 2048
+        return 6.0 + 0.006 * d
+
+    # On the GPU each worker holds its own CUDA context whose size scales with the model width, so a
+    # flat worker count overcommits VRAM whenever several large models land at once (this is what
+    # OOM-killed the ablation runs). Admit workers under a VRAM budget instead: small models pack in,
+    # large ones throttle, and a lone file larger than the budget still runs. The CPU path is
+    # RAM-bound and keeps the old fixed pool. SEP_VRAM_GB overrides the 72 GB default (of an 80 GB card).
+    budget = float(os.environ.get("SEP_VRAM_GB", "72"))
+    gb_of = {p: _peak_gb(p) for p in todo} if on_gpu else {}
+    print(f"measuring {args.construction} on {len(todo)} files with up to {nw} workers"
+          + (f" under a {budget:.0f} GB VRAM budget" if on_gpu else ""), flush=True)
+    write_header = (not out.exists()) or out.stat().st_size == 0   # empty leftover still needs a header
     with open(out, "a", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=fields, extrasaction="ignore")
         if write_header:
             w.writeheader()
-        with ProcessPoolExecutor(max_workers=nw, mp_context=mp.get_context("spawn")) as ex:
-            futs = {ex.submit(worker, p, args, layers): p for p in todo}
-            for fut in as_completed(futs):
-                try:
-                    rows = fut.result()
-                except Exception as e:
-                    print(f"  !! {futs[fut].name} failed: {e!r}", flush=True); continue
+
+        t0, prog = time.time(), {"done": 0, "fail": 0}
+
+        def _emit(fut, name):
+            prog["done"] += 1
+            try:
+                rows = fut.result()
+            except Exception as e:
+                prog["fail"] += 1
+                print(f"  !! {name} failed: {e!r}", flush=True)
+            else:
                 for r in rows:
                     w.writerow(r)
                 fh.flush()
-                print(f"  wrote {len(rows)} rows for {futs[fut].name}", flush=True)
+                print(f"  wrote {len(rows)} rows for {name}", flush=True)
+            bar(prog["done"], len(todo), t0, fails=prog["fail"], label=f"{args.construction} ")
+
+        # max_tasks_per_child=1: a worker exits after one file, so PyTorch's CUDA caching allocator
+        # (which never returns memory to the GPU mid-process) is fully released before the next file.
+        # Without this, reused workers keep the largest footprint they ever touched -- four workers
+        # that each measured a 1.3B model hold ~17.6 GB apiece even while now on a 350M model, which
+        # the VRAM budget below cannot see. The per-file spawn + torch import is a few seconds, dwarfed
+        # by the measure. The CPU path benefits too (reps do not pile up across files).
+        pool_kw = dict(max_workers=nw, mp_context=mp.get_context("spawn"), max_tasks_per_child=1)
+        with ProcessPoolExecutor(**pool_kw) as ex:
+            if on_gpu:
+                pending = sorted(todo, key=gb_of.get, reverse=True)   # big first, so they get slots
+                inflight, used = {}, 0.0
+
+                def _admit():
+                    nonlocal used
+                    changed = True
+                    while changed:
+                        changed = False
+                        for k, p in enumerate(pending):
+                            gb = gb_of[p]
+                            if (not inflight) or (used + gb <= budget and len(inflight) < nw):
+                                inflight[ex.submit(worker, p, args, layers)] = (p.name, gb)
+                                used += gb; del pending[k]; changed = True
+                                break
+
+                _admit()
+                while inflight:
+                    finished, _ = wait(list(inflight), return_when=FIRST_COMPLETED)
+                    for fut in finished:
+                        name, gb = inflight.pop(fut); used -= gb
+                        _emit(fut, name)
+                    _admit()
+            else:
+                futs = {ex.submit(worker, p, args, layers): p for p in todo}
+                for fut in as_completed(futs):
+                    _emit(fut, futs[fut].name)
     print(f"Done -> {out}")
 
 
