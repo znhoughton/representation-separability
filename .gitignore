@@ -102,3 +102,7 @@ paper/*_files/
 
 # uncompressed copy of the canonical validate_measure.csv.gz (local working file)
 /data/validate_measure.csv
+
+# Quick-and-dirty per-item frequency analysis (future-paper exploration, not a
+# pipeline artifact): scripts, outputs, everything under here is untracked on purpose.
+/analysis/
