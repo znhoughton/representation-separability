@@ -54,6 +54,32 @@ for (s in starts) {
 }
 cat(sprintf("evaluated against data/: %d data-chunk failures, %d figure/table notes\n",
             fatal, soft))
+
+# ---- pass 3: evaluate the inline expressions -------------------------------------------------
+# Parsing an inline expression proves it is syntactically valid, not that the function it calls
+# exists. A prose number calling a helper that was renamed parses fine and fails at render, which
+# is how `ldrange` for `ldrng` survived two passes. These are the numbers the prose asserts, so a
+# missing one is a wrong sentence rather than a missing figure.
+bad_inline <- 0L
+for (x in inline) {
+  code <- substr(x, 4, nchar(x) - 1)
+  v <- tryCatch(eval(parse(text = code), envir = env),
+                error = function(e) structure(conditionMessage(e), class = "sepErr"))
+  msg <- NULL
+  if (inherits(v, "sepErr")) msg <- substr(v, 1, 80)
+  else if (length(v) != 1L) msg <- sprintf("not scalar (length %d)", length(v))
+  else if (is.atomic(v) && is.na(v)) msg <- "NA"
+  else if (is.numeric(v) && !is.finite(v)) msg <- "not finite"
+  if (!is.null(msg)) {
+    bad_inline <- bad_inline + 1L
+    cat(sprintf("  INLINE %-52s -> %s
+", substr(code, 1, 52), msg))
+  }
+}
+cat(sprintf("inline expressions evaluated: %d, %d problematic
+", length(inline), bad_inline))
+fatal <- fatal + bad_inline
+
 for (nm in c("llm", "llm_deep", "toy", "toy_cap")) {
   if (exists(nm, envir = env)) {
     d <- get(nm, envir = env)

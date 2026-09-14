@@ -24,7 +24,15 @@ library(readr); library(dplyr); library(tidyr); library(ggplot2); library(kableE
 library(patchwork); library(scales)
 
 DATA <- file.path("..", "data")
-rd <- function(f) suppressMessages(read_csv(file.path(DATA, f), show_col_types = FALSE))
+# Reads a result CSV, falling back to the gzipped copy. validate_measure is 252,000 rows and is
+# tracked compressed, with the plain file gitignored, so a fresh clone has only the .gz; readr
+# decompresses transparently. Handled here rather than at the call site so any file can be
+# compressed later without the paper needing to know.
+rd <- function(f) {
+  p <- file.path(DATA, f)
+  if (!file.exists(p) && file.exists(paste0(p, ".gz"))) p <- paste0(p, ".gz")
+  suppressMessages(read_csv(p, show_col_types = FALSE))
+}
 
 # Fill in columns a CSV predates, as NA, so a file measured before a field existed still loads
 # and the affected numbers read as missing rather than bringing the whole render down.
@@ -543,7 +551,7 @@ ggplot(plt, aes(depth, share, color = family, group = interaction(family, size))
   theme_paper(8) + theme(strip.placement = "outside")
 ```
 
-The two main effects sit on separate axes. At the deepest layer, item-class overlap runs `r ldrange("POS (noun/verb)", "leak")` for part of speech and `r ldrange("role (subject/object)", "leak")` for grammatical role, so projecting out the class direction leaves better than 99% of the item effect intact. Both sit above the upper end of their null, so the residual alignment is real rather than a by-product of the dimension count, but it is small enough that these representations do not achieve class structure by borrowing the directions that carry word identity. Where a shared class direction exists, it is its own direction.
+The two main effects sit on separate axes. At the deepest layer, item-class overlap runs `r ldrng("POS (noun/verb)", "leak")` for part of speech and `r ldrng("role (subject/object)", "leak")` for grammatical role, so projecting out the class direction leaves better than 99% of the item effect intact. Both sit above the upper end of their null, so the residual alignment is real rather than a by-product of the dimension count, but it is small enough that these representations do not achieve class structure by borrowing the directions that carry word identity. Where a shared class direction exists, it is its own direction.
 
 The interaction, however, does not have axes of its own, and this is what decides whether a third component could simply be added to the description and separability recovered in a wider sense. For part of speech `r g(ld("POS (noun/verb)", "leak_int"), 3)` of the interaction lies in the span of the two main effects, for role `r g(ld("role (subject/object)", "leak_int"), 3)` and for metaphor `r g(ld("metaphor (literal/figurative)", "leak_int"), 3)`, against nulls whose upper ends are `r g(ld("POS (noun/verb)", "leak_int_null"), 3)`, `r g(ld("role (subject/object)", "leak_int_null"), 3)` and `r g(ld("metaphor (literal/figurative)", "leak_int_null"), 3)` (@tbl-llm). The partition of the grid says nothing about direction, so these numbers are not implied by the decomposition: the item-by-class term reuses the very directions that carry item identity and class membership. Read with the first overlap, they say something more specific than "not separable". The failure is not that item and class have been collapsed onto shared axes, since those remain distinct; it is that the part of class structure specific to each word is written in the same directions as everything else. For metaphor the orientation cannot be read at all, because the shared class direction is too small to fit a subspace to, which is itself the first indication of how little of metaphoricity is carried by a shared direction. The class effect is a cross-split dot product, so its null is exactly zero, and it clears zero in `r outof("metaphor (literal/figurative)", "size_class")` for metaphor, as it does in `r outof("POS (noun/verb)", "size_class")` for part of speech and `r outof("role (subject/object)", "size_class")` for grammatical role. All three therefore have a shared class direction that replicates across splits, and what separates them is its size: the class effect is `r g(ld("POS (noun/verb)", "size_class"), 3)` of the representation for part of speech and `r g(ld("role (subject/object)", "size_class"), 3)` for grammatical role, against `r g(ld("metaphor (literal/figurative)", "size_class"), 3)` for metaphor, more than an order of magnitude smaller (@tbl-llm). Metaphor's shared class direction is real but slight, and most of what distinguishes its uses is carried word by word rather than in a direction shared across them.
 
@@ -721,7 +729,7 @@ v_null |>
   kable_styling(font_size = 9, latex_options = c("repeat_header"))
 ```
 
-The rate at which a genuine zero is nonetheless flagged varies with width and effect rather than holding at the nominal 5% (Table \ref{tbl-val-fpd}). It runs highest at the smallest width, where a true zero class effect is flagged `r sprintf("%.0f%%", 100 * fpget("class", 8))` of the time, and it sits in the five-to-ten percent range across the wider settings, the class and interaction a little more liberal than the item effect. This is the floor the Experiment 1 detections at small width are read against, so a lone flag at $d = 8$ is weak on its own. The language-model results sit at $d \geq 768$, where the rate is mildly liberal at worst, and each rests on the effect clearing zero in all six models, which even an eight-percent per-model rate would not produce by chance.
+The rate at which a genuine zero is nonetheless flagged varies with width and effect rather than holding at the nominal 5% (Table \ref{tbl-val-fpd}). The class effect is the most liberal, and most so at the smallest width, where a true zero is flagged `r sprintf("%.0f%%", 100 * fpget("class", 8))` of the time; the item effect is the most conservative, falling to `r sprintf("%.0f%%", 100 * fpget("item", 2048))` at the widest. No setting exceeds ten percent, and pooled across widths the class and interaction are a little more liberal than the item effect. This is the floor the Experiment 1 detections at small width are read against, so a lone flag at $d = 8$ is weak on its own. The language-model results sit at $d \geq 768$, where the rate is mildly liberal at worst, and each rests on the effect clearing zero in all six models, which even an eight-percent per-model rate would not produce by chance.
 
 ```{r}
 #| label: tbl-val-fpd

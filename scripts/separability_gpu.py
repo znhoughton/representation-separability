@@ -133,10 +133,13 @@ def _resplit_intervals(X, cells, items, classes, n_resplit, gen):
     mb = (m - h).clamp(min=1).to(X.dtype)[:, None, None]
     MA = (sa / hf).permute(1, 0, 2).reshape(n_resplit, L, C, d)
     MB = ((totals[:, None, :] - sa) / mb).permute(1, 0, 2).reshape(n_resplit, L, C, d)
-    _, aA, bA, _ = _decompose(MA)
-    _, aB, bB, _ = _decompose(MB)
-    McA = MA - MA.mean(dim=(1, 2), keepdim=True)
-    McB = MB - MB.mean(dim=(1, 2), keepdim=True)
+    # Marginals taken straight off the centered grids. _decompose would also build the two
+    # (k, L, C, d) gammas and immediately discard them, which is the allocation the CPU path
+    # documents as the one to avoid; the identity below never needs gamma itself.
+    McA = MA - MA.mean(dim=(1, 2), keepdim=True); del MA
+    McB = MB - MB.mean(dim=(1, 2), keepdim=True); del MB
+    aA, bA = McA.mean(2), McA.mean(1)
+    aB, bB = McB.mean(2), McB.mean(1)
     si = C * torch.einsum('kld,kld->k', aA, aB)
     sc = L * torch.einsum('kcd,kcd->k', bA, bB)
     sg = torch.einsum('klcd,klcd->k', McA, McB) - si - sc

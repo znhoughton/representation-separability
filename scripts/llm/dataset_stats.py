@@ -144,6 +144,11 @@ def main():
 
     if args.vua_dir:
         for p in sorted(Path(args.vua_dir).glob("*.npz")):
+            # Same filter the UD branch applies. Without it the position-ablated reps are counted
+            # as a second copy of the same model: identical stimuli, identical counts, emitted
+            # twice under one model name. That is where the duplicate metaphor rows came from.
+            if "__random" in p.name or "noposemb" in p.name:
+                continue
             z = np.load(p, allow_pickle=True)
             if "label" not in z.files:
                 continue
