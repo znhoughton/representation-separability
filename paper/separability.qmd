@@ -189,7 +189,12 @@ toy_cap <- toy |> filter(w_int > 0, w_item > 0, w_class > 0) |>
   # Formatted here rather than in the table, because `ov` needs the runs themselves to count how
   # many fall outside their null; a summarized row no longer has them.
   summarize(n = n(), size_int = median(size_interaction),
-            sz_int = sz(size_interaction, size_interaction_excludes_zero, digits = 3),
+            # median with the interquartile range over the runs in the row. A row pools hundreds
+            # of runs that differ in seed and in what was planted, and the median alone said
+            # nothing about how much they differ.
+            sz_int = sz(size_interaction, size_interaction_excludes_zero,
+                        quantile(size_interaction, .25), quantile(size_interaction, .75),
+                        digits = 3),
             ov_item = ov(leak_item_into_class, null_med, null_lo, null_hi, 4),
             ov_int = ov(leak_int_into_margins, null_int_med, null_int_lo, null_int, 3),
             overlap = median(leak_item_into_class, na.rm = TRUE),
@@ -537,7 +542,7 @@ Item and class effects entangle only when there is no room for them not to, and 
 
 ```{r}
 #| label: tbl-toy
-#| tbl-cap: "What a learner builds from the same languages as its representation runs out of room. Capacity is the rank the structure needs divided by the hidden width, so the rows run from a width of 128 down to 8 while the languages are held fixed: the median interaction planted is 0.097 in every row, and the fall down the *interaction* column is therefore the width and not the language. *Interaction* is the interaction's share of the representation, a size, then in parentheses how many of the runs in that row have a re-split 95% interval excluding zero. The last two columns are orientations, and a separate question: how much of the item effect lies in the class subspace, and how much of the interaction lies in the span of the two main effects. Each is the fraction that survives the projection, which is the quantity that matters, given as the median, then in parentheses how many times its own null's median it is and how many of the runs in that row fall outside that null's 95% interval, over the number of runs in the *runs* column. The null holds the effect fixed and rotates the target subspace at random 200 times. Reporting the multiple rather than the raw fraction is what makes the rows comparable: the null itself moves several-fold down this table as the width falls, so the fractions are not comparable across rows on their own. A value below one is more orthogonal than an arbitrary orientation would be, which with room to spare ReLU is. Table \ref{tbl-llm} reports the same three things for the language models. The linear arm's interaction stays below the 2% floor at which orientations are reported, so its last column is empty. Below capacity one a fully separable solution is reachable by dimension counting; above one it is not."
+#| tbl-cap: "What a learner builds from the same languages as its representation runs out of room. Capacity is the rank the structure needs divided by the hidden width, so the rows run from a width of 128 down to 8 while the languages are held fixed: the median interaction planted is 0.097 in every row, and the fall down the *interaction* column is therefore the width and not the language. *Interaction* is the interaction's share of the representation, a size, given as the median over the runs in that row, then their interquartile range in brackets, then in parentheses how many of them have a re-split 95% interval excluding zero. A row pools hundreds of runs differing in seed and in what was planted, so the brackets say how much those runs differ from one another. The last two columns are orientations, and a separate question: how much of the item effect lies in the class subspace, and how much of the interaction lies in the span of the two main effects. Each is the fraction that survives the projection, which is the quantity that matters, given as the median, then in parentheses how many times its own null's median it is and how many of the runs in that row fall outside that null's 95% interval, over the number of runs in the *runs* column. The null holds the effect fixed and rotates the target subspace at random 200 times. Reporting the multiple rather than the raw fraction is what makes the rows comparable: the null itself moves several-fold down this table as the width falls, so the fractions are not comparable across rows on their own. A value below one is more orthogonal than an arbitrary orientation would be, which with room to spare ReLU is. Table \ref{tbl-llm} reports the same three things for the language models. The linear arm's interaction stays below the 2% floor at which orientations are reported, so its last column is empty. Below capacity one a fully separable solution is reachable by dimension counting; above one it is not."
 toy_cap |>
   transmute(condition = act, capacity = g(capacity, 3), runs = n,
             interaction = sz_int,
@@ -681,7 +686,7 @@ dec <- bind_rows(
 
 dec |>
   arrange(construction, family) |>
-  transmute(distinction = shortname(construction), family,
+  transmute(distinction = shortname(construction), model = paste(family, size),
             words = n_peritem,
             class = sprintf("%.2f [%.2f, %.2f]", class_peritem,
                             class_peritem_lo, class_peritem_hi),
@@ -779,11 +784,15 @@ v_fp_d <- bind_rows(
 fpget <- function(eff, dd) v_fp_d$fp[v_fp_d$effect == eff & v_fp_d$d == dd]
 v_ov <- val |> filter(!is.na(leak_item_into_class), n_obs == 24, planted_overlap == 0) |>
   group_by(d) |> summarize(measured = median(leak_item_into_class),
+                           lo = quantile(leak_item_into_class, .025),
+                           hi = quantile(leak_item_into_class, .975),
                            chance = median(k_class / d), .groups = "drop")
 # The power side: a KNOWN fraction of the class direction planted inside the item subspace. The
 # measured overlap should rise above chance and be flagged outside its own random-orientation null.
 v_ov_power <- val |> filter(!is.na(leak_item_into_class), n_obs == 24, planted_overlap > 0) |>
   group_by(d) |> summarize(measured = median(leak_item_into_class),
+                           lo = quantile(leak_item_into_class, .025),
+                           hi = quantile(leak_item_into_class, .975),
                            chance = median(k_class / d),
                            detected = mean(leak_item_into_class_outside %in% c(TRUE, "TRUE")),
                            .groups = "drop")
@@ -839,9 +848,10 @@ With the item and class effects planted orthogonal, the measured overlap tracks 
 
 ```{r}
 #| label: tbl-val-overlap
-#| tbl-cap: "Measured item-class overlap when the two effects are planted orthogonal, at 24 observations per item and class. The *chance* column is the analytic level of Appendix \\ref{sec-appendix-math}."
+#| tbl-cap: "Measured item-class overlap when the two effects are planted orthogonal, at 24 observations per item and class. *Measured* is the median over the runs at that width with the 2.5th and 97.5th percentiles in brackets. The *chance* column is the analytic level of Appendix \\ref{sec-appendix-math}."
 v_ov |>
-  transmute(`width d` = d, measured = g(measured, 5), `analytic chance` = g(chance, 5)) |>
+  transmute(`width d` = d, measured = ci(measured, lo, hi, 5),
+            `analytic chance` = g(chance, 5)) |>
   kbl(longtable = TRUE, booktabs = TRUE, align = "rrr", linesep = "") |>
   kable_styling(font_size = 9, latex_options = c("repeat_header"))
 ```
@@ -850,9 +860,9 @@ The orthogonal case shows the overlap does not cry wolf; the planted-non-orthogo
 
 ```{r}
 #| label: tbl-val-power
-#| tbl-cap: "Measured item-class overlap when a fraction of the class direction is planted INSIDE the item subspace (non-orthogonal), at 24 observations per item and class. *chance* is the analytic random-orientation level; *detected* is the fraction of runs whose overlap falls outside that null's 95% interval."
+#| tbl-cap: "Measured item-class overlap when a fraction of the class direction is planted INSIDE the item subspace (non-orthogonal), at 24 observations per item and class. *Measured* is the median over the runs at that width with the 2.5th and 97.5th percentiles in brackets; *chance* is the analytic random-orientation level; *detected* is the fraction of runs whose overlap falls outside that null's 95% interval."
 v_ov_power |>
-  transmute(`width d` = d, measured = g(measured, 4), chance = g(chance, 5),
+  transmute(`width d` = d, measured = ci(measured, lo, hi, 4), chance = g(chance, 5),
             detected = sprintf("%.0f%%", 100 * detected)) |>
   kbl(longtable = TRUE, booktabs = TRUE, align = "rrrr", linesep = "") |>
   kable_styling(font_size = 9, latex_options = c("repeat_header"))
