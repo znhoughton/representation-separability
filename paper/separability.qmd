@@ -235,8 +235,10 @@ rng <- function(f, col, digits = 2) {
 
 # The range of a column across the six models at one construction's deepest layer, for the
 # few places the prose quotes a spread rather than a median. Same NA-through convention.
-ldrng <- function(constr, col, digits = 4) {
-  v <- llm_deep[[col]][llm_deep$construction == constr]
+# deep = FALSE reads the embedding layer instead, which is where the keying comparison lives.
+ldrng <- function(constr, col, digits = 4, deep = TRUE) {
+  d <- if (deep) llm_deep else llm[llm$layer == 0, ]
+  v <- d[[col]][d$construction == constr]
   if (all(is.na(v))) return("NA")
   sprintf("%s to %s", g(min(v, na.rm = TRUE), digits), g(max(v, na.rm = TRUE), digits))
 }
@@ -384,6 +386,8 @@ It is worth noting that entanglement is guaranteed under a specific subset of th
 
 ## Method {#sec-exp1-method}
 
+All code and analyses in this paper can be found here: <https://github.com/znhoughton/representation-separability>.
+
 ### The learner
 
 The input to the learner model comprises three pieces of information: the form, the class, and the context. Each has its own embedding, and the three are concatenated and passed to a standard multi-layer perceptron (MLP) with a single hidden layer of width $d$ and either a linear or a ReLU activation function, which outputs a distribution over the vocabulary (@fig-training). The training objective is thus to minimize cross-entropy between the model's predicted distribution over the vocabulary and the true distribution.
@@ -516,7 +520,7 @@ tibble::tribble(
 
 The part-of-speech grid is the restrictive one: the interaction $\gamma(i,c)$ is estimable only for an item observed in more than one class, since it is defined by how an item's representation shifts across classes, and the balance requirement selects forms genuinely used both ways, such as *run* or *hit*, including pairs like *claims* where a noun plural and a verb's third person are the same token. Role and metaphor carry no such restriction, since any noun occurs as both subject and object and any content word occurs both literally and figuratively, which is one reason they broaden the claim. The median grid cell holds `r gsf("pos_noun_verb_form", "tokens_per_cell_median")` tokens for part of speech, `r gsf("role_nsubj_obj", "tokens_per_cell_median")` for role and `r gs("metaphor", "tokens_per_cell_median")` for metaphor, comfortably inside the 10-to-100 observations per cell that Appendix \ref{sec-appendix-validate} measures over.
 
-Keying the item on the *lemma* instead admits more items (`r cm(gs("pos_noun_verb", "n_items_kept"))` rather than `r max(llm$n_items[llm$construction == "POS (noun/verb)"])`), but a lemma pools every inflected form: *run* and *runs* as a noun against *run*, *runs*, *ran* and *running* as a verb. Those are different tokens, and the consequence shows up at the embedding layer, which has no context to work with and so can only distinguish classes that differ in their input. Keyed on the lemma the layer-0 interaction is 0.083 to 0.172 across models; keyed on the form it is 0.0010 to 0.0028. The difference is inflection rather than representation, and keying on the form removes it at the cost of a smaller item set. Appendix \ref{sec-appendix-morph} shows what the measure does on a distinction where the property cannot be arranged at all.
+Keying the item on the *lemma* instead admits more items (`r cm(gs("pos_noun_verb", "n_items_kept"))` rather than `r max(llm$n_items[llm$construction == "POS (noun/verb)"])`), but a lemma pools every inflected form: *run* and *runs* as a noun against *run*, *runs*, *ran* and *running* as a verb. Those are different tokens, and the consequence shows up at the embedding layer, which has no context to work with and so can only distinguish classes that differ in their input. Keyed on the form the layer-0 interaction is `r ldrng("POS (noun/verb)", "size_int", deep = FALSE)` across models, essentially nothing, which is what a token identical in both classes should give. The difference is inflection rather than representation, and keying on the form removes it at the cost of a smaller item set. Appendix \ref{sec-appendix-morph} shows what the measure does on a distinction where the property cannot be arranged at all.
 
 ## Method {#sec-exp2-method}
 
@@ -744,7 +748,7 @@ v_fp_d |>
   kable_styling(font_size = 9, latex_options = c("repeat_header"))
 ```
 
-With the item and class effects planted orthogonal, the measured overlap tracks $r/d$ closely and sits a little below it (Table \ref{tbl-val-overlap}). This is the number Experiment 2's overlaps are read against: at $d = 2048$ a genuinely orthogonal pair reads `r g(v_ov$measured[v_ov$d == 2048], 5)`, and the values reported in @sec-exp2-results are one and a half to seven times that.
+With the item and class effects planted orthogonal, the measured overlap tracks $r/d$ closely and sits a little below it (Table \ref{tbl-val-overlap}). This is the number Experiment 2's overlaps are read against: at $d = 2048$ a genuinely orthogonal pair reads `r g(v_ov$measured[v_ov$d == 2048], 5)`, and the values reported in @sec-exp2-results are `r sprintf("%.1f to %.1f times", min(llm_deep$leak, na.rm = TRUE) / v_ov$measured[v_ov$d == 2048], max(llm_deep$leak, na.rm = TRUE) / v_ov$measured[v_ov$d == 2048])` that.
 
 ```{r}
 #| label: tbl-val-overlap

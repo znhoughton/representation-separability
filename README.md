@@ -32,6 +32,7 @@ representation-separability/
 │   ├── csv_repair.py               # repairs a killed run's CSV and migrates a stale header
 │   ├── check_paper_data.py         # columns the paper reads vs the data; and what goes unreported
 │   ├── check_paper_renders.R       # runs the paper's R against the data, no LaTeX needed
+│   ├── check_between_bias.py       # why the between-grid share is a variance component, not raw
 │   ├── dev/                        # developer tooling, not part of the pipeline (GPU benchmarks)
 │   ├── toy/
 │   │   ├── artificial_language_grid.py  # Experiment 1

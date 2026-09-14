@@ -10,6 +10,7 @@
 # WHAT IT PRODUCES -- every data file the paper reads, in dependency order.
 #   data/artificial_language_grid.csv   Experiment 1, 7,560 cells        (toy, GPU)
 #   data/validate_measure.csv           Appendix: the measure on planted representations
+#                                       (committed gzipped; resume expands the .gz)
 #   data/llm_unified_form.csv           Experiment 2, part of speech
 #   data/llm_role.csv                   Experiment 2, grammatical role
 #   data/llm_metaphor.csv               Experiment 2, metaphor
@@ -148,16 +149,23 @@ step_end() {
 # resumed into. Returns 0 either way; only an actual mv is reported.
 retire_if_stale() {
   local f="$1"
-  [ -s "$f" ] || return 0
+  # validate_measure.csv is committed gzipped, so the plain path can be absent while the data is
+  # present. Judge the .gz instead of silently skipping it, or a stale gzipped file would never
+  # be retired and would be resumed into forever.
+  if [ ! -s "$f" ]; then
+    if [ -s "$f.gz" ]; then f="$f.gz"; else return 0; fi
+  fi
   # Current format means the marker column exists AND carries values. A header alone is not
   # enough: migrate_header adds new columns empty, so a file whose re-measure then failed looks
   # current while containing nothing, and would be kept and resumed into forever.
   local state
   state=$("$PY" - "$f" "$MARKER" <<'PYSTATE'
-import csv, sys
+import csv, gzip, sys
 path, marker = sys.argv[1], sys.argv[2]
+opener = (lambda p: gzip.open(p, "rt", newline="", encoding="utf-8")) if path.endswith(".gz") \
+    else (lambda p: open(p, newline="", encoding="utf-8"))
 try:
-    with open(path, newline="", encoding="utf-8") as fh:
+    with opener(path) as fh:
         rdr = csv.DictReader(fh)
         if marker not in (rdr.fieldnames or []):
             print("old"); raise SystemExit
@@ -171,17 +179,27 @@ except Exception:
     print("old")
 PYSTATE
 )
+  # Retired name keeps the real extension, so a gzipped file stays a readable .csv.gz.
+  local base dest
+  case "$f" in
+    *.csv.gz) base=$(basename "$f" .csv.gz); dest="$OLDDIR/$base.$stamp.csv.gz" ;;
+    *)        base=$(basename "$f" .csv);    dest="$OLDDIR/$base.$stamp.csv" ;;
+  esac
   case "$state" in
     current)
-      local n; n=$(( $(wc -l < "$f") - 1 ))
+      local n
+      case "$f" in
+        *.gz) n=$(( $(gzip -cd "$f" | wc -l) - 1 )) ;;
+        *)    n=$(( $(wc -l < "$f") - 1 )) ;;
+      esac
       echo "  [keep]  $f is current format, $n rows present; will resume"
       return 0 ;;
     empty)
-      echo "  [retire] $f -> $OLDDIR/$(basename "$f" .csv).$stamp.csv ($MARKER present but unfilled)" ;;
+      echo "  [retire] $f -> $dest ($MARKER present but unfilled)" ;;
     *)
-      echo "  [retire] $f -> $OLDDIR/$(basename "$f" .csv).$stamp.csv (old format)" ;;
+      echo "  [retire] $f -> $dest (old format)" ;;
   esac
-  mv "$f" "$OLDDIR/$(basename "$f" .csv).$stamp.csv"
+  mv "$f" "$dest"
 }
 
 # Killing this cleanly means killing the whole process group, not just the parent: the toy's
@@ -353,7 +371,7 @@ fi
 echo
 echo "=== what landed =================================================="
 "$PY" - "$RUNS_DIR" "$NULLS_DIR" <<'PYCHK'
-import csv, sys
+import csv, gzip, sys
 from pathlib import Path
 
 runs_dir, nulls_dir = Path(sys.argv[1]), Path(sys.argv[2])
@@ -364,9 +382,14 @@ for path in ("data/artificial_language_grid.csv", "data/validate_measure.csv",
              "data/llm_morph.csv", "data/methods_grid_stats.csv",
              "data/llm_decode_pos_form.csv", "data/llm_decode_interaction.csv"):
     p = Path(path)
+    gz = p.with_suffix(p.suffix + ".gz")          # validate_measure is committed gzipped
+    if not p.exists() and gz.exists():
+        p = gz
     if not p.exists():
         print(f"  {path:<38} MISSING"); continue
-    rows = list(csv.DictReader(open(p, newline="")))
+    opener = (lambda q: gzip.open(q, "rt", newline="")) if p.suffix == ".gz" else \
+             (lambda q: open(q, newline=""))
+    rows = list(csv.DictReader(opener(p)))
     cols = rows[0].keys() if rows else {}
     hits = [c for c in cols if any(c.endswith(n) for n in NEW)]
     print(f"  {path:<38} {len(rows):>5} rows")

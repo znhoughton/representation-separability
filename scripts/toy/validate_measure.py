@@ -325,6 +325,18 @@ def main():
     def key(t):
         return (t[0], t[1], t[2], t[3], float(t[4]), t[5],
                 float(t[6][0]), float(t[6][1]), float(t[6][2]), float(t[7]))
+    # The finished file is committed gzipped, because 252k rows of 69 fields is too big to track
+    # raw. Resume reads the plain path, so finding only the .gz would read zero completed specs
+    # and re-run all 252,000 from scratch -- the longest step in the pipeline by a wide margin.
+    # Expand it once and carry on exactly as before; re-gzip afterwards to commit.
+    gz = out.with_suffix(out.suffix + ".gz")
+    if not out.exists() and gz.exists():
+        import gzip
+        import shutil
+        print(f"expanding {gz.name} to resume from it", flush=True)
+        with gzip.open(gz, "rb") as src, open(out, "wb") as dst:
+            shutil.copyfileobj(src, dst)
+
     # This writer APPENDS when resuming. A file written before a column existed has a shorter
     # header, and appending rows built from the current field list against it shifts every value
     # silently, which is what happened to llm_morph.csv. Bring the header forward first.
