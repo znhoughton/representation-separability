@@ -106,3 +106,10 @@ paper/*_files/
 # Quick-and-dirty per-item frequency analysis (future-paper exploration, not a
 # pipeline artifact): scripts, outputs, everything under here is untracked on purpose.
 /analysis/
+
+# LaTeX build artifacts from a manual pdflatex pass (quarto cleans its own)
+paper/*.aux
+paper/*.bbl
+paper/*.blg
+paper/*.log
+paper/*.out
