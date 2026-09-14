@@ -268,7 +268,7 @@ llm <- bind_rows(
     filter(init == "pretrained") |>
     transmute(model, layer, d, n_items = std_n_items, construction = "POS (noun/verb)",
               size_item = std_size_item, size_class = std_size_class,
-              size_int = std_size_interaction, sig = std_sig_interaction,
+              size_int = std_size_interaction,
               leak = std_leak_item_into_class, leak_int = std_leak_int_into_margins,
               leak_null = std_leak_item_into_class_null_hi,
               leak_null_lo = std_leak_item_into_class_null_lo,
@@ -288,7 +288,7 @@ llm <- bind_rows(
     filter(init == "pretrained") |>
     transmute(model, layer, d, n_items, construction = "role (subject/object)",
               size_item, size_class, size_int = size_interaction,
-              sig = sig_interaction, leak = leak_item_into_class,
+              leak = leak_item_into_class,
               leak_int = leak_int_into_margins,
               leak_null = leak_item_into_class_null_hi,
               leak_null_lo = leak_item_into_class_null_lo,
@@ -308,7 +308,7 @@ llm <- bind_rows(
     filter(init == "pretrained") |>
     transmute(model, layer, d, n_items, construction = "metaphor (literal/figurative)",
               size_item, size_class, size_int = size_interaction,
-              sig = sig_interaction, leak = leak_item_into_class,
+              leak = leak_item_into_class,
               leak_int = leak_int_into_margins,
               leak_null = leak_item_into_class_null_hi,
               leak_null_lo = leak_item_into_class_null_lo,
@@ -622,7 +622,7 @@ This result has a definite scope. It shows that $\gamma$ carries the specific la
 
 Everything here is English, and rests on three distinctions measured in two model families at three scales each. The graded ordering we report is an ordering across *these* distinctions, and whether it holds for aspect, animacy or definiteness is untested.
 
-The measure is invariant to per-dimension rescaling and to rotation, but not to arbitrary linear reparameterization, so overlap between the item and class effects is relative to the model's own basis. We take that to be the basis of interest, since LayerNorm and the feed-forward nonlinearities act coordinate-wise and a downstream output layer operates on the unwhitened space; a reader who wants a fully gauge-free quantity will not find one here. The component sizes, their growth with depth and their significance do not depend on that choice.
+The measure is invariant to per-dimension rescaling and to rotation, but not to arbitrary linear reparameterization, so overlap between the item and class effects is relative to the model's own basis. We take that to be the basis of interest, since LayerNorm and the feed-forward nonlinearities act coordinate-wise and a downstream output layer operates on the unwhitened space; a reader who wants a fully gauge-free quantity will not find one here. The component sizes, their growth with depth and whether their intervals exclude zero do not depend on that choice.
 
 Two things we would like to have done. These are endpoint measurements, so they say nothing about the order in which the two components are learned, which needs training checkpoints. And the interaction captures any systematic within-word difference between the classes, so a distinction realized through the contexts a word appears in is measured together with those contexts. For a contextual model we take that to be what representing the distinction consists in, but separating the two would need a construction in which they can be varied independently.
 
