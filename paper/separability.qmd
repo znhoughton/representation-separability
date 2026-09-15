@@ -674,16 +674,16 @@ An item is included only if it occurs at least ten times in each class; forms oc
 
 ```{r}
 #| label: tbl-constructions
-#| tbl-cap: "Stimuli for the three classes. *Contrast* is the two classes an item has to occur in. *Item types* is how many word forms occur in both of them at least ten times; forms occurring in only one are excluded. *Median tokens* is how often a typical form occurs in each of its two classes, given in the order of the contrast, and so is the number of observations averaged into one mean."
+#| tbl-cap: "Stimuli for the three classes, with the two classes of each in parentheses. *Item types* is how many word forms occur in both of them at least ten times; forms occurring in only one are excluded. *Median tokens* is how often a typical form occurs in each of its two classes, in the order they are listed, and so is the number of observations averaged into one mean."
 tibble::tribble(
-  ~class,             ~contrast,              ~`item types`,
-  "part of speech",   "noun / verb",          max(llm$n_items[llm$construction == "POS (noun/verb)"]),
-  "grammatical role", "subject / object",     max(llm$n_items[llm$construction == "role (subject/object)"]),
-  "metaphor",         "literal / figurative", gs("metaphor", "n_items_kept")) |>
+  ~class,                                  ~`item types`,
+  "part of speech (noun / verb)",          max(llm$n_items[llm$construction == "POS (noun/verb)"]),
+  "grammatical role (subject / object)",   max(llm$n_items[llm$construction == "role (subject/object)"]),
+  "metaphor (literal / figurative)",       gs("metaphor", "n_items_kept")) |>
   mutate(`median tokens` = c(stimmed("pos_noun_verb_form"),
                              stimmed("role_nsubj_obj"),
                              stimmed("metaphor"))) |>
-  kbl(booktabs = TRUE, align = "llrr", linesep = "", escape = FALSE) |>
+  kbl(booktabs = TRUE, align = "lrr", linesep = "", escape = FALSE) |>
   kable_styling(latex_options = c("HOLD_position"), font_size = 8)
 ```
 
