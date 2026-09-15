@@ -140,7 +140,9 @@ toy_learn <- bind_rows(
   .pair(.built, "ach_int", "size_interaction", "interaction")) |>
   mutate(component = factor(component, c("item", "class", "interaction")),
          bin = cut(planted, c(-Inf, .02, .06, .12, .22, .40, Inf))) |>
-  group_by(component, d, bin) |>
+  filter(!is.na(planted), !is.na(measured))
+# The binned summary stays for the prose; the figure draws the runs and a fit through them.
+toy_learn_bin <- toy_learn |> group_by(component, d, bin) |>
   summarize(n = n(), x = median(planted), med = median(measured),
             lo = quantile(measured, .025), hi = quantile(measured, .975), .groups = "drop") |>
   filter(n >= 10)
@@ -151,7 +153,7 @@ WIDC <- c("8" = "#BFCFA8", "16" = "#8AA45F", "32" = "#4C6E36", "128" = UO[["gree
 
 # Reach into the per-component view: the measured share at the lowest or highest planted band.
 lrn <- function(dd, comp, top = TRUE) {
-  x <- toy_learn[toy_learn$d == dd & toy_learn$component == comp, ]
+  x <- toy_learn_bin[toy_learn_bin$d == dd & toy_learn_bin$component == comp, ]
   x <- x[order(x$x), ]
   x$med[if (top) nrow(x) else 1]
 }
@@ -551,7 +553,7 @@ To quantify whether the effect of size is meaningful, we test each against zero.
 
 In order to quantify whether the overlap is meaningful, we measure the overlap an effect has with a random subspace. We do so by holding the effect exactly as measured and projecting it onto a random subspace of the same rank, two hundred times, which leaves the effect untouched and varies only the subspace. These two hundred projections give us a distribution of overlaps that an unrelated subspace would yield. An effect lower than this baseline indicates meaningful orthogonality; an effect larger than it indicates meaningful non-orthogonality. We present each overlap as a multiple of the median of this distribution, together with how many measurements fall outside its 95% interval. This gives both the size of the effect and how consistently it holds across measurements.
 
-![A $2 \times 2$ array of item-by-class means. Under an item part plus a class part, three corners fix the fourth and the parallelogram closes. The arrow is $\gamma(i,c)$, the displacement between the fourth mean and the point that additive account places it at, with length $\lVert \gamma(i,c) \rVert$.](fig-measurement.pdf){#fig-measurement width="100%"}
+![A $2 \times 2$ array of item-by-class means. Under an item part plus a class part, three corners fix the fourth and the parallelogram closes. The arrow is $\gamma(i,c)$, the displacement between the fourth mean and the point that additive account places it at, with length $\lVert \gamma(i,c) \rVert$.](fig-measurement.pdf){#fig-measurement width="78%"}
 
 ## Results {#sec-exp1-results}
 
@@ -563,17 +565,17 @@ The weights in @eq-toy describe the true distribution the model is trained to ma
 #| fig-width: 6.3
 #| fig-height: 2.5
 #| out-width: "100%"
-#| fig-cap: "What the learner builds of each component, against how much of that component the language held, under ReLU. The horizontal axis is the component's share of the training distribution, alongside the other two and the context; the vertical axis is its share of the item-by-class structure the model built. One line per hidden width. Points are medians over runs and bars are the 2.5th and 97.5th percentiles across them. The dashed diagonal is where a representation would sit that reproduced the language's composition exactly: above it the component is built up, below it the component is held back. Runs in which none of the three components had a re-split 95% interval excluding zero are not plotted, since the three shares then divide noise; all such runs are at width 8, and their number is given in the text."
-ggplot(toy_learn, aes(x, med, color = factor(d))) +
+#| fig-cap: "What the learner builds of each component, against how much of that component the language held, under ReLU. Each faint point is one run. Horizontally it sits at that component's share of the training distribution, alongside the other two and the context; vertically at the same component's share of the item-by-class structure the model built. Lines are least-squares fits through the runs at each hidden width, with their 95% bands. The dashed diagonal is where a representation would sit that reproduced the language's composition exactly: above it a component is built up beyond what the language asked for, below it the component is held back. Runs in which none of the three components had a re-split 95% interval excluding zero are not plotted, since the three shares then divide noise; all such runs are at width 8, and their number is given in the text."
+ggplot(toy_learn, aes(planted, measured, color = factor(d), fill = factor(d))) +
   geom_abline(slope = 1, intercept = 0, linetype = 2, linewidth = .3, color = UO[["grey"]]) +
-  geom_linerange(aes(ymin = lo, ymax = hi), linewidth = .35, alpha = .45) +
-  geom_line(linewidth = .55) + geom_point(size = 1) +
+  geom_point(size = .32, alpha = .22, stroke = 0) +
+  geom_smooth(method = "lm", formula = y ~ x, linewidth = .5, alpha = .16) +
   facet_wrap(~ component, nrow = 1) +
   scale_color_manual(values = WIDC, name = "hidden width") +
+  scale_fill_manual(values = WIDC, guide = "none") +
   scale_x_continuous(limits = c(0, .8), breaks = c(0, .25, .5, .75)) +
-  scale_y_continuous(limits = c(0, 1), breaks = c(0, .5, 1)) +
-  labs(x = "that component's share of the language",
-       y = "its share of what\nthe model built") +
+  coord_cartesian(ylim = c(0, 1)) +
+  labs(x = "share of the language", y = "share of what\nthe model built") +
   theme_paper(8) +
   theme(legend.position = "top", legend.margin = margin(0, 0, -6, 0),
         panel.grid.minor = element_blank())
@@ -648,9 +650,9 @@ Transformer hidden states contain a few *rogue* dimensions whose variance exceed
 #| label: fig-llm
 #| fig-env: figure*
 #| fig-width: 6.3
-#| fig-height: 3.7
+#| fig-height: 4.6
 #| out-width: "100%"
-#| fig-cap: "The three components through the network, for every model and distinction. Relative depth runs from the static embedding layer (0) to the final block (1). Top: the interaction's share of representational structure. Middle: the class effect's share. Bottom: the portable fraction, the class effect divided by the sum of the class effect and the interaction. Each line is one model: color distinguishes the training corpus, linetype the three matched widths. The shaded band is that model's re-split 95% interval."
+#| fig-cap: "The three components through the network, for every model and distinction. Relative depth runs from the static embedding layer (0) to the final block (1). Rows are the three components' shares of the item-by-class structure, which sum to one within each model and layer, and then the portable fraction, the class effect divided by the sum of the class effect and the interaction. Each line is one model: color distinguishes the training corpus, linetype the three matched widths. The shaded band is that model's re-split 95% interval."
 # Built by hand rather than pivoted, because each component carries its own re-split interval
 # and the portable fraction is a ratio of two sizes with no interval of its own.
 band <- function(d, val, lo, hi, label) {
@@ -661,10 +663,12 @@ band <- function(d, val, lo, hi, label) {
 }
 plt <- llm |> mutate(portable = size_class / (size_class + size_int))
 plt <- bind_rows(
-  band(plt, "size_int", "size_int_lo", "size_int_hi", "interaction"),
+  band(plt, "size_item", "size_item_lo", "size_item_hi", "item effect"),
   band(plt, "size_class", "size_class_lo", "size_class_hi", "class effect"),
+  band(plt, "size_int", "size_int_lo", "size_int_hi", "interaction"),
   band(plt, "portable", NULL, NULL, "portable fraction")) |>
-  mutate(component = factor(component, c("interaction", "class effect", "portable fraction")))
+  mutate(component = factor(component, c("item effect", "class effect", "interaction",
+                                         "portable fraction")))
 # Color separates the two corpora, linetype the three matched widths, so each of the six lines
 # is identifiable rather than three of them sharing one color. The shaded band is each model's
 # re-split 95% interval; it is narrow enough to read as a thickening of the line, which is the
