@@ -354,6 +354,15 @@ capget <- function(a, cap, col) toy_cap[[col]][toy_cap$act == a & toy_cap$capaci
 # total; both are reported instead, in the order of the contrast. The counts are corpus-level and
 # identical across all six models, so one model gives the figure.
 stim <- rd("stimuli_items.csv")
+# The span of those per-class medians, for prose, where a slash pair does not read as a sentence.
+stimrange <- function() {
+  v <- unlist(lapply(c("pos_noun_verb_form", "role_nsubj_obj", "metaphor"), function(k) {
+    g <- stim[stim$construction == k, ]
+    g <- g[g$model == g$model[1], ]
+    c(median(g$n_class_a), median(g$n_class_b))
+  }))
+  sprintf("%.0f to %.0f", min(v), max(v))
+}
 stimmed <- function(key) {
   g <- stim[stim$construction == key, ]
   g <- g[g$model == g$model[1], ]
@@ -670,11 +679,11 @@ In order to examine the separability of linguistic representations in models, we
 
 Our stimuli comprise three classes: part of speech (\textsc{noun} versus \textsc{verb}), grammatical role (*nsubj* versus *obj*, restricted to nouns), and metaphor (literal versus figurative), each taken from its corpus's own annotation. For each class we select items that occur in both, such as *walk*, which occurs as both a noun and a verb. Items are lowercased surface forms, so the same token is read in each class and no difference between the two can come from tokenization.
 
-An item is included only if it occurs at least ten times in each class; forms occurring in only one are excluded, which makes part of speech the most restrictive of the three. This yields `r max(llm$n_items[llm$construction == "POS (noun/verb)"])` items for part of speech, `r max(llm$n_items[llm$construction == "role (subject/object)"])` for grammatical role and `r cm(gs("metaphor", "n_items_kept"))` for metaphor, and a typical form occurs `r stimmed("pos_noun_verb_form")`, `r stimmed("role_nsubj_obj")` and `r stimmed("metaphor")` times in the two classes respectively (@tbl-constructions), inside the ten-to-one-hundred range the validation covers (Appendix \ref{sec-appendix-validate}). Appendix \ref{sec-appendix-morph} applies the same measure to number and tense, where an item cannot be the same token in both classes.
+An item is included only if it occurs at least ten times in each class; forms occurring in only one are excluded, which makes part of speech the most restrictive of the three. This yields `r max(llm$n_items[llm$construction == "POS (noun/verb)"])` items for part of speech, `r max(llm$n_items[llm$construction == "role (subject/object)"])` for grammatical role and `r cm(gs("metaphor", "n_items_kept"))` for metaphor, with median counts per class running from `r stimrange()` (@tbl-constructions), inside the ten-to-one-hundred range the validation covers (Appendix \ref{sec-appendix-validate}). Appendix \ref{sec-appendix-morph} applies the same measure to number and tense, where an item cannot be the same token in both classes.
 
 ```{r}
 #| label: tbl-constructions
-#| tbl-cap: "Stimuli for the three classes, with the two classes of each in parentheses. *Item types* is how many word forms occur in both of them at least ten times; forms occurring in only one are excluded. *Median tokens* is how often a typical form occurs in each of its two classes, in the order they are listed, and so is the number of observations averaged into one mean."
+#| tbl-cap: "Stimuli for the three classes, with the two classes of each in parentheses. *Item types* is how many word forms occur in both of them at least ten times; forms occurring in only one are excluded. *Median tokens* is how often a typical form occurs in each of its two classes, in the order they are listed."
 tibble::tribble(
   ~class,                                  ~`item types`,
   "part of speech (noun / verb)",          max(llm$n_items[llm$construction == "POS (noun/verb)"]),
