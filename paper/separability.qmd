@@ -555,6 +555,7 @@ local({
 % has no hook for and would discard without warning.
 \setlength{\tabcolsep}{3pt}
 ```
+
 # Experiment 1: Artificial Languages {#sec-exp1}
 
 The goal of experiment 1 is to validate our measurement on an artificial language whose structure we control as well as examine how a learner represents that structure.
@@ -642,27 +643,27 @@ The linear condition reads zero only where the language is additive. Across the 
 
 As capacity increases, that capacity seems to be allocated towards representing the interaction. From a hidden width of 16 to a width of 128, the interaction's share of the item-by-class structure rises from `r g(cmp(16, "interaction"), 3)` to `r g(cmp(128, "interaction"), 3)`, while the item effect falls from `r g(cmp(16, "item"), 2)` to `r g(cmp(128, "item"), 2)` and the class effect holds near `r g(cmp(128, "class"), 2)`. Under a linear activation the same width is spent elsewhere: the item effect rises from `r g(cmplin(16, "item"), 2)` to `r g(cmplin(128, "item"), 2)` while the interaction stays at `r g(cmplin(128, "interaction"), 3)`. Further, comparing the learned representation of a model with width of 128 to the characteristics of the language it was trained on, we find an item effect of `r g(slope(128, "item"), 2)` and a class effect of `r g(slope(128, "class"), 2)`, against `r g(slope(128, "interaction"), 2)` for the interaction. This suggests that the interaction is gated by capacity: it is represented at a lower rate than either main effect, and it is the only one of the three still growing at the widest representation we train.
 
-Additionally, at lower dimensions the representation seems to be more variable. This is not particularly surprising since each model run has to decide which information to represent with only a small number of dimensions. Different decisions with respect to which information to represent in the limited dimensionality yields vastly different representations of the same language. For example, at a width of 8 two runs of the same language differ by `r g(seedspan(8, "item"), 2)` in the item effect and `r g(seedspan(8, "class"), 2)` in the class effect, roughly half the available range; by a width of 32 that has fallen to `r g(seedspan(32, "item"), 2)` and `r g(seedspan(32, "class"), 2)`, and it falls further at 128.
+Additionally, at lower dimensions the representation seems to be more variable. This is not particularly surprising since each model run has to decide which information to represent with only a small number of dimensions. As a result, from run to run the model makes different decisions with respect to which information to represent in its limited dimensionality yielding vastly different representations of the same language. For example, at a width of 8 two runs of the same language differ by `r g(seedspan(8, "item"), 2)` in the item effect and `r g(seedspan(8, "class"), 2)` in the class effect, roughly half the available range; by a width of 32 that has fallen to `r g(seedspan(32, "item"), 2)` and `r g(seedspan(32, "class"), 2)`, and it falls further at 128.
 
 Finally, capacity also dictates the amount of overlap between the item and class effects (i.e., the orthogonality between the two; Appendix \ref{sec-appendix-capacity}). With capacity well below one, ReLU's item-class overlap is `r g(capget("ReLU", 0.125, "overlap"), 4)` against a chance level of `r g(capget("ReLU", 0.125, "floor"), 4)`; at capacity 1 it is `r g(capget("ReLU", 1, "overlap"), 3)`, roughly `r g(capget("ReLU", 1, "ratio"), 1)` times chance, and at capacity 2 it is `r g(capget("ReLU", 2, "overlap"), 3)`. The linear condition stays at or below chance throughout.
 
 # Experiment 2: Language Models {#sec-exp2}
 
-Experiment 1 established that if the language a learner model encounters is not purely additive, the model will represent the language in a non-separably manner, the extent of which is governed by the size of the model. Experiment 2 applies the same decomposition to the contextual representations of pretrained language models, across three linguistic classes: part of speech, grammatical , and metaphor.
+Experiment 1 established that if the language a learner model encounters is not purely additive, the model will represent the language in a non-separable manner, the extent of which is governed by the size of the model. Experiment 2 applies the same decomposition to the contextual representations of pretrained language models, across three linguistic classes: part of speech, grammatical , and metaphor.
 
 ## Dataset {#sec-exp2-data}
 
-In order to examine the separability of linguistic representations in models, we examined three linguistic classes: part of speech, grammatical role, and metaphor. For part of speech and grammatical role we concatenate six general-domain English Universal Dependencies treebanks [@nivre2020ud]: EWT, GUM, LinES, ParTUT, GENTLE and PUD, giving `r cm(gsf("ud_corpus", "n_sentences", 41095))` sentences and `r cm(gsf("ud_corpus", "n_pre_grid_tokens", 706323))` tokens. A lemma must be attested in both classes often enough to estimate a mean at each, and a single treebank yields too few such lemmas. For metaphor we use the VUA20 corpus [@leong2020vua; @steen2010vua], restricted to nouns, verbs, adjectives, and adverbs in VUA's own annotation, which supplies `r cm(gs("metaphor", "n_pre_grid_tokens"))` labeled tokens. We measure two model families at three matched scales: OPT-BabyLM, trained on developmentally plausible quantities of child-available language [@warstadt2023babylm], and Pythia, trained on the Pile [@biderman2023pythia], at 125M/160M, 350M/410M and 1.3B/1.4B parameters, with widths of 768, 1024 and 2048. Appendix \ref{sec-appendix-models} gives parameter counts and training-token estimates.
+In order to examine the separability of linguistic representations in models, we examined three linguistic classes: part of speech, grammatical role, and metaphor. For part of speech and grammatical role we concatenate six general-domain English Universal Dependencies treebanks [@nivre2020ud]: EWT, GUM, LinES, ParTUT, GENTLE and PUD, giving `r cm(gsf("ud_corpus", "n_sentences", 41095))` sentences and `r cm(gsf("ud_corpus", "n_pre_grid_tokens", 706323))` tokens. A form must be attested in both classes often enough to estimate a mean at each, and a single treebank yields too few such forms. For metaphor we use the VUA20 corpus [@leong2020vua; @steen2010vua], restricted to nouns, verbs, adjectives, and adverbs in VUA's own annotation, which supplies `r cm(gs("metaphor", "n_pre_grid_tokens"))` labeled tokens. We measure two model families at three matched scales: OPT-BabyLM, trained on developmentally plausible quantities of child-available language [@warstadt2023babylm; @houghton2026holisticstorageverb+up], and Pythia, trained on the Pile [@biderman2023pythia], at 125M/160M, 350M/410M and 1.3B/1.4B parameters, with widths of 768, 1024 and 2048. Appendix \ref{sec-appendix-models} gives parameter counts and training-token estimates.
 
 ## Stimuli {#sec-exp2-stimuli}
 
-The item-by-class means come from the words themselves, and what they are is worth stating. Each construction keys the item on the **surface form**, lowercased, so every item is same-token: the surface form is identical across the two classes, the representation is read from the same token in both, and no part of any difference can come from tokenization. An item is kept only if it has at least ten tokens at each class, so that a mean can be estimated and then split in two; @tbl-constructions gives the surviving items, the tokens they contribute, and the median tokens behind each pairing. `scripts/llm/dataset_stats.py` also writes the per-item lists with their per-class token counts to `stimuli_items.csv`, so the stimuli themselves can be inspected word by word.
+The two classes of each distinction are taken from its corpus's own annotation: \textsc{noun} against \textsc{verb} for part of speech, *nsubj* against *obj* for grammatical role, and literal against figurative for metaphor. Items are lowercased surface forms, and for grammatical role are restricted to nouns, so an item is the same token in both of its classes and no part of any difference between them can come from tokenization. A form is kept only if it occurs at least ten times in each of its two classes, which excludes any form used in only one; part of speech is the most restrictive of the three, since it keeps only forms genuinely used both ways, such as *run* or *claims*. That leaves `r max(llm$n_items[llm$construction == "POS (noun/verb)"])` items for part of speech, `r max(llm$n_items[llm$construction == "role (subject/object)"])` for grammatical role and `r cm(gs("metaphor", "n_items_kept"))` for metaphor, with median pairings of `r gsf("pos_noun_verb_form", "tokens_per_cell_median")`, `r gsf("role_nsubj_obj", "tokens_per_cell_median")` and `r gs("metaphor", "tokens_per_cell_median")` tokens, inside the ten-to-one-hundred range the validation covers (Appendix \ref{sec-appendix-validate}). Appendix \ref{sec-appendix-morph} applies the same measure to number and tense, a distinction that cannot be made same-token.
 
 ```{r}
 #| label: tbl-constructions
 #| tbl-cap: "The stimuli. All three constructions key the item on the **surface form**, so the token is identical in both classes of the distinction. *Items* counts the forms attested at least ten times in each class; *tokens kept* are the tokens those items contribute, and *median* the tokens behind one item-class pairing."
 tibble::tribble(
-  ~distinction,       ~levels,                           ~items,
+  ~distinction,       ~classes,                          ~items,
   "part of speech",   "\\textsc{noun} / \\textsc{verb}",  max(llm$n_items[llm$construction == "POS (noun/verb)"]),
   "grammatical role", "\\textit{nsubj} / \\textit{obj}",  max(llm$n_items[llm$construction == "role (subject/object)"]),
   "metaphor",         "literal / figurative",             gs("metaphor", "n_items_kept")) |>
@@ -679,10 +680,6 @@ tibble::tribble(
   kbl(booktabs = TRUE, align = "llrrr", linesep = "", escape = FALSE) |>
   kable_styling(latex_options = c("HOLD_position"), font_size = 8)
 ```
-
-The part-of-speech construction is the restrictive one: the interaction $\gamma(i,c)$ is estimable only for an item observed in more than one class, since it is defined by how an item's representation shifts across classes, and the balance requirement selects forms genuinely used both ways, such as *run* or *hit*, including pairs like *claims* where a noun plural and a verb's third person are the same token. Role and metaphor carry no such restriction, since any noun occurs as both subject and object and any content word occurs both literally and figuratively, which is one reason they broaden the claim. The median pairing holds `r gsf("pos_noun_verb_form", "tokens_per_cell_median")` tokens for part of speech, `r gsf("role_nsubj_obj", "tokens_per_cell_median")` for role and `r gs("metaphor", "tokens_per_cell_median")` for metaphor, comfortably inside the 10-to-100 observations per pairing that Appendix \ref{sec-appendix-validate} measures over.
-
-Keying the item on the *lemma* instead admits more items (`r cm(gs("pos_noun_verb", "n_items_kept"))` rather than `r max(llm$n_items[llm$construction == "POS (noun/verb)"])`), but a lemma pools every inflected form: *run* and *runs* as a noun against *run*, *runs*, *ran* and *running* as a verb. Those are different tokens, and the consequence shows up at the embedding layer, which has no context to work with and so can only distinguish classes that differ in their input. Keyed on the form the layer-0 interaction is `r ldrng("POS (noun/verb)", "size_int", deep = FALSE)` across models, essentially nothing, which is what a token identical in both classes should give. The difference is inflection rather than representation, and keying on the form removes it at the cost of a smaller item set. Appendix \ref{sec-appendix-morph} shows what the measure does on a distinction where the property cannot be arranged at all.
 
 ## Method {#sec-exp2-method}
 
@@ -862,6 +859,7 @@ Two things we would like to have done. These are endpoint measurements, so they 
 \renewcommand{\bibliography}[1]{}
 \clearpage
 ```
+
 \onecolumn
 
 \appendix
@@ -880,6 +878,7 @@ Two things we would like to have done. These are endpoint measurements, so they 
 \raggedbottom
 \floatplacement{figure}{H}
 ```
+
 # Validating the Measure {#sec-appendix-validate}
 
 Experiment 1 plants structure in a *language* and measures a trained model's representation. A discrepancy there is ambiguous between the measure missing something and the model not mirroring the language, and the second is known to happen: the linear condition cannot represent an interaction at all. This appendix removes the ambiguity by planting $\mu$, $\alpha$, $\beta$ and $\gamma$ **directly in a representation**, with no model and no training, and passing the result to the same function the language models are measured with. Ground truth now sits at the level the measure operates on.
