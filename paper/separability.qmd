@@ -663,24 +663,20 @@ An item is included only if it occurs at least ten times in each class; forms oc
 
 ```{r}
 #| label: tbl-constructions
-#| tbl-cap: "Stimulus counts for the three classes, in corpus occurrences of the forms that survive the inclusion rule. *Items* is how many word forms survive. *Total tokens* is how many occurrences those forms contribute altogether, counting both of their classes. *Median per item-class* is the median, taken over every form in each of its two classes, of how often that one form occurs in that one class, and so is the number of observations behind a single mean."
+#| tbl-cap: "Stimuli for the three classes. *Contrast* is the two classes an item has to occur in. *Forms* is how many word forms occur in both of them at least ten times; forms occurring in only one are excluded. *Median tokens* is how often a typical form occurs in one of its two classes, and so is the number of observations averaged into one mean."
 tibble::tribble(
-  ~class,             ~items,
-  "part of speech",   max(llm$n_items[llm$construction == "POS (noun/verb)"]),
-  "grammatical role", max(llm$n_items[llm$construction == "role (subject/object)"]),
-  "metaphor",         gs("metaphor", "n_items_kept")) |>
-  mutate(
-    tokens = c(gsf("pos_noun_verb_form", "n_grid_tokens", 4722),
-               gsf("role_nsubj_obj", "n_grid_tokens", 2150),
-               gs("metaphor", "n_grid_tokens")),
-    med = c(gsf("pos_noun_verb_form", "tokens_per_cell_median"),
-               gsf("role_nsubj_obj", "tokens_per_cell_median"),
-               gsf("metaphor", "tokens_per_cell_median",
-                   gs("metaphor", "tokens_per_cell_median")))) |>
-  mutate(across(c(items, tokens), \(v) format(v, big.mark = ",", trim = TRUE)),
-         med = ifelse(is.na(med), "\\textemdash", formatC(med, format = "f", digits = 0))) |>
-  rename(`total tokens` = tokens, `median per item-class` = med) |>
-  kbl(booktabs = TRUE, align = "lrrr", linesep = "", escape = FALSE) |>
+  ~class,             ~contrast,              ~forms,
+  "part of speech",   "noun / verb",          max(llm$n_items[llm$construction == "POS (noun/verb)"]),
+  "grammatical role", "subject / object",     max(llm$n_items[llm$construction == "role (subject/object)"]),
+  "metaphor",         "literal / figurative", gs("metaphor", "n_items_kept")) |>
+  mutate(med = c(gsf("pos_noun_verb_form", "tokens_per_cell_median"),
+                 gsf("role_nsubj_obj", "tokens_per_cell_median"),
+                 gsf("metaphor", "tokens_per_cell_median",
+                     gs("metaphor", "tokens_per_cell_median")))) |>
+  mutate(forms = format(forms, big.mark = ",", trim = TRUE),
+         med = ifelse(is.na(med), "---", formatC(med, format = "f", digits = 0))) |>
+  rename(`median tokens` = med) |>
+  kbl(booktabs = TRUE, align = "llrr", linesep = "", escape = FALSE) |>
   kable_styling(latex_options = c("HOLD_position"), font_size = 8)
 ```
 
