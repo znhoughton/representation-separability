@@ -692,7 +692,7 @@ tibble::tribble(
   mutate(`median tokens` = c(stimmed("pos_noun_verb_form"),
                              stimmed("role_nsubj_obj"),
                              stimmed("metaphor"))) |>
-  kbl(booktabs = TRUE, align = "lrr", linesep = "", escape = FALSE) |>
+  kbl(booktabs = TRUE, align = "lrl", linesep = "", escape = FALSE) |>
   kable_styling(latex_options = c("HOLD_position"), font_size = 8)
 ```
 
@@ -794,7 +794,7 @@ dec |>
                             class_peritem_lo, class_peritem_hi),
             null = sprintf("%.2f [%.2f, %.2f]", class_peritem_null,
                            class_peritem_null_lo, class_peritem_null_hi)) |>
-  kbl(booktabs = TRUE, align = "llrr", linesep = "") |>
+  kbl(booktabs = TRUE, align = "llll", linesep = "") |>
   kable_styling(latex_options = c("HOLD_position"), font_size = 7)
 ```
 
