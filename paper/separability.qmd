@@ -541,7 +541,7 @@ local({
 \setlength{\tabcolsep}{3pt}
 ```
 
-# Experiment 1: What a Learner Represents of a Known Language {#sec-exp1}
+# Experiment 1: Artificial Languages {#sec-exp1}
 
 The goal of experiment 1 is to validate our measurement on an artificial language whose structure we control as well as examine how a learner represents that structure.
 
@@ -636,12 +636,11 @@ Width also decides how reproducible the composition is. At a width of 8 the inte
 
 Item and class effects entangle only when there is no room for them not to, and this is the substantive result (Appendix \ref{sec-appendix-capacity}). With capacity well below one, ReLU's item-class overlap is `r g(capget("ReLU", 0.125, "overlap"), 4)` against a chance level of `r g(capget("ReLU", 0.125, "floor"), 4)`, so the two effects are *more* orthogonal than two arbitrary directions would be, which is what a learner that has room and uses it looks like. At capacity 1 the overlap is `r g(capget("ReLU", 1, "overlap"), 3)` against a floor of `r g(capget("ReLU", 1, "floor"), 4)`, about `r g(capget("ReLU", 1, "ratio"), 1)` times chance, and at capacity 2 it is `r g(capget("ReLU", 2, "overlap"), 3)`; the linear condition stays at or below chance throughout. This is superposition in a setting where we can watch it happen: when the number of directions the structure needs exceeds the number available, the components stop being orthogonal because they cannot all be, and nothing about the language changed across those runs.
 
-The measure also works when the representation primarily encodes contextual information unrelated to the specific form and class. When the context term accounts for more than 80% of the variance in the logits, leaving under a fifth for the form, the class and their interaction combined, ReLU's measured interaction, as a share of the item-by-class structure, holds at `r g(toy_noise$size_int[toy_noise$act == "ReLU" & toy_noise$cbin == ">80%"], 3)` against `r g(toy_noise$size_int[toy_noise$act == "ReLU" & toy_noise$cbin == "<20%"], 3)` when context is minor, and the flag rate falls from `r sprintf("%.0f%%", 100 * toy_noise$flagged_ez[toy_noise$act == "ReLU" & toy_noise$cbin == "<20%"])` to `r sprintf("%.0f%%", 100 * toy_noise$flagged_ez[toy_noise$act == "ReLU" & toy_noise$cbin == ">80%"])`. Power degrades, as it must with twenty-four observations per item and class, but the estimate does not drift. Context does compete with the interaction for room, though: at a width of 128 the interaction takes a larger share of the item-by-class structure in languages that are under 30% context than in those over 70% (Appendix 
-ef{sec-appendix-capacity}). That is the regime Experiment 2 sits in, since a word's hidden state varies mostly with the sentence it appears in rather than with the word or its class.
+The measure also works when the representation primarily encodes contextual information unrelated to the specific form and class. When the context term accounts for more than 80% of the variance in the logits, leaving under a fifth for the form, the class and their interaction combined, ReLU's measured interaction, as a share of the item-by-class structure, holds at `r g(toy_noise$size_int[toy_noise$act == "ReLU" & toy_noise$cbin == ">80%"], 3)` against `r g(toy_noise$size_int[toy_noise$act == "ReLU" & toy_noise$cbin == "<20%"], 3)` when context is minor, and the flag rate falls from `r sprintf("%.0f%%", 100 * toy_noise$flagged_ez[toy_noise$act == "ReLU" & toy_noise$cbin == "<20%"])` to `r sprintf("%.0f%%", 100 * toy_noise$flagged_ez[toy_noise$act == "ReLU" & toy_noise$cbin == ">80%"])`. Power degrades, as it must with twenty-four observations per item and class, but the estimate does not drift. Context does compete with the interaction for room, though: at a width of 128 the interaction takes a larger share of the item-by-class structure in languages that are under 30% context than in those over 70% (Appendix \ref{sec-appendix-capacity}). That is the regime Experiment 2 sits in, since a word's hidden state varies mostly with the sentence it appears in rather than with the word or its class.
 
 Two things carry into Experiment 2. The interaction is the component that grows with room, so a representation an order of magnitude wider than the widest trained here should carry more of it rather than less, which is a prediction the language models can be held to. And whether the item and class effects come out orthogonal is governed by the same capacity rather than by anything about the language, so near-orthogonality in a wide model is uninformative on its own and has to be read against its own chance level.
 
-# Experiment 2: Item and Category in Language Models {#sec-exp2}
+# Experiment 2: Language Models {#sec-exp2}
 
 Experiment 1 established that a learner fitting an interactive language cannot represent it as item plus class, that even a learner which cannot compute the interaction stores a trace of it in the contexts its forms occur with, and that a nonlinearity additionally makes the components non-orthogonal. Experiment 2 applies the same decomposition to the contextual representations of pretrained language models, across three linguistic distinctions chosen to span grammar and meaning.
 
@@ -743,7 +742,7 @@ The class effect grows with depth as well (@fig-llm, middle row), and that matte
 
 That balance is graded across distinctions. @tbl-llm reports it as the *portable fraction*: of the structure that distinguishes the two classes, how much is a direction shared across words rather than specific to each word. Grammatical role is the most portable at `r ldrng("role (subject/object)", "portable", 2)` across the six models, part of speech next at `r ldrng("POS (noun/verb)", "portable", 2)`, and metaphor by far the least at `r ldrng("metaphor (literal/figurative)", "portable", 2)`, an ordering that holds within every model rather than only on average, so a direction shared across words carries barely a tenth of what distinguishes metaphor's classes. The ordering is worth noting: part of speech has the largest class effect of the three in absolute terms, but also much the largest interaction, so proportionally less of what distinguishes its classes is portable than for grammatical role. Metaphoricity is close to being encoded word by word, and what makes a use of *plant* figurative is largely not what makes a use of *course* figurative. This grading runs across distinctions rather than across models: neither quantity varies systematically with parameter count, and the only consistent family difference is that Pythia represents a larger interaction than OPT-BabyLM at matched width (@fig-llm).
 
-# Experiment 3: Does the Interaction Carry the Class? {#sec-exp3}
+# Experiment 3: Decoding the Interaction {#sec-exp3}
 
 Experiment 2 shows that the interaction is large and that it replicates across independent splits of a word's occurrences, but neither shows what it is *about*. An item-by-class term captures any reliable difference between a word's uses in the two classes, and some of that difference is context correlated with the label rather than the label itself, since metaphorical uses occur in different sentences from literal ones and subjects appear in different constructions from objects. So $\gamma$ is an upper bound on class-binding, and the question is whether any of it is the class.
 
@@ -996,8 +995,7 @@ toy_cap |>
 ```
 
 
-Two further properties of the language move the composition, and are given here rather than folded into @fig-toy (Table 
-ef{tbl-lang}). Context competes with the interaction for room: the more of the language that is context, the smaller the interaction's share of the item-by-class structure. And the balance the language strikes between the item and the class is reflected in the representation, the measured item share rising with the planted one.
+Two further properties of the language move the composition, and are given here rather than folded into @fig-toy (Table \ref{tbl-lang}). Context competes with the interaction for room: the more of the language that is context, the smaller the interaction's share of the item-by-class structure. And the balance the language strikes between the item and the class is reflected in the representation, the measured item share rising with the planted one.
 
 ```{r}
 #| label: tbl-lang

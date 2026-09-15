@@ -20,6 +20,26 @@ txt <- readLines(qmd, warn = FALSE)
 starts <- grep("^```[{]r", txt)
 ends <- grep("^```$", txt)
 
+# ---- pass 0: escapes a shell heredoc can eat ------------------------------------------------
+# Writing LaTeX through a heredoc turns a backslash and a letter into the control character it
+# names: "ref{" becomes a newline then "ef{", "alpha" a bell. The damage is silent, survives a
+# render, and has happened three times. A newline before "ef{" is never legitimate; neither is a
+# control character in a .qmd.
+raw <- paste(readLines(qmd, warn = FALSE), collapse = "
+")
+eaten <- gregexpr("
+ef[{]", raw)[[1]]
+ctrl <- gregexpr("[]", raw)[[1]]
+nbad <- sum(eaten > 0) + sum(ctrl > 0)
+if (nbad > 0) {
+  cat(sprintf("  MANGLED ESCAPES: %d newline-before-ef{ and %d control characters
+",
+              sum(eaten > 0), sum(ctrl > 0)))
+  cat("  a backslash was eaten writing LaTeX through a heredoc; repair before rendering
+")
+  quit(status = 1)
+}
+
 # ---- pass 1: parse -------------------------------------------------------------------------
 bad <- 0L; n <- 0L
 for (s in starts) {
