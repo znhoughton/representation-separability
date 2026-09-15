@@ -283,7 +283,7 @@ ov <- function(v, med, lo, hi, digits = 3) {
 # re-split interval is the wrong interval to print: it is 35 to 110 times narrower than the
 # spread across those models, so it would claim the quantity is pinned to a thousandth while the
 # models themselves disagree in the second decimal. The across-model range is the honest spread
-# at that level, and matches the portable fraction's brackets in the same table. The re-split
+# at that level. The re-split
 # interval still does its work through the count, which is what says each model is clear of zero.
 sz <- function(share, ez, lo = NULL, hi = NULL, digits = 3) {
   m <- median(share, na.rm = TRUE)
@@ -542,9 +542,7 @@ llm <- bind_rows(
          size_class_lo = size_class_ci_lo / sz_denom,
          size_class_hi = size_class_ci_hi / sz_denom,
          size_int_lo = size_interaction_ci_lo / sz_denom,
-         size_int_hi = size_interaction_ci_hi / sz_denom,
-         # defined here rather than in the figure and table chunks, so ld() can quote it too
-         portable = size_class / (size_class + size_int))
+         size_int_hi = size_interaction_ci_hi / sz_denom)
 
 llm_deep <- llm |> group_by(construction, model) |> filter(layer == max(layer)) |> ungroup()
 # A construction measured on fewer than six models would silently report a median over whatever
@@ -706,17 +704,15 @@ Transformer hidden states contain a few *rogue* dimensions whose variance exceed
 
 ## Results {#sec-exp2-results}
 
-Deepest-layer measurements are reported in @tbl-llm; the layer-by-layer profile is shown in @fig-llm.
+The results for the final layer are reported in @tbl-llm; the layer-by-layer profile is shown in @fig-llm.
 
-The two main effects sit on separate axes. At the deepest layer, item-class overlap runs `r ldrng("POS (noun/verb)", "leak")` for part of speech and `r ldrng("role (subject/object)", "leak")` for grammatical role, so projecting out the class direction leaves better than 99% of the item effect intact. Both sit above the upper end of their own null, so the residual alignment is real rather than a by-product of the dimension count. In other words, where a shared class direction exists, it is its own direction.
+The effect of class and the effect of item sit on separate axes. At the deepest layer, item-class overlap runs `r ldrng("POS (noun/verb)", "leak")` for part of speech and `r ldrng("role (subject/object)", "leak")` for grammatical role, so projecting out the class direction leaves better than 99% of the item effect intact. Both sit above the upper end of their own null, suggesting the result is not due to chance. In other words, where a shared class direction exists, it is its own direction.
 
-The interaction is not. Across the six models, part of speech puts `r ldrng("POS (noun/verb)", "leak_int", 3)` of the interaction in the span of the two main effects, role `r ldrng("role (subject/object)", "leak_int", 3)` and metaphor `r ldrng("metaphor (literal/figurative)", "leak_int", 3)`, against nulls whose upper ends run `r ldrng("POS (noun/verb)", "leak_int_null", 3)`, `r ldrng("role (subject/object)", "leak_int_null", 3)` and `r ldrng("metaphor (literal/figurative)", "leak_int_null", 3)`. The smallest of these overlaps exceeds the largest of the nulls, so the pattern holds in every model rather than on average. This suggests that separability fails not because the item and class effects have been collapsed onto shared axes, since those remain distinct, but because the part of class structure specific to each word is written in the directions that already carry both.
+In contrast to the main-effects, the interaction effect interestingly is not orthogonal to class and item. Across the six models, `r ldrng("POS (noun/verb)", "leak_int", 3)` of the interaction for part of speech is in the span of the two main effects, for role `r ldrng("role (subject/object)", "leak_int", 3)` is, and for metaphor `r ldrng("metaphor (literal/figurative)", "leak_int", 3)` is, against nulls whose upper ends run `r ldrng("POS (noun/verb)", "leak_int_null", 3)`, `r ldrng("role (subject/object)", "leak_int_null", 3)` and `r ldrng("metaphor (literal/figurative)", "leak_int_null", 3)` respectively. The smallest of these overlaps exceeds the largest of the nulls, so the pattern holds in every model. In other words, while class and item lie orthogonal of each other, the same is not true for the interaction effect in relation to each of the main-effects.
 
-Depth develops the interaction. In all three distinctions it is essentially absent at layer 0, between `r allrange("size_int", deep = FALSE)` across every construction and model, and rises to between `r allrange("size_int")` (@fig-llm, top row). Since the item is keyed on the surface form, the token is identical in both classes and the embedding layer has nothing to distinguish them with, so what the measure finds is created by contextualization rather than inherited from the input. It is also not positional: zeroing OPT-BabyLM's absolute position embeddings leaves the class structure more word-specific rather than less (Appendix \ref{sec-appendix-positions}). Additionally, the class effect grows with depth as well (@fig-llm, middle row), so contextualization produces both at once rather than trading one against the other.
+Additionally, the interaction effect grows stronger throughout the layers of the model. In all three classes, it is essentially absent at layer 0, between `r allrange("size_int", deep = FALSE)` across every construction and model, and rises to between `r allrange("size_int")` (@fig-llm, top row). Since the input for the item is identical across both classes, the tokens are identical and the embedding layer has nothing to distinguish them with, so what the measure finds is created by contextualization rather than inherited from the input. It is also not positional: zeroing OPT-BabyLM's absolute position embeddings leaves the class structure more word-specific rather than less (Appendix \ref{sec-appendix-positions}). Additionally, the class effect grows with depth as well (@fig-llm, middle row).
 
-All three sizes are proportions of the item-by-class structure, and that structure is `r rng(l0, "between_adj")` of the representation at the embedding layer and `r rng(ld, "between_adj")` at the deepest, so most of what the model computes there is about the sentence a word is in. This one quantity separates by family rather than by distinction: OPT-BabyLM's structure accounts for `r g(median(llm_deep$between_adj[llm_deep$family == "BabyLM"]), 2)` of the representation against Pythia's `r g(median(llm_deep$between_adj[llm_deep$family == "Pythia"]), 2)`, in all three constructions. Multiplying the two through, the deepest-layer item effect for part of speech is `r g(tot("POS (noun/verb)", "size_item"), 2)` of the representation rather than the `r g(ld("POS (noun/verb)", "size_item"), 2)` it is of the structure. Both figures are corrected for the noise each mean carries as an average over finitely many observations (Appendix \ref{sec-appendix-math}).
-
-Finally, the balance between the class effect and the interaction is graded across distinctions. @tbl-llm reports it as the *portable fraction*: of the structure that distinguishes the two classes, how much is a direction shared across words rather than specific to each word. Grammatical role is the most portable at `r ldrng("role (subject/object)", "portable", 2)`, part of speech next at `r ldrng("POS (noun/verb)", "portable", 2)`, and metaphor least at `r ldrng("metaphor (literal/figurative)", "portable", 2)`, an ordering that holds within every model rather than only on average. Metaphor's class effect clears zero in `r outof("metaphor (literal/figurative)", "size_class")`, as it does in `r outof("POS (noun/verb)", "size_class")` for part of speech and `r outof("role (subject/object)", "size_class")` for grammatical role, but at `r ldrng("metaphor (literal/figurative)", "size_class", 3)` of the structure it is more than an order of magnitude smaller than either of the others within every model. This suggests that the three distinctions differ less in whether they are represented than in how much of what distinguishes them travels between words.
+Finally, the three classes differ in how that class-relevant structure divides. For grammatical role the class effect, at `r ldrng("role (subject/object)", "size_class", 3)`, is comparable to the interaction at `r ldrng("role (subject/object)", "size_int", 3)`; for part of speech the interaction, at `r ldrng("POS (noun/verb)", "size_int", 3)`, runs well above the class effect at `r ldrng("POS (noun/verb)", "size_class", 3)`; and for metaphor the class effect, at `r ldrng("metaphor (literal/figurative)", "size_class", 3)`, is more than an order of magnitude below the interaction within every model. It clears zero in `r outof("metaphor (literal/figurative)", "size_class")`, as it does in `r outof("POS (noun/verb)", "size_class")` for part of speech and `r outof("role (subject/object)", "size_class")` for grammatical role, so metaphor is not failing to be represented. This suggests that the three classes differ less in whether they are represented than in how much of what distinguishes them is carried by a direction shared across words rather than word by word.
 
 ```{r}
 #| label: fig-llm
@@ -724,23 +720,20 @@ Finally, the balance between the class effect and the interaction is graded acro
 #| fig-width: 6.3
 #| fig-height: 4.6
 #| out-width: "100%"
-#| fig-cap: "The three components through the network, for every model and distinction. Relative depth runs from the static embedding layer (0) to the final block (1). Rows are the three components' shares of the item-by-class structure, which sum to one within each model and layer, and then the portable fraction, the class effect divided by the sum of the class effect and the interaction. Each line is one model: color distinguishes the training corpus, linetype the three matched widths. The shaded band is that model's re-split 95% interval."
-# Built by hand rather than pivoted, because each component carries its own re-split interval
-# and the portable fraction is a ratio of two sizes with no interval of its own.
+#| fig-cap: "The three components through the network, for every model and distinction. Relative depth runs from the static embedding layer (0) to the final block (1). Rows are the three components' shares of the item-by-class structure, which sum to one within each model and layer. Each line is one model: color distinguishes the training corpus, linetype the three matched widths. The shaded band is that model's re-split 95% interval."
+# Built by hand rather than pivoted, because each component carries its own re-split interval.
 band <- function(d, val, lo, hi, label) {
   tibble(construction = d$construction, family = d$family, scale = d$scale, depth = d$depth,
          component = label, share = d[[val]],
          lo = if (is.null(lo)) NA_real_ else d[[lo]],
          hi = if (is.null(hi)) NA_real_ else d[[hi]])
 }
-plt <- llm |> mutate(portable = size_class / (size_class + size_int))
+plt <- llm
 plt <- bind_rows(
   band(plt, "size_item", "size_item_lo", "size_item_hi", "item effect"),
   band(plt, "size_class", "size_class_lo", "size_class_hi", "class effect"),
-  band(plt, "size_int", "size_int_lo", "size_int_hi", "interaction"),
-  band(plt, "portable", NULL, NULL, "portable fraction")) |>
-  mutate(component = factor(component, c("item effect", "class effect", "interaction",
-                                         "portable fraction")))
+  band(plt, "size_int", "size_int_lo", "size_int_hi", "interaction")) |>
+  mutate(component = factor(component, c("item effect", "class effect", "interaction")))
 # Color separates the two corpora, linetype the three matched widths, so each of the six lines
 # is identifiable rather than three of them sharing one color. The shaded band is each model's
 # re-split 95% interval; it is narrow enough to read as a thickening of the line, which is the
@@ -841,7 +834,7 @@ The result has a definite scope. It shows that $\gamma$ carries the specific lab
 
      WHY PART OF SPEECH IS LESS PORTABLE THAN ROLE. Part of speech has the largest class effect
      of the three in absolute terms, but also much the largest interaction, so proportionally
-     less of what distinguishes its classes is portable than for grammatical role. The portable
+     less of what distinguishes its classes is carried by a shared direction than for grammatical role. That
      fraction is a ratio, and part of speech loses on the denominator rather than the numerator.
 
      METAPHOR IS ENCODED WORD BY WORD. Metaphoricity is close to being encoded word by word:
@@ -1220,10 +1213,9 @@ Table \ref{tbl-llm} gives the deepest-layer values behind the curves of @fig-llm
 
 ```{r}
 #| label: tbl-llm
-#| tbl-cap: "Deepest-layer measurements, one row per model. The two overlaps are the fraction of the item effect lying in the class subspace and the fraction of the interaction lying in the span of the two main effects, each followed in parentheses by how many times its own rotation null's median it is. That null holds the effect fixed and rotates the target subspace at random 200 times. The class effect and the interaction are shares of the item-by-class structure, with each model's re-split 95% interval in brackets. The portable fraction is the class effect divided by the sum of the class effect and the interaction."
+#| tbl-cap: "Deepest-layer measurements, one row per model. The two overlaps are the fraction of the item effect lying in the class subspace and the fraction of the interaction lying in the span of the two main effects, each followed in parentheses by how many times its own rotation null's median it is. That null holds the effect fixed and rotates the target subspace at random 200 times. The class effect and the interaction are shares of the item-by-class structure, with each model's re-split 95% interval in brackets."
 llm |> group_by(construction, model) |>
   filter(layer == max(layer)) |> ungroup() |>
-  mutate(portable = size_class / (size_class + size_int)) |>
   arrange(construction, family, scale) |>
   # One row per model. A median across the six hid exactly what the six are being compared for,
   # and the sizes' re-split intervals are far narrower than the spread across models, so pooling
@@ -1231,13 +1223,12 @@ llm |> group_by(construction, model) |>
   # Each overlap is against its own model's null rather than r/d: the two differ, since r/d
   # assumes the subspace has its algebraic maximum rank while the projection uses the rank
   # actually fitted, roughly half of it for the marginal subspace.
-  transmute(distinction = shortname(construction),
+  transmute(class = shortname(construction),
             model = paste(family, size),
             `item-class overlap` = ov1(leak, leak_null_med, 4),
             `interaction overlap` = ov1(leak_int, leak_int_null_med, 3),
             `class effect` = ci(size_class, size_class_lo, size_class_hi),
-            `interaction` = ci(size_int, size_int_lo, size_int_hi),
-            `portable fraction` = sprintf("%.2f", portable)) |>
+            `interaction` = ci(size_int, size_int_lo, size_int_hi)) |>
   kbl(longtable = TRUE, booktabs = TRUE, align = "llrrrr", linesep = "") |>
   kable_styling(font_size = 7, latex_options = c("repeat_header")) |>
   collapse_rows(1, latex_hline = "major", valign = "top")
@@ -1249,7 +1240,7 @@ One architectural explanation of the interaction has to be ruled out before it c
 
 We re-extracted every OPT-BabyLM model with *decoder.embed_positions* zeroed and measured it identically. The ablation was verified per model rather than assumed: with the embedding zeroed, the same token at two different offsets must give identical layer-0 states, and it does, in every model (drift $0.0$ to machine precision). Pythia has no such module, so there is nothing to zero there.
 
-The right quantity is the *portable fraction* used in @tbl-llm, the class effect's share of class-relevant structure. If positions were manufacturing the interaction, removing them should leave a larger share of what distinguishes the two classes in a direction shared across words. Absolute sizes cannot be compared here: zeroing the embeddings in a model that was trained with them is a heavy intervention, and it shrinks every component at once, the class effect included.
+The right quantity is the class effect's share of class-relevant structure, the class effect divided by the sum of the class effect and the interaction, which we call the *portable fraction*. If positions were manufacturing the interaction, removing them should leave a larger share of what distinguishes the two classes in a direction shared across words. Absolute sizes cannot be compared here: zeroing the embeddings in a model that was trained with them is a heavy intervention, and it shrinks every component at once, the class effect included.
 
 ```{r}
 #| label: tbl-posabl
