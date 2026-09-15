@@ -124,19 +124,42 @@ toy_long <- toy_relu |> filter(built) |>
   pivot_longer(c(item, class, interaction), names_to = "component", values_to = "share") |>
   mutate(component = factor(component, c("item", "class", "interaction")))
 
-# Facet labels name the cut points rather than describing them, so the reader is not left to
-# guess what "some" means.
-toy_runs <- toy_long |>
-  mutate(planted = cut(ach_int, c(-Inf, .05, .30, Inf),
-                       labels = c("under 5% interaction", "5 to 30%", "over 30%")))
-toy_comp <- toy_runs |> group_by(d, planted, component) |>
+# One question asked three times: when the language holds a given amount of a component, how much
+# of it does the learner build? Each component is matched against its OWN planted share, so the
+# diagonal is a meaningful reference and the three panels are the same question about item, class
+# and interaction rather than three different ones.
+# The frame is `df`, not `d`: tibble() evaluates its arguments in order, so a column named `d`
+# would shadow the frame for every argument after it.
+.pair <- function(df, planted, measured, name) {
+  tibble(d = df$d, component = name, planted = df[[planted]], measured = df[[measured]])
+}
+.built <- toy_relu |> filter(built)
+toy_learn <- bind_rows(
+  .pair(.built, "ach_item", "size_item", "item"),
+  .pair(.built, "ach_class", "size_class", "class"),
+  .pair(.built, "ach_int", "size_interaction", "interaction")) |>
+  mutate(component = factor(component, c("item", "class", "interaction")),
+         bin = cut(planted, c(-Inf, .02, .06, .12, .22, .40, Inf))) |>
+  group_by(component, d, bin) |>
+  summarize(n = n(), x = median(planted), med = median(measured),
+            lo = quantile(measured, .025), hi = quantile(measured, .975), .groups = "drop") |>
+  filter(n >= 10)
+
+# Colour carries width here, since the components are separated by panel. A single ramp from the
+# University of Oregon's green, because width is ordered and hues are not.
+WIDC <- c("8" = "#BFCFA8", "16" = "#8AA45F", "32" = "#4C6E36", "128" = UO[["green"]])
+
+# Reach into the per-component view: the measured share at the lowest or highest planted band.
+lrn <- function(dd, comp, top = TRUE) {
+  x <- toy_learn[toy_learn$d == dd & toy_learn$component == comp, ]
+  x <- x[order(x$x), ]
+  x$med[if (top) nrow(x) else 1]
+}
+
+# Pooled composition by width, for the prose.
+toy_comp <- toy_long |> group_by(d, component) |>
   summarize(n = n(), med = median(share),
             lo = quantile(share, .025), hi = quantile(share, .975), .groups = "drop")
-toy_med <- toy_comp |> select(d, planted, component, med)
-
-# The University of Oregon's colours are a green and a yellow, which is two for three components.
-# The third is a grey, given to the item effect, which is the one the figure is least about.
-COMP <- c(item = UO[["grey"]], class = UO[["gold"]], interaction = UO[["green"]])
 
 # Pooled over languages, for the prose and for the width trend on its own.
 toy_width <- toy_long |> group_by(d, component) |>
@@ -538,19 +561,19 @@ The weights in @eq-toy describe the true distribution the model is trained to ma
 #| label: fig-toy
 #| fig-env: figure*
 #| fig-width: 6.3
-#| fig-height: 2.4
+#| fig-height: 2.5
 #| out-width: "100%"
-#| fig-cap: "How the item-by-class structure divides in the learner's representation, by hidden width, under ReLU. Each faint point is one run and the three shares sum to one within it; the line joins the medians. Panels split the runs by how much of the language was interaction. Runs in which none of the three components had a re-split 95% interval excluding zero are not plotted, since the three shares then divide noise; all such runs are at width 8, and their number is given in the text."
-ggplot(toy_runs, aes(factor(d), share, color = component)) +
-  geom_point(position = position_jitterdodge(jitter.width = .55, dodge.width = .8),
-             size = .22, alpha = .16) +
-  geom_line(data = toy_med, aes(factor(d), med, group = component), linewidth = .6,
-            position = position_dodge(width = .8)) +
-  geom_point(data = toy_med, aes(factor(d), med), size = 1.2,
-             position = position_dodge(width = .8)) +
-  facet_wrap(~ planted, nrow = 1) +
-  scale_color_manual(values = COMP, name = NULL) +
-  labs(x = "hidden width", y = "share of item-by-class structure") +
+#| fig-cap: "What the learner builds of each component, against how much of that component the language held, under ReLU. The horizontal axis is the component's share of the training distribution, alongside the other two and the context; the vertical axis is its share of the item-by-class structure the model built. One line per hidden width. Points are medians over runs and bars are the 2.5th and 97.5th percentiles across them. The dashed diagonal is where a representation would sit that reproduced the language's composition exactly: above it the component is built up, below it the component is held back. Runs in which none of the three components had a re-split 95% interval excluding zero are not plotted, since the three shares then divide noise; all such runs are at width 8, and their number is given in the text."
+ggplot(toy_learn, aes(x, med, color = factor(d))) +
+  geom_abline(slope = 1, intercept = 0, linetype = 2, linewidth = .3, color = UO[["grey"]]) +
+  geom_linerange(aes(ymin = lo, ymax = hi), linewidth = .35, alpha = .45) +
+  geom_line(linewidth = .55) + geom_point(size = 1) +
+  facet_wrap(~ component, nrow = 1) +
+  scale_color_manual(values = WIDC, name = "hidden width") +
+  scale_x_continuous(limits = c(0, .8), breaks = c(0, .25, .5, .75)) +
+  scale_y_continuous(limits = c(0, 1), breaks = c(0, .5, 1)) +
+  labs(x = "that component's share of the language",
+       y = "its share of what\nthe model built") +
   theme_paper(8) +
   theme(legend.position = "top", legend.margin = margin(0, 0, -6, 0),
         panel.grid.minor = element_blank())
@@ -560,7 +583,7 @@ The linear condition reads zero only where the language is additive. Across all 
 
 Because the measure recovers components planted directly into a representation almost exactly (Appendix \ref{sec-appendix-validate}), what follows can be read as a fact about the learner rather than about the instrument. The question is not whether the measure finds the interaction that was planted. It is what a learner does with a language whose composition we know.
 
-What it does depends on how much room it has. Pooled over languages, the interaction takes `r g(cmp(8, "interaction"), 3)` of the item-by-class structure at a hidden width of 8 and `r g(cmp(128, "interaction"), 3)` at 128, a `r sprintf("%.0f", cmp(128, "interaction") / cmp(8, "interaction"))`-fold rise, while the item and class effects barely move above width 16 (@fig-toy). The interaction is the component that grows into the space a wider representation provides, and the two main effects are what a narrow one spends its dimensions on first. The rise is steepest where there is most to build: in languages that are over 30% interaction it runs from `r g(toy_comp$med[toy_comp$d == 8 & toy_comp$component == "interaction" & toy_comp$planted == "over 30%"], 3)` at width 8 to `r g(toy_comp$med[toy_comp$d == 128 & toy_comp$component == "interaction" & toy_comp$planted == "over 30%"], 3)` at 128, against a far flatter climb where the language holds little interaction to begin with. At the widest representation we train, the interaction's share is still rising.
+What it does depends on how much room it has. Pooled over languages, the interaction takes `r g(cmp(8, "interaction"), 3)` of the item-by-class structure at a hidden width of 8 and `r g(cmp(128, "interaction"), 3)` at 128, a `r sprintf("%.0f", cmp(128, "interaction") / cmp(8, "interaction"))`-fold rise, while the item and class effects barely move above width 16 (@fig-toy). The interaction is the component that grows into the space a wider representation provides, and the two main effects are what a narrow one spends its dimensions on first. The rise is steepest where there is most to build: in the languages richest in interaction it runs from `r g(lrn(8, "interaction"), 3)` at width 8 to `r g(lrn(128, "interaction"), 3)` at 128, against a far flatter climb where the language holds little interaction to begin with. Set against what the language asked for, the asymmetry is sharper still (@fig-toy). A language holding almost no item effect still yields a representation that is `r g(lrn(128, "item", FALSE), 2)` item, and one holding almost no class effect yields `r g(lrn(128, "class", FALSE), 2)` class, while a language whose interaction is the largest of the three yields only `r g(lrn(128, "interaction"), 3)` interaction. The learner reaches for main effects whether or not the language calls for them, and holds the interaction back even when the language is largely made of it. At the widest representation we train, the interaction's share is still rising.
 
 That is the reading Experiment 2 tests. If the interaction is gated by capacity rather than by anything about the distinction being represented, then models an order of magnitude wider than these should carry more of it, not less.
 
