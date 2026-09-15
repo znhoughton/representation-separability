@@ -747,14 +747,6 @@ What remains is the interaction: the part of a word-at-a-class that is neither a
 
 Results are reported in @tbl-decode.
 
-The interaction is about the class. In every construction and both families the class is recoverable from the interaction at well above chance while the permutated null sits on chance, reaching `r g(dec$class_peritem[dec$construction == "POS (noun/verb)" & dec$family == "Pythia"], 2)` for part of speech, `r g(dec$class_peritem[dec$construction == "role (subject/object)" & dec$family == "Pythia"], 2)` for grammatical role and `r g(dec$class_peritem[dec$construction == "metaphor (literal/figurative)" & dec$family == "Pythia"], 2)` for metaphor, with bootstrap intervals excluding the nulls in all six cases. The null landing on chance is what makes those accuracies interpretable, since it is the same probe, the same folds and the same word-level averaging with only the labelling destroyed.
-
-Further, the effect is graded the same way the interaction's size is: part of speech decodes best, role next, metaphor least, matching the order in which the interaction's proportion falls across the three (@tbl-llm). In other words, the geometric and the functional measurement agree on the ranking.
-
-Metaphor is the case where this matters most. Its shared class direction is too small to fit an orientation to (@sec-exp2-results), so a method reading only that direction would take metaphoricity to be barely represented, yet it decodes from the interaction at `r g(dec$class_peritem[dec$construction == "metaphor (literal/figurative)" & dec$family == "Pythia"], 2)` against a null of `r g(dec$class_peritem_null[dec$construction == "metaphor (literal/figurative)" & dec$family == "Pythia"], 2)`. This suggests that most of what distinguishes its uses lives in the interaction rather than in a direction shared across words.
-
-The result has a definite scope. It shows that $\gamma$ carries the specific label rather than generic correlated context, since generic context would not survive holding the word fixed and removing the shared axis. It does not show that $\gamma$ is *only* the label: context correlated with the class within a word survives both removals, so the interaction remains an upper bound on class-binding.
-
 ```{r}
 #| label: tbl-decode
 #| tbl-cap: "Class decoded from the interaction, at the deepest layer of the largest model in each family. The item is held fixed and the shared class direction is projected out. *Class* is the accuracy of that decode and *null* repeats it with class labels permutated within each word; brackets are percentile bootstrap intervals over words. Chance is 0.50."
@@ -779,6 +771,14 @@ dec |>
   kbl(booktabs = TRUE, align = "llrrr", linesep = "") |>
   kable_styling(latex_options = c("HOLD_position"), font_size = 7)
 ```
+
+The interaction is about the class. In every construction and both families the class is recoverable from the interaction at well above chance while the permutated null sits on chance, reaching `r g(dec$class_peritem[dec$construction == "POS (noun/verb)" & dec$family == "Pythia"], 2)` for part of speech, `r g(dec$class_peritem[dec$construction == "role (subject/object)" & dec$family == "Pythia"], 2)` for grammatical role and `r g(dec$class_peritem[dec$construction == "metaphor (literal/figurative)" & dec$family == "Pythia"], 2)` for metaphor, with bootstrap intervals excluding the nulls in all six cases. The null landing on chance is what makes those accuracies interpretable, since it is the same probe, the same folds and the same word-level averaging with only the labelling destroyed.
+
+Further, the effect is graded the same way the interaction's size is: part of speech decodes best, role next, metaphor least, matching the order in which the interaction's proportion falls across the three (@tbl-llm). In other words, the geometric and the functional measurement agree on the ranking.
+
+Metaphor is the case where this matters most. Its shared class direction is too small to fit an orientation to (@sec-exp2-results), so a method reading only that direction would take metaphoricity to be barely represented, yet it decodes from the interaction at `r g(dec$class_peritem[dec$construction == "metaphor (literal/figurative)" & dec$family == "Pythia"], 2)` against a null of `r g(dec$class_peritem_null[dec$construction == "metaphor (literal/figurative)" & dec$family == "Pythia"], 2)`. This suggests that most of what distinguishes its uses lives in the interaction rather than in a direction shared across words.
+
+The result has a definite scope. It shows that $\gamma$ carries the specific label rather than generic correlated context, since generic context would not survive holding the word fixed and removing the shared axis. It does not show that $\gamma$ is *only* the label: context correlated with the class within a word survives both removals, so the interaction remains an upper bound on class-binding.
 
 # Discussion {#sec-discussion}
 

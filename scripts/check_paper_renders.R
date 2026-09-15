@@ -22,21 +22,24 @@ ends <- grep("^```$", txt)
 
 # ---- pass 0: escapes a shell heredoc can eat ------------------------------------------------
 # Writing LaTeX through a heredoc turns a backslash and a letter into the control character it
-# names: "ref{" becomes a newline then "ef{", "alpha" a bell. The damage is silent, survives a
-# render, and has happened three times. A newline before "ef{" is never legitimate; neither is a
-# control character in a .qmd.
-raw <- paste(readLines(qmd, warn = FALSE), collapse = "
-")
-eaten <- gregexpr("
-ef[{]", raw)[[1]]
-ctrl <- gregexpr("[]", raw)[[1]]
-nbad <- sum(eaten > 0) + sum(ctrl > 0)
-if (nbad > 0) {
-  cat(sprintf("  MANGLED ESCAPES: %d newline-before-ef{ and %d control characters
-",
-              sum(eaten > 0), sum(ctrl > 0)))
-  cat("  a backslash was eaten writing LaTeX through a heredoc; repair before rendering
-")
+# names, so "\ref{" arrives as a line break followed by "ef{" and "\alpha" as a bell. The damage
+# is silent and survives a render. A line break before "ef{" is never legitimate in this paper,
+# and neither is a control character.
+#
+# The characters are built from their code points rather than written literally, because a
+# literal carriage return in this file does not survive being read and rewritten by a tool that
+# normalises line endings, and a guard that corrupts itself is worse than no guard.
+raw <- paste(readLines(qmd, warn = FALSE), collapse = "\n")
+eaten <- sum(gregexpr("\nef[{]", raw, fixed = TRUE)[[1]] > 0)
+ctrl <- 0L
+for (cp in c(7L, 8L, 11L, 12L, 13L)) {
+  hits <- gregexpr(intToUtf8(cp), raw, fixed = TRUE)[[1]]
+  ctrl <- ctrl + sum(hits > 0)
+}
+if (eaten + ctrl > 0) {
+  cat(sprintf("  MANGLED ESCAPES: %d line-break-before-ef{ and %d control characters\n",
+              eaten, ctrl))
+  cat("  a backslash was eaten writing LaTeX through a heredoc; repair before rendering\n")
   quit(status = 1)
 }
 
@@ -99,6 +102,50 @@ for (x in inline) {
 cat(sprintf("inline expressions evaluated: %d, %d problematic
 ", length(inline), bad_inline))
 fatal <- fatal + bad_inline
+
+
+# ---- pass 4: document order -------------------------------------------------------------------
+# Passes 2 and 3 evaluate every chunk first and every inline expression afterwards, so an inline
+# expression sitting ABOVE the chunk that defines what it reads still passes. Quarto evaluates top
+# to bottom and fails such a render with "object not found", which is how a table chunk moved below
+# the prose citing it reached the author. This walks the file in order instead, evaluating each
+# chunk and each inline expression as it is met. The working directory is already paper/ from
+# pass 2, so it is not changed again here.
+ord_env <- new.env()
+bad_order <- 0L
+c_end <- vapply(starts, function(s) {
+  e <- ends[ends > s][1]
+  if (is.na(e)) s else e
+}, numeric(1))
+in_chunk <- rep(FALSE, length(txt))
+for (k in seq_along(starts)) in_chunk[starts[k]:c_end[k]] <- TRUE
+
+k <- 1L
+for (ln in seq_along(txt)) {
+  if (k <= length(starts) && ln == starts[k]) {
+    e <- c_end[k]
+    if (e > ln + 1) {
+      try(eval(parse(text = paste(txt[(ln + 1):(e - 1)], collapse = "\n")), envir = ord_env),
+          silent = TRUE)
+    }
+    k <- k + 1L
+    next
+  }
+  if (in_chunk[ln]) next
+  for (x in unlist(regmatches(txt[ln], gregexpr("`r [^`]+`", txt[ln])))) {
+    code <- substr(x, 4, nchar(x) - 1)
+    msg <- tryCatch({ eval(parse(text = code), envir = ord_env); NULL },
+                    error = function(e) conditionMessage(e))
+    if (!is.null(msg) && grepl("not found", msg)) {
+      bad_order <- bad_order + 1L
+      cat(sprintf("  OUT OF ORDER line %d: %s -> %s\n", ln, substr(code, 1, 44),
+                  substr(msg, 1, 56)))
+    }
+  }
+}
+cat(sprintf("document order: %d expression(s) used above the chunk that defines them\n",
+            bad_order))
+fatal <- fatal + bad_order
 
 for (nm in c("llm", "llm_deep", "toy", "toy_cap")) {
   if (exists(nm, envir = env)) {
