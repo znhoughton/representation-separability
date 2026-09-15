@@ -657,7 +657,9 @@ In order to examine the separability of linguistic representations in models, we
 
 ## Stimuli {#sec-exp2-stimuli}
 
-The two classes of each distinction are taken from its corpus's own annotation: \textsc{noun} against \textsc{verb} for part of speech, *nsubj* against *obj* for grammatical role, and literal against figurative for metaphor. Items are lowercased surface forms, and for grammatical role are restricted to nouns, so an item is the same token in both of its classes and no part of any difference between them can come from tokenization. A form is kept only if it occurs at least ten times in each of its two classes, which excludes any form used in only one; part of speech is the most restrictive of the three, since it keeps only forms genuinely used both ways, such as *run* or *claims*. That leaves `r max(llm$n_items[llm$construction == "POS (noun/verb)"])` items for part of speech, `r max(llm$n_items[llm$construction == "role (subject/object)"])` for grammatical role and `r cm(gs("metaphor", "n_items_kept"))` for metaphor, with median pairings of `r gsf("pos_noun_verb_form", "tokens_per_cell_median")`, `r gsf("role_nsubj_obj", "tokens_per_cell_median")` and `r gs("metaphor", "tokens_per_cell_median")` tokens, inside the ten-to-one-hundred range the validation covers (Appendix \ref{sec-appendix-validate}). Appendix \ref{sec-appendix-morph} applies the same measure to number and tense, a distinction that cannot be made same-token.
+An item is a single word form attested in both classes of a distinction: *run*, for example, occurs both as a noun and as a verb. Items are matched on the lowercased surface string, so the representation is read from the same token in each class and no difference between them can come from tokenization. The two classes are \textsc{noun} and \textsc{verb} for part of speech, *nsubj* and *obj* for grammatical role (restricted to nouns), and literal and figurative for metaphor, each taken from its corpus's own annotation.
+
+A form was included only if it occurred at least ten times in each of its two classes, so that a mean could be estimated at each and then split in two; forms attested in only one class were excluded. Part of speech is the most restrictive of the three, since it keeps only forms genuinely used both ways, such as *run* or *claims*. This yielded `r max(llm$n_items[llm$construction == "POS (noun/verb)"])` items for part of speech, `r max(llm$n_items[llm$construction == "role (subject/object)"])` for grammatical role and `r cm(gs("metaphor", "n_items_kept"))` for metaphor, with medians of `r gsf("pos_noun_verb_form", "tokens_per_cell_median")`, `r gsf("role_nsubj_obj", "tokens_per_cell_median")` and `r gs("metaphor", "tokens_per_cell_median")` tokens per item-class pairing (@tbl-constructions), inside the ten-to-one-hundred range the validation covers (Appendix \ref{sec-appendix-validate}). Appendix \ref{sec-appendix-morph} applies the same measure to number and tense, a distinction that cannot be made same-token.
 
 ```{r}
 #| label: tbl-constructions
@@ -1003,7 +1005,7 @@ v_ov_power |>
 
 # Capacity and Orthogonality {#sec-appendix-capacity}
 
-Whether the item and class effects come out orthogonal depends on whether the representation had room for them to be, which is a fact about capacity rather than about the language. The languages are held fixed across these runs; only the hidden width changes.
+Whether the item and class effects come out orthogonal depends on whether the representation had room for them to be, which is a fact about capacity rather than about the language. The languages are held fixed across these runs; only the hidden width changes. @fig-capacity shows the overlap against capacity and @tbl-toy the interaction size and both overlaps at each capacity.
 
 ```{r}
 #| label: fig-capacity
@@ -1102,7 +1104,7 @@ tibble::tribble(
   collapse_rows(columns = 1, latex_hline = "major")
 ```
 
-The two families are matched on width rather than on parameter count, which is what the measure is sensitive to: the chance level for overlap is the class subspace rank over the width (Appendix \ref{sec-appendix-math}), so a comparison across models of different width has to be read against different chance levels. Pairing at 768, 1024 and 2048 removes that from the family comparison.
+The six models are listed in @tbl-models. The two families are matched on width rather than on parameter count, which is what the measure is sensitive to: the chance level for overlap is the class subspace rank over the width (Appendix \ref{sec-appendix-math}), so a comparison across models of different width has to be read against different chance levels. Pairing at 768, 1024 and 2048 removes that from the family comparison.
 
 They differ in two ways that matter elsewhere in the paper. The training corpora differ by more than two orders of magnitude in size, which is the manipulation of interest. And they position tokens differently: Pythia uses rotary embeddings, applied inside attention, while OPT learns absolute position embeddings added at the input. Appendix \ref{sec-appendix-positions} uses that difference to rule out absolute position as the source of the interaction.
 

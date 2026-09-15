@@ -43,6 +43,28 @@ if (eaten + ctrl > 0) {
   quit(status = 1)
 }
 
+# ---- pass 0b: floats nobody points at -------------------------------------------------------
+# A figure or table the prose never cites is either a float the reader is never sent to, or a
+# cross-reference lost in an edit. Both have happened here: rewriting a section dropped the only
+# pointer to a table, and to an entire appendix.
+#
+# The brace and backslash are built from code points. Written literally they are escapes, and an
+# escape in this file is one shell heredoc away from being eaten.
+all_txt <- paste(readLines(qmd, warn = FALSE), collapse = " ")
+OB <- intToUtf8(123)
+BS <- intToUtf8(92)
+pick <- function(prefix) {
+  m <- gregexpr(paste0("(?<=", prefix, ")(fig|tbl)-[A-Za-z0-9-]+"), all_txt, perl = TRUE)
+  unlist(regmatches(all_txt, m))
+}
+lab <- unique(c(pick("label: "), pick(paste0(OB, "#"))))
+cit <- unique(c(pick("@"), pick(paste0("ref", OB))))
+orphan <- setdiff(lab, cit)
+if (length(orphan)) {
+  cat(sprintf("  UNCITED: %d float(s) the prose never points at: %s\n",
+              length(orphan), paste(orphan, collapse = ", ")))
+}
+
 # ---- pass 1: parse -------------------------------------------------------------------------
 bad <- 0L; n <- 0L
 for (s in starts) {
