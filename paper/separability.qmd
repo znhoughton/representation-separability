@@ -663,7 +663,7 @@ An item is included only if it occurs at least ten times in each class; forms oc
 
 ```{r}
 #| label: tbl-constructions
-#| tbl-cap: "Stimulus counts for the three classes. *Items* is the number of word forms occurring at least ten times in each of the two classes; *tokens* is the total those items contribute; *median tokens* is the median number of occurrences behind a single item in a single class."
+#| tbl-cap: "Stimulus counts for the three classes, in corpus occurrences of the forms that survive the inclusion rule. *Items* is how many word forms survive; *total tokens* is how many occurrences those forms contribute, counting both classes; *median per item and class* is the median number of occurrences of one form in one of its two classes, which is the number of observations behind a single mean."
 tibble::tribble(
   ~class,             ~items,
   "part of speech",   max(llm$n_items[llm$construction == "POS (noun/verb)"]),
@@ -679,7 +679,7 @@ tibble::tribble(
                    gs("metaphor", "tokens_per_cell_median")))) |>
   mutate(across(c(items, tokens), \(v) format(v, big.mark = ",", trim = TRUE)),
          med = ifelse(is.na(med), "\\textemdash", formatC(med, format = "f", digits = 0))) |>
-  rename(`median tokens` = med) |>
+  rename(`total tokens` = tokens, `median per item and class` = med) |>
   kbl(booktabs = TRUE, align = "lrrr", linesep = "", escape = FALSE) |>
   kable_styling(latex_options = c("HOLD_position"), font_size = 8)
 ```
@@ -764,7 +764,7 @@ Results are reported in @tbl-decode.
 
 ```{r}
 #| label: tbl-decode
-#| tbl-cap: "Class decoded from the interaction, at the deepest layer of the largest model in each family. The item is held fixed and the shared class direction is projected out. *Class* is the accuracy of that decode and *null* repeats it with class labels permutated within each word; brackets are percentile bootstrap intervals over words. Chance is 0.50."
+#| tbl-cap: "Decoding the class from the interaction, at the deepest layer of the largest model in each family. The item is held fixed and the shared class direction is projected out, so neither main effect can contribute. *Accuracy* is the mean over them; *null* repeats the decode with the class labels permutated within each form. Brackets are percentile bootstrap intervals over forms, and chance is 0.50."
 dec <- bind_rows(
   rd("llm_decode_pos_form.csv") |> mutate(construction = "POS (noun/verb)"),
   rd("llm_decode_interaction.csv") |> filter(construction != "pos") |>
@@ -777,13 +777,12 @@ dec <- bind_rows(
 
 dec |>
   arrange(construction, family) |>
-  transmute(distinction = shortname(construction), model = paste(family, size),
-            words = n_peritem,
-            class = sprintf("%.2f [%.2f, %.2f]", class_peritem,
+  transmute(class = shortname(construction), model = paste(family, size),
+            accuracy = sprintf("%.2f [%.2f, %.2f]", class_peritem,
                             class_peritem_lo, class_peritem_hi),
             null = sprintf("%.2f [%.2f, %.2f]", class_peritem_null,
                            class_peritem_null_lo, class_peritem_null_hi)) |>
-  kbl(booktabs = TRUE, align = "llrrr", linesep = "") |>
+  kbl(booktabs = TRUE, align = "llrr", linesep = "") |>
   kable_styling(latex_options = c("HOLD_position"), font_size = 7)
 ```
 
