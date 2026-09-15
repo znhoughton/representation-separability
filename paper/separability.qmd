@@ -64,7 +64,8 @@ theme_paper <- function(base = 9) {
 # no alignment step and no projection. Capacity is a reported variable, never a filter.
 toy <- rd("artificial_language_grid.csv") |>
   ensure("obs_size_interaction", "size_interaction_excludes_zero",
-         "obs_size_class", "size_class_excludes_zero") |>
+         "obs_size_class", "size_class_excludes_zero",
+         "size_item_excludes_zero") |>
   mutate(act = factor(activation, c("identity", "relu"), c("linear", "ReLU")),
          # An orthogonality reading means nothing on its own, so each overlap is carried
          # alongside the upper tail of its own null: the largest value an arbitrary orientation
@@ -102,34 +103,58 @@ toy_track <- toy |> filter(w_item > 0, w_class > 0) |>
             flagged = mean(sig_interaction),
             flagged_ez = mean(ez, na.rm = TRUE), .groups = "drop")
 
-# The same relationship, kept separate by width. Pooled over widths the level is dominated by
-# the narrowest models, which cannot build an interaction at all, so the pooled curve
-# understates how well the wider ones track. The linear arm is summarized once, pooled over
-# widths, and drawn as a single dashed reference.
-toy_track_w <- toy |> filter(w_item > 0, w_class > 0) |>
-  mutate(bin = cut(ach_int, c(-Inf, .005, .05, .15, .30, .55, Inf))) |>
-  group_by(act, d, bin) |>
-  # The measured quantity is the interaction's share of the WHOLE representation: its share of
-  # the grid times the grid's share of the representation. Two reasons, the first being the
-  # important one. The planted shares sum to one across item, class, interaction and context, so
-  # ach_int is a share of everything, and comparing it against a share of the grid alone compares
-  # two different denominators. That mismatch is what forced the caption to say the axes were not
-  # on a common scale; they are now. Second, a share of the grid is unstable exactly where the
-  # grid is empty. At the narrowest width a quarter of the runs in the lowest bin had a grid
-  # holding none of the representation, so their interaction took a hundred percent of nothing
-  # and the band covered half the axis. The representation's variance never collapses, so those
-  # runs read as the zero they are rather than being dropped or clipped.
-  #
-  # A point is a median over the runs in the bin and the band is their interquartile range, so
-  # it shows how much runs of the same width and planting differ from one another.
-  mutate(share_rep = size_interaction * between_share_adj) |>
-  summarize(ach = median(ach_int), size_int = median(share_rep, na.rm = TRUE),
-            lo = quantile(share_rep, .25, na.rm = TRUE),
-            hi = quantile(share_rep, .75, na.rm = TRUE),
-            .groups = "drop")
-toy_track_lin <- toy_track_w |> filter(act == "linear") |>
-  group_by(bin) |>
-  summarize(ach = median(ach), size_int = median(size_int), .groups = "drop")
+# ---- what the learner builds, by width --------------------------------------------------------
+# A run contributes only if the measure found structure for the three shares to divide: at least
+# one of the three components has a re-split interval excluding zero. Where none does, the shares
+# divide noise, whichever component lands slightly positive takes the whole of it, and the value
+# is arbitrary rather than small. Every run this removes is at the narrowest width, and how many
+# there are is reported in the Results rather than passed over.
+toy_relu <- toy |> filter(act == "ReLU", w_item > 0, w_class > 0) |>
+  mutate(built = size_item_excludes_zero | size_class_excludes_zero |
+                   size_interaction_excludes_zero)
+toy_unbuilt <- toy_relu |> group_by(d) |>
+  summarize(runs = n(), none = sum(!built), pct = none / n(), .groups = "drop")
+
+# Long form, one row per component, so the three can be drawn on one pair of axes. Intervals are
+# the 2.5th and 97.5th percentiles ACROSS RUNS: what the bar shows is how differently two runs of
+# the same language at the same width come out, which is itself one of the findings.
+toy_long <- toy_relu |> filter(built) |>
+  select(d, ach_int, item = size_item, class = size_class, interaction = size_interaction) |>
+  pivot_longer(c(item, class, interaction), names_to = "component", values_to = "share") |>
+  mutate(component = factor(component, c("item", "class", "interaction")))
+
+toy_comp <- toy_long |>
+  mutate(planted = cut(ach_int, c(-Inf, .05, .30, Inf),
+                       labels = c("language: little interaction", "some",
+                                  "mostly interaction"))) |>
+  group_by(d, planted, component) |>
+  summarize(n = n(), med = median(share),
+            lo = quantile(share, .025), hi = quantile(share, .975), .groups = "drop")
+
+# Pooled over languages, for the prose and for the width trend on its own.
+toy_width <- toy_long |> group_by(d, component) |>
+  summarize(n = n(), med = median(share), lo = quantile(share, .025),
+            hi = quantile(share, .975), .groups = "drop")
+cmp <- function(dd, comp, col = "med") {
+  toy_width[[col]][toy_width$d == dd & toy_width$component == comp]
+}
+cmpw <- function(dd, comp) cmp(dd, comp, "hi") - cmp(dd, comp, "lo")
+unbuilt <- function(dd, col = "pct") toy_unbuilt[[col]][toy_unbuilt$d == dd]
+
+# How the other properties of the language move the composition. Reported in the appendix rather
+# than folded into the figure, so nothing is collapsed without saying so.
+toy_bylang <- bind_rows(
+  toy_relu |> filter(built) |>
+    mutate(property = "context in the language",
+           level = cut(ach_ctx, c(-Inf, .3, .7, Inf),
+                       labels = c("under 30%", "30 to 70%", "over 70%"))),
+  toy_relu |> filter(built) |>
+    mutate(property = "item against class",
+           level = cut(w_item / pmax(w_class, 1e-9), c(-Inf, .95, 1.05, Inf),
+                       labels = c("item < class", "item = class", "item > class")))) |>
+  group_by(property, level) |>
+  summarize(runs = n(), item = median(size_item), class = median(size_class),
+            interaction = median(size_interaction), .groups = "drop")
 
 # Capacity: below 1 every component can have its own axis, above 1 they cannot.
 # One overlap for a table: the value, how many times its own null's median it is, and how many of
@@ -194,20 +219,18 @@ outof <- function(constr, stem) {
 }
 
 toy_cap <- toy |> filter(w_int > 0, w_item > 0, w_class > 0) |>
-  # Share of the representation, as in @fig-toy and for the same reason: a share of the grid is
-  # unstable where the grid holds little of the representation, and these rows pool runs whose
-  # grids differ widely in that respect.
-  mutate(share_rep = size_interaction * between_share_adj) |>
+  # Same inclusion rule as @fig-toy: a run contributes only if at least one component's re-split
+  # interval excludes zero, since otherwise the three shares divide noise.
+  filter(size_item_excludes_zero | size_class_excludes_zero | size_interaction_excludes_zero) |>
   group_by(act, capacity) |>
   # Formatted here rather than in the table, because `ov` needs the runs themselves to count how
   # many fall outside their null; a summarized row no longer has them.
-  summarize(n = n(), size_int = median(share_rep, na.rm = TRUE),
-            # median with the interquartile range over the runs in the row. A row pools hundreds
-            # of runs that differ in seed and in what was planted, and the median alone said
-            # nothing about how much they differ.
-            sz_int = sz(share_rep, size_interaction_excludes_zero,
-                        quantile(share_rep, .25, na.rm = TRUE),
-                        quantile(share_rep, .75, na.rm = TRUE),
+  summarize(n = n(), size_int = median(size_interaction),
+            # median with the 95% range over the runs in the row. A row pools hundreds of runs
+            # that differ in seed and in what was planted, and the median alone said nothing
+            # about how much they differ.
+            sz_int = sz(size_interaction, size_interaction_excludes_zero,
+                        quantile(size_interaction, .025), quantile(size_interaction, .975),
                         digits = 3),
             ov_item = ov(leak_item_into_class, null_med, null_lo, null_hi, 4),
             ov_int = ov(leak_int_into_margins, null_int_med, null_int_lo, null_int, 3),
@@ -506,38 +529,40 @@ The weights in @eq-toy describe the true distribution the model is trained to ma
 
 ```{r}
 #| label: fig-toy
-#| fig-width: 3.3
-#| fig-height: 2.7
+#| fig-env: figure*
+#| fig-width: 6.3
+#| fig-height: 2.4
 #| out-width: "100%"
-#| fig-cap: "Measured interaction against the interaction planted in the language, over the 7,560 artificial-language runs. One line per hidden width under ReLU; the dashed line is the linear condition pooled over widths. Each point is the median over the runs in its bin, with their interquartile range. Both axes are shares of the whole: the planted share is the interaction's share of the target distribution alongside the item, the class and the context, and the measured share is its share of the representation, the grid's share of the representation times the interaction's share of the grid."
-ACT2 <- c(linear = UO[["green2"]], ReLU = UO[["gold"]])
-# One ReLU line per width, shading gold to amber with increasing width. Pooled, the level was
-# set by the narrowest models, which cannot build an interaction at all.
-WID <- colorRampPalette(c(UO[["gold"]], UO[["amber"]]))(length(unique(toy_track_w$d)))
-names(WID) <- sort(unique(toy_track_w$d))
-# Ranges are drawn at each bin rather than as a band between them. These are six binned points,
-# not a continuous curve, and a ribbon interpolates between them: where one bin is far more
-# variable than its neighbours, as the narrowest width is at the lowest planting, that
-# interpolation produced a spike that read as a feature of the data.
-ggplot(filter(toy_track_w, act == "ReLU"), aes(ach, size_int, color = factor(d))) +
-  geom_line(data = toy_track_lin, mapping = aes(ach, size_int), inherit.aes = FALSE,
-            color = ACT2[["linear"]], linetype = 2, linewidth = .5) +
-  geom_linerange(aes(ymin = lo, ymax = hi), linewidth = .4, alpha = .55) +
-  geom_line(linewidth = .6) + geom_point(size = 1.4) +
-  scale_color_manual(values = WID, name = "width") +
-  labs(x = "interaction planted in the language", y = "interaction measured\nin the representation") +
-  theme_paper(8) + theme(legend.position = "top", legend.margin = margin(0, 0, -6, 0))
+#| fig-cap: "How the item-by-class grid divides in the learner's representation, by hidden width, under ReLU. The three shares sum to one within each run. Each panel holds the runs whose language carried a given amount of interaction. Points are medians over runs; bars are the 2.5th and 97.5th percentiles across runs, so they show how differently two runs of the same language at the same width come out. Runs in which none of the three components had a re-split interval excluding zero are not plotted, since the three shares then divide noise; all such runs are at width 8, and their number is given in the text."
+ggplot(toy_comp, aes(d, med, color = component)) +
+  geom_linerange(aes(ymin = lo, ymax = hi), linewidth = .4, alpha = .5) +
+  geom_line(linewidth = .6) + geom_point(size = 1.2) +
+  facet_wrap(~ planted, nrow = 1) +
+  scale_color_manual(values = c(item = UO[["blue"]], class = UO[["amber"]],
+                                interaction = UO[["green2"]]), name = NULL) +
+  scale_x_log10(breaks = c(8, 16, 32, 128)) +
+  scale_y_continuous(limits = c(0, 1)) +
+  labs(x = "hidden width", y = "share of the grid") +
+  theme_paper(8) +
+  theme(legend.position = "top", legend.margin = margin(0, 0, -6, 0))
 ```
 
 The linear condition reads zero only where the language is additive. Across all `r cm(nullget("linear", TRUE, "n"))` runs where it contained an interaction, the linear model's interaction interval excludes zero in `r sprintf("%.0f%%", 100 * nullget("linear", TRUE, "flagged_ez"))` of them, rising from `r sprintf("%.0f%%", 100 * min(toy_track$flagged_ez[toy_track$act == "linear" & toy_track$bin != "none"]))` at the weakest planting to `r sprintf("%.0f%%", 100 * max(toy_track$flagged_ez[toy_track$act == "linear"]))` at the strongest, and `r sprintf("%.0f%%", 100 * nullget("linear", FALSE, "flagged_ez"))` where none was planted. It may seem contradictory for a linear model to carry an interaction effect; it is contradictory only for what the model can compute, not for what its representations carry. The reason is that the learner's representations are not context-invariant. Which contexts *walk* occurs in is partly a fact about *walk*, partly about noun-hood, and partly about the two together, and the part that varies by word and class jointly cannot be split back into an item part and a class part. The form and class vectors are shared across every pairing, so in a linear model the contexts a form is observed with are the only place a property of the form-as-class can live; its hidden layer is a sum of its inputs, so it preserves whatever the contexts do differently in the two classes, carrying the property without ever representing it. What ReLU adds is another place to put it: a hidden unit responds to the word and the class together, so the model can compute the property from them rather than take it in from context. The ReLU condition flags `r sprintf("%.0f%%", 100 * nullget("ReLU", TRUE, "flagged_ez"))` of the runs where the language contained an interaction against `r sprintf("%.0f%%", 100 * nullget("linear", TRUE, "flagged_ez"))` for the linear, and since the linear model's own rate rises with the planting, the gap between the two is widest in the middle of the range and closes almost entirely at the top.
 
-The measure also tracks what is there. Under ReLU the measured interaction rises monotonically with the planted one (@fig-toy), and the rate at which it is flagged rises with it, from `r sprintf("%.0f%%", 100 * min(toy_track$flagged_ez[toy_track$act == "ReLU" & toy_track$bin != "none"]))` at the smallest nonzero setting to `r sprintf("%.0f%%", 100 * max(toy_track$flagged_ez[toy_track$act == "ReLU"]))` at the largest. With no interaction planted, ReLU flags `r sprintf("%.0f%%", 100 * nullget("ReLU", FALSE, "flagged_ez"))` of runs against the linear arm's `r sprintf("%.0f%%", 100 * nullget("linear", FALSE, "flagged_ez"))`; the residue is small and its median stays at the floor, but it is above the floor, and since a hidden unit's response to a word depends on the word's context even where the language itself is additive, a nonlinearity need not manufacture an interaction out of nothing to be owed a little. The measured shares are smaller than the planted ones throughout, and the gap is a fact about the representation rather than about the measure: planting the same components directly in a representation recovers them almost exactly in every class (Appendix \ref{sec-appendix-validate}), so a model trained on a language built largely out of the interaction still builds a representation that carries much less of it. How much less depends on how wide the representation is, and what matters here is that the relationship is monotone and that zero maps to zero. A share is only as stable as its denominator, which is why the figure reports the interaction as a share of the representation rather than of the grid. At the narrowest width with the weakest planted interaction, a quarter of runs build a grid that holds none of the representation at all, and the interaction's share of that grid is a share of nothing: it scatters across the whole range from run to run while the median stays near zero. The representation's own variance never collapses, so those runs read as the zero they are. Flag rates are unaffected either way, since they come from the interval on the cross-split product rather than on any share, and the language-model grids never approach this regime.
+Because the measure recovers components planted directly into a representation almost exactly (Appendix \ref{sec-appendix-validate}), what follows can be read as a fact about the learner rather than about the instrument. The question is not whether the measure finds the interaction that was planted. It is what a learner does with a language whose composition we know.
+
+What it does depends on how much room it has. Pooled over languages, the interaction takes `r g(cmp(8, "interaction"), 3)` of the grid at a hidden width of 8 and `r g(cmp(128, "interaction"), 3)` at 128, a `r sprintf("%.0f", cmp(128, "interaction") / cmp(8, "interaction"))`-fold rise, while the item and class effects barely move above width 16 (@fig-toy). The interaction is the component that grows into the space a wider representation provides, and the two main effects are what a narrow one spends its dimensions on first. The rise is steepest where there is most to build: in languages that are mostly interaction it runs from `r g(toy_comp$med[toy_comp$d == 8 & toy_comp$component == "interaction" & toy_comp$planted == "mostly interaction"], 3)` at width 8 to `r g(toy_comp$med[toy_comp$d == 128 & toy_comp$component == "interaction" & toy_comp$planted == "mostly interaction"], 3)` at 128, against a far flatter climb where the language holds little interaction to begin with. At the widest representation we train, the interaction's share is still rising.
+
+That is the reading Experiment 2 tests. If the interaction is gated by capacity rather than by anything about the distinction being represented, then models an order of magnitude wider than these should carry more of it, not less.
+
+Width also decides how reproducible the composition is. At a width of 8 the interval on the item effect spans `r g(cmpw(8, "item"), 2)` of the available range and the class effect `r g(cmpw(8, "class"), 2)`, so two runs given the same language can divide their representations in almost opposite ways. By width 32 those intervals have narrowed to `r g(cmpw(32, "item"), 2)` and `r g(cmpw(32, "class"), 2)`, and they do not narrow further at 128. Narrow representations are not simply poorer versions of wide ones; they are erratic, and which of the item and the class effect dominates is close to a matter of the seed. The same width accounts for every run the figure leaves out: at a width of 8, `r sprintf("%.0f%%", 100 * unbuilt(8))` of runs produce no component whose interval excludes zero, so there is no measured structure for the three shares to divide, while at every wider setting that happens in no run at all.
 
 Item and class effects entangle only when there is no room for them not to, and this is the substantive result (Appendix \ref{sec-appendix-capacity}). With capacity well below one, ReLU's item-class overlap is `r g(capget("ReLU", 0.125, "overlap"), 4)` against a chance level of `r g(capget("ReLU", 0.125, "floor"), 4)`, so the two effects are *more* orthogonal than two arbitrary directions would be, which is what a learner that has room and uses it looks like. At capacity 1 the overlap is `r g(capget("ReLU", 1, "overlap"), 3)` against a floor of `r g(capget("ReLU", 1, "floor"), 4)`, about `r g(capget("ReLU", 1, "ratio"), 1)` times chance, and at capacity 2 it is `r g(capget("ReLU", 2, "overlap"), 3)`; the linear condition stays at or below chance throughout. This is superposition in a setting where we can watch it happen: when the number of directions the structure needs exceeds the number available, the components stop being orthogonal because they cannot all be, and nothing about the language changed across those runs.
 
-The measure also works when the representation primarily encodes contextual information unrelated to the specific form and class. When the context term accounts for more than 80% of the variance in the logits, leaving under a fifth for the form, the class and their interaction combined, ReLU's measured interaction, as a share of the grid, holds at `r g(toy_noise$size_int[toy_noise$act == "ReLU" & toy_noise$cbin == ">80%"], 3)` against `r g(toy_noise$size_int[toy_noise$act == "ReLU" & toy_noise$cbin == "<20%"], 3)` when context is minor, and the flag rate falls from `r sprintf("%.0f%%", 100 * toy_noise$flagged_ez[toy_noise$act == "ReLU" & toy_noise$cbin == "<20%"])` to `r sprintf("%.0f%%", 100 * toy_noise$flagged_ez[toy_noise$act == "ReLU" & toy_noise$cbin == ">80%"])`. Power degrades, as it must with twenty-four observations per item and class, but the estimate does not drift. The share of the grid is the quantity that answers this question, since it asks how the word-and-class structure divides up and should not move with how much context sits beside it; @fig-toy plots the share of the representation instead, which is the like-for-like comparison against a planted share of the whole. That is the regime Experiment 2 sits in, since a word's hidden state varies mostly with the sentence it appears in rather than with the word or its class.
+The measure also works when the representation primarily encodes contextual information unrelated to the specific form and class. When the context term accounts for more than 80% of the variance in the logits, leaving under a fifth for the form, the class and their interaction combined, ReLU's measured interaction, as a share of the grid, holds at `r g(toy_noise$size_int[toy_noise$act == "ReLU" & toy_noise$cbin == ">80%"], 3)` against `r g(toy_noise$size_int[toy_noise$act == "ReLU" & toy_noise$cbin == "<20%"], 3)` when context is minor, and the flag rate falls from `r sprintf("%.0f%%", 100 * toy_noise$flagged_ez[toy_noise$act == "ReLU" & toy_noise$cbin == "<20%"])` to `r sprintf("%.0f%%", 100 * toy_noise$flagged_ez[toy_noise$act == "ReLU" & toy_noise$cbin == ">80%"])`. Power degrades, as it must with twenty-four observations per item and class, but the estimate does not drift. Context does compete with the interaction for room, though: at a width of 128 the interaction takes a larger share of the grid in languages that are under 30% context than in those over 70% (Appendix 
+ef{sec-appendix-capacity}). That is the regime Experiment 2 sits in, since a word's hidden state varies mostly with the sentence it appears in rather than with the word or its class.
 
-Two things carry into Experiment 2. The instrument reads zero when the answer is zero and tracks the answer when it is not, at the sample size and noise level the language models will be measured at. And whether the item and class effects come out orthogonal is governed by whether the representation had room, which is a fact about capacity rather than about the language, so near-orthogonality in a wide model is uninformative on its own and has to be read against its own chance level.
+Two things carry into Experiment 2. The interaction is the component that grows with room, so a representation an order of magnitude wider than the widest trained here should carry more of it rather than less, which is a prediction the language models can be held to. And whether the item and class effects come out orthogonal is governed by the same capacity rather than by anything about the language, so near-orthogonality in a wide model is uninformative on its own and has to be read against its own chance level.
 
 # Experiment 2: Item and Category in Language Models {#sec-exp2}
 
@@ -859,6 +884,7 @@ Whether the item and class effects come out orthogonal depends on whether the re
 #| fig-height: 2.5
 #| out-width: "70%"
 #| fig-cap: "Item-class overlap against capacity, by activation, over the 7,560 artificial-language runs. Capacity is the rank the structure needs divided by the hidden width. The dashed line is the median upper end of the null for an arbitrarily oriented effect. Both axes are logarithmic."
+ACT2 <- c(linear = UO[["green2"]], ReLU = UO[["gold"]])
 # one chance line, not one per condition: the two differ slightly because the class subspace
 # rank is estimated, and drawing both makes a zigzag that reads as structure when it is not
 floor_line <- toy_cap |> group_by(capacity) |> summarize(floor = median(floor), .groups = "drop")
@@ -889,6 +915,21 @@ toy_cap |>
   kbl(booktabs = TRUE, align = "lrrrrr", linesep = "", escape = FALSE) |>
   kable_styling(latex_options = c("HOLD_position"), font_size = 7)
 ```
+
+
+Two further properties of the language move the composition, and are given here rather than folded into @fig-toy (Table ef{tbl-lang}). Context competes with the interaction for room: the more of the language that is context, the smaller the interaction's share of the grid. And the balance the language strikes between the item and the class is reflected in the representation, the measured item share rising with the planted one.
+
+```{r}
+#| label: tbl-lang
+#| tbl-cap: "How two other properties of the artificial language move the composition of the grid, under ReLU, pooled over widths. Rows within a property partition the same runs. Values are medians of the three shares over the runs in the row."
+toy_bylang |>
+  transmute(property, level, runs,
+            item = g(item, 3), class = g(class, 3), interaction = g(interaction, 3)) |>
+  kbl(booktabs = TRUE, align = "llrrrr", linesep = "") |>
+  kable_styling(latex_options = c("HOLD_position"), font_size = 8) |>
+  collapse_rows(1, latex_hline = "major", valign = "top")
+```
+
 
 # A Construction That Is Not Same-Token {#sec-appendix-morph}
 
