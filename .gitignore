@@ -113,3 +113,6 @@ paper/*.bbl
 paper/*.blg
 paper/*.log
 paper/*.out
+
+# scratch renders for comparing figure options, not part of the paper
+figure-candidates/
