@@ -663,7 +663,7 @@ An item is included only if it occurs at least ten times in each class; forms oc
 
 ```{r}
 #| label: tbl-constructions
-#| tbl-cap: "Stimulus counts for the three classes, in corpus occurrences of the forms that survive the inclusion rule. *Items* is how many word forms survive; *total tokens* is how many occurrences those forms contribute, counting both classes; *median per item and class* is the median number of occurrences of one form in one of its two classes, which is the number of observations behind a single mean."
+#| tbl-cap: "Stimulus counts for the three classes, in corpus occurrences of the forms that survive the inclusion rule. *Items* is how many word forms survive. *Total tokens* is how many occurrences those forms contribute altogether, counting both of their classes. *Median per item-class* is the median, taken over every form in each of its two classes, of how often that one form occurs in that one class, and so is the number of observations behind a single mean."
 tibble::tribble(
   ~class,             ~items,
   "part of speech",   max(llm$n_items[llm$construction == "POS (noun/verb)"]),
@@ -679,7 +679,7 @@ tibble::tribble(
                    gs("metaphor", "tokens_per_cell_median")))) |>
   mutate(across(c(items, tokens), \(v) format(v, big.mark = ",", trim = TRUE)),
          med = ifelse(is.na(med), "\\textemdash", formatC(med, format = "f", digits = 0))) |>
-  rename(`total tokens` = tokens, `median per item and class` = med) |>
+  rename(`total tokens` = tokens, `median per item-class` = med) |>
   kbl(booktabs = TRUE, align = "lrrr", linesep = "", escape = FALSE) |>
   kable_styling(latex_options = c("HOLD_position"), font_size = 8)
 ```
