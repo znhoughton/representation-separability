@@ -131,17 +131,20 @@ toy_long <- toy_relu |> filter(resolved) |>
 # The frame is `df`, not `d`: tibble() evaluates its arguments in order, so a column named `d`
 # would shadow the frame for every argument after it.
 .pair <- function(df, planted, measured, name) {
-  # The planted share is rescaled to exclude context before being compared against the measured
-  # one. ach_* sum to one across item, class, interaction AND context, while the measured shares
-  # sum to one across the first three, context having been averaged away to form the means. Left
-  # as they are the two axes have different denominators and the diagonal means nothing: every
-  # component would sit above it by the factor 1/(1 - context) whatever the learner did. Divided
-  # through, both axes are the component's share of the same three things, and the diagonal is a
-  # representation that reproduced the language's structure faithfully.
-  keepable <- (1 - df$ach_ctx) > 1e-3
-  tibble(d = df$d[keepable], component = name,
-         planted = df[[planted]][keepable] / (1 - df$ach_ctx[keepable]),
-         measured = df[[measured]][keepable])
+  # The planted share is taken over the three components only, leaving context out of the
+  # denominator, because that is what the measured share divides too: context is averaged away in
+  # forming the item-by-class means and cannot appear in them. Left unmatched the two axes divide
+  # different things and the diagonal means nothing, since a faithful representation would sit
+  # above it by however much context the language held. Taken this way both axes are the
+  # component's share of the same three things and the diagonal is a faithful representation.
+  # Dividing by the three rather than by one minus the context is also the safer arithmetic: the
+  # four achieved shares sum to one only to within a percent, and this way the three always sum
+  # to exactly one.
+  tot <- df$ach_item + df$ach_class + df$ach_int
+  ok <- !is.na(tot) & tot > 1e-3
+  tibble(d = df$d[ok], component = name,
+         planted = df[[planted]][ok] / tot[ok],
+         measured = df[[measured]][ok])
 }
 .res <- toy_relu |> filter(resolved)
 toy_learn <- bind_rows(
