@@ -131,7 +131,17 @@ toy_long <- toy_relu |> filter(resolved) |>
 # The frame is `df`, not `d`: tibble() evaluates its arguments in order, so a column named `d`
 # would shadow the frame for every argument after it.
 .pair <- function(df, planted, measured, name) {
-  tibble(d = df$d, component = name, planted = df[[planted]], measured = df[[measured]])
+  # The planted share is rescaled to exclude context before being compared against the measured
+  # one. ach_* sum to one across item, class, interaction AND context, while the measured shares
+  # sum to one across the first three, context having been averaged away to form the means. Left
+  # as they are the two axes have different denominators and the diagonal means nothing: every
+  # component would sit above it by the factor 1/(1 - context) whatever the learner did. Divided
+  # through, both axes are the component's share of the same three things, and the diagonal is a
+  # representation that reproduced the language's structure faithfully.
+  keepable <- (1 - df$ach_ctx) > 1e-3
+  tibble(d = df$d[keepable], component = name,
+         planted = df[[planted]][keepable] / (1 - df$ach_ctx[keepable]),
+         measured = df[[measured]][keepable])
 }
 .res <- toy_relu |> filter(resolved)
 toy_learn <- bind_rows(
@@ -147,9 +157,31 @@ toy_learn_bin <- toy_learn |> group_by(component, d, bin) |>
             lo = quantile(measured, .025), hi = quantile(measured, .975), .groups = "drop") |>
   filter(n >= 10)
 
+# The linear arm, prepared the same way, for the comparison the prose makes. It is not drawn in
+# @fig-toy, which would double the lines for one sentence.
+.lin <- toy |> filter(act == "linear", w_item > 0, w_class > 0) |>
+  mutate(resolved = size_item_excludes_zero | size_class_excludes_zero |
+                      size_interaction_excludes_zero) |>
+  filter(resolved)
+toy_learn_lin <- bind_rows(
+  .pair(.lin, "ach_item", "size_item", "item"),
+  .pair(.lin, "ach_class", "size_class", "class"),
+  .pair(.lin, "ach_int", "size_interaction", "interaction")) |>
+  mutate(component = factor(component, c("item", "class", "interaction"))) |>
+  filter(!is.na(planted), !is.na(measured))
+
 # Colour carries width here, since the components are separated by panel. A single ramp from the
 # University of Oregon's green, because width is ordered and hues are not.
 WIDC <- c("8" = "#BFCFA8", "16" = "#8AA45F", "32" = "#4C6E36", "128" = UO[["green"]])
+
+# The fitted slope of represented share against the language's share, which is the quantity the
+# prose quotes: how much of an increase in the language reaches the representation. Below one
+# means the component is represented at less than its rate in the language.
+slope <- function(dd, comp, dat = toy_learn) {
+  x <- dat[dat$d == dd & dat$component == comp, ]
+  unname(coef(stats::lm(measured ~ planted, data = x))[2])
+}
+slope_lin <- function(dd) slope(dd, "interaction", toy_learn_lin)
 
 # Reach into the per-component view: the measured share at the lowest or highest planted band.
 lrn <- function(dd, comp, top = TRUE) {
@@ -565,7 +597,7 @@ The weights in @eq-toy describe the true distribution the model is trained to ma
 #| fig-width: 6.3
 #| fig-height: 2.5
 #| out-width: "100%"
-#| fig-cap: "What the learner represents of each component, against how much of that component the language held, under ReLU. Each faint point is one run. Horizontally it sits at that component's share of the training distribution, alongside the other two and the context; vertically at the same component's share of the item-by-class structure the model represents. Lines are least-squares fits through the runs at each hidden width, with their 95% bands. The dashed diagonal is where a representation would sit that reproduced the language's composition exactly: above it a component is over-represented relative to the language, below it under-represented. Runs in which none of the three components had a re-split 95% interval excluding zero are not plotted, since the three shares then divide noise; all such runs are at width 8, and their number is given in the text."
+#| fig-cap: "What the learner represents of each component, against how much of that component the language held, under ReLU. Each faint point is one run. Horizontally it sits at that component's share of the training distribution once context is set aside, so that both axes divide the same three things; vertically at the same component's share of the item-by-class structure the model represents. Lines are least-squares fits through the runs at each hidden width, with their 95% bands. The dashed diagonal is where a representation would sit that reproduced the language's composition exactly: above it a component is over-represented relative to the language, below it under-represented. Runs in which none of the three components had a re-split 95% interval excluding zero are not plotted, since the three shares then divide noise; all such runs are at width 8, and their number is given in the text."
 ggplot(toy_learn, aes(planted, measured, color = factor(d), fill = factor(d))) +
   geom_abline(slope = 1, intercept = 0, linetype = 2, linewidth = .3, color = UO[["grey"]]) +
   geom_point(size = .32, alpha = .22, stroke = 0) +
@@ -573,9 +605,10 @@ ggplot(toy_learn, aes(planted, measured, color = factor(d), fill = factor(d))) +
   facet_wrap(~ component, nrow = 1) +
   scale_color_manual(values = WIDC, name = "hidden width") +
   scale_fill_manual(values = WIDC, guide = "none") +
-  scale_x_continuous(limits = c(0, .8), breaks = c(0, .25, .5, .75)) +
+  scale_x_continuous(limits = c(0, 1), breaks = c(0, .5, 1)) +
   coord_cartesian(ylim = c(0, 1)) +
-  labs(x = "share of the language", y = "share of what\nthe model represents") +
+  labs(x = "its share of the language, context aside",
+       y = "its share of what\nthe model represents") +
   theme_paper(8) +
   theme(legend.position = "top", legend.margin = margin(0, 0, -6, 0),
         panel.grid.minor = element_blank())
@@ -585,7 +618,7 @@ The linear condition reads zero only where the language is additive. Across all 
 
 Because the measure recovers components planted directly into a representation almost exactly (Appendix \ref{sec-appendix-validate}), what follows can be read as a fact about the learner rather than about the instrument. The question is not whether the measure finds the interaction that was planted. It is what a learner does with a language whose composition we know.
 
-What it does depends on how much room it has. Pooled over languages, the interaction takes `r g(cmp(8, "interaction"), 3)` of the item-by-class structure at a hidden width of 8 and `r g(cmp(128, "interaction"), 3)` at 128, a `r sprintf("%.0f", cmp(128, "interaction") / cmp(8, "interaction"))`-fold rise, while the item and class effects barely move above width 16 (@fig-toy). The interaction is the component that grows into the space a wider representation provides, and the two main effects are what a narrow one spends its dimensions on first. The rise is steepest where there is most to represent: in the languages richest in interaction it runs from `r g(lrn(8, "interaction"), 3)` at width 8 to `r g(lrn(128, "interaction"), 3)` at 128, against a far flatter climb where the language holds little interaction to begin with. Set against what the language asked for, the asymmetry is sharper still (@fig-toy). A language holding almost no item effect still yields a representation that is `r g(lrn(128, "item", FALSE), 2)` item, and one holding almost no class effect yields `r g(lrn(128, "class", FALSE), 2)` class, while a language whose interaction is the largest of the three yields only `r g(lrn(128, "interaction"), 3)` interaction. The learner reaches for main effects whether or not the language calls for them, and holds the interaction back even when the language is largely made of it. At the widest representation we train, the interaction's share is still rising.
+What it does depends on how much room it has. Pooled over languages, the interaction takes `r g(cmp(8, "interaction"), 3)` of the item-by-class structure at a hidden width of 8 and `r g(cmp(128, "interaction"), 3)` at 128, a `r sprintf("%.0f", cmp(128, "interaction") / cmp(8, "interaction"))`-fold rise, while the item and class effects barely move above width 16 (@fig-toy). The interaction is the component that grows into the space a wider representation provides, and the two main effects are what a narrow one spends its dimensions on first. The rise is steepest where there is most to represent: in the languages richest in interaction it runs from `r g(lrn(8, "interaction"), 3)` at width 8 to `r g(lrn(128, "interaction"), 3)` at 128, against a far flatter climb where the language holds little interaction to begin with. Set against what the language holds, with context set aside so the two are shares of the same three things, all three components are represented at less than their rate in the language, and the interaction by far the least (@fig-toy). At a width of 128 the fitted slope is `r g(slope(128, "item"), 2)` for the item effect and `r g(slope(128, "class"), 2)` for the class effect, against `r g(slope(128, "interaction"), 2)` for the interaction. A language with more item structure in it is represented with proportionately more, and the same for class; a language with more interaction in it is represented with only a little more. What the interaction gains from capacity it gains here: that slope is `r g(slope(8, "interaction"), 2)` at a width of 8 and rises with every width. The linear condition does the same thing more sharply, its interaction slope reaching only `r g(slope_lin(128), 3)` at the same width, so the difference a nonlinearity makes is how much of the interaction reaches the representation rather than whether any of it does. At the widest representation we train, the interaction's share is still rising.
 
 That is the reading Experiment 2 tests. If the interaction is gated by capacity rather than by anything about the distinction being represented, then models an order of magnitude wider than these should carry more of it, not less.
 
