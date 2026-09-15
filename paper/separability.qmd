@@ -194,15 +194,20 @@ outof <- function(constr, stem) {
 }
 
 toy_cap <- toy |> filter(w_int > 0, w_item > 0, w_class > 0) |>
+  # Share of the representation, as in @fig-toy and for the same reason: a share of the grid is
+  # unstable where the grid holds little of the representation, and these rows pool runs whose
+  # grids differ widely in that respect.
+  mutate(share_rep = size_interaction * between_share_adj) |>
   group_by(act, capacity) |>
   # Formatted here rather than in the table, because `ov` needs the runs themselves to count how
   # many fall outside their null; a summarized row no longer has them.
-  summarize(n = n(), size_int = median(size_interaction),
+  summarize(n = n(), size_int = median(share_rep, na.rm = TRUE),
             # median with the interquartile range over the runs in the row. A row pools hundreds
             # of runs that differ in seed and in what was planted, and the median alone said
             # nothing about how much they differ.
-            sz_int = sz(size_interaction, size_interaction_excludes_zero,
-                        quantile(size_interaction, .25), quantile(size_interaction, .75),
+            sz_int = sz(share_rep, size_interaction_excludes_zero,
+                        quantile(share_rep, .25, na.rm = TRUE),
+                        quantile(share_rep, .75, na.rm = TRUE),
                         digits = 3),
             ov_item = ov(leak_item_into_class, null_med, null_lo, null_hi, 4),
             ov_int = ov(leak_int_into_margins, null_int_med, null_int_lo, null_int, 3),
@@ -872,7 +877,7 @@ ggplot(toy_cap, aes(capacity, overlap, color = act)) +
 
 ```{r}
 #| label: tbl-toy
-#| tbl-cap: "Interaction size and the two overlaps by activation and capacity, over the 7,560 artificial-language runs. Capacity is the rank the structure needs divided by the hidden width; each capacity corresponds to one width, from 128 down to 8. *Interaction* is the median share over the runs in the row, their interquartile range in brackets, and how many have a re-split 95% interval excluding zero. The overlap columns give the median fraction surviving the projection, then in parentheses how many times its own null median that is and how many runs fall outside that null. The linear arm's interaction stays below the 2% floor at which orientations are reported, so its last column is empty."
+#| tbl-cap: "Interaction size and the two overlaps by activation and capacity, over the 7,560 artificial-language runs. Capacity is the rank the structure needs divided by the hidden width; each capacity corresponds to one width, from 128 down to 8. *Interaction* is the median share of the representation over the runs in the row, their interquartile range in brackets, and how many have a re-split 95% interval excluding zero. The overlap columns give the median fraction surviving the projection, then in parentheses how many times its own null median that is and how many runs fall outside that null. The linear arm's interaction stays below the 2% floor at which orientations are reported, so its last column is empty."
 toy_cap |>
   transmute(condition = act, capacity = g(capacity, 3), runs = n,
             interaction = sz_int,
