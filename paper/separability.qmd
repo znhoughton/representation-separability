@@ -663,23 +663,24 @@ An item is included only if it occurs at least ten times in each class; forms oc
 
 ```{r}
 #| label: tbl-constructions
-#| tbl-cap: "The stimuli. All three constructions key the item on the **surface form**, so the token is identical in both classes of the distinction. *Items* counts the forms attested at least ten times in each class; *tokens kept* are the tokens those items contribute, and *median* the tokens behind one item-class pairing."
+#| tbl-cap: "Stimulus counts for the three classes. *Items* is the number of word forms occurring at least ten times in each of the two classes; *tokens* is the total those items contribute; *median tokens* is the median number of occurrences behind a single item in a single class."
 tibble::tribble(
-  ~distinction,       ~classes,                          ~items,
-  "part of speech",   "\\textsc{noun} / \\textsc{verb}",  max(llm$n_items[llm$construction == "POS (noun/verb)"]),
-  "grammatical role", "\\textit{nsubj} / \\textit{obj}",  max(llm$n_items[llm$construction == "role (subject/object)"]),
-  "metaphor",         "literal / figurative",             gs("metaphor", "n_items_kept")) |>
+  ~class,             ~items,
+  "part of speech",   max(llm$n_items[llm$construction == "POS (noun/verb)"]),
+  "grammatical role", max(llm$n_items[llm$construction == "role (subject/object)"]),
+  "metaphor",         gs("metaphor", "n_items_kept")) |>
   mutate(
     tokens = c(gsf("pos_noun_verb_form", "n_grid_tokens", 4722),
                gsf("role_nsubj_obj", "n_grid_tokens", 2150),
                gs("metaphor", "n_grid_tokens")),
-    median = c(gsf("pos_noun_verb_form", "tokens_per_cell_median"),
+    med = c(gsf("pos_noun_verb_form", "tokens_per_cell_median"),
                gsf("role_nsubj_obj", "tokens_per_cell_median"),
                gsf("metaphor", "tokens_per_cell_median",
                    gs("metaphor", "tokens_per_cell_median")))) |>
   mutate(across(c(items, tokens), \(v) format(v, big.mark = ",", trim = TRUE)),
-         median = ifelse(is.na(median), "\\textemdash", formatC(median, format = "f", digits = 0))) |>
-  kbl(booktabs = TRUE, align = "llrrr", linesep = "", escape = FALSE) |>
+         med = ifelse(is.na(med), "\\textemdash", formatC(med, format = "f", digits = 0))) |>
+  rename(`median tokens` = med) |>
+  kbl(booktabs = TRUE, align = "lrrr", linesep = "", escape = FALSE) |>
   kable_styling(latex_options = c("HOLD_position"), font_size = 8)
 ```
 
