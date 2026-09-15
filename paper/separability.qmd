@@ -349,6 +349,17 @@ nullget <- function(a, pl, col) toy_null[[col]][toy_null$act == a & toy_null$pla
 capget <- function(a, cap, col) toy_cap[[col]][toy_cap$act == a & toy_cap$capacity == cap]
 
 # ---- Experiment 2: language model representations ----
+# Per-class token medians, from the per-item stimulus list rather than the pooled summary. A
+# single pooled median cannot say whether a form occurs that often in EACH class or that often in
+# total; both are reported instead, in the order of the contrast. The counts are corpus-level and
+# identical across all six models, so one model gives the figure.
+stim <- rd("stimuli_items.csv")
+stimmed <- function(key) {
+  g <- stim[stim$construction == key, ]
+  g <- g[g$model == g$model[1], ]
+  sprintf("%.0f / %.0f", median(g$n_class_a), median(g$n_class_b))
+}
+
 grid_stats <- rd("methods_grid_stats.csv")
 gs <- function(constr, col) {
   v <- grid_stats[[col]][grid_stats$construction == constr]
@@ -659,23 +670,19 @@ In order to examine the separability of linguistic representations in models, we
 
 Our stimuli comprise three classes: part of speech (\textsc{noun} versus \textsc{verb}), grammatical role (*nsubj* versus *obj*, restricted to nouns), and metaphor (literal versus figurative), each taken from its corpus's own annotation. For each class we select items that occur in both, such as *walk*, which occurs as both a noun and a verb. Items are lowercased surface forms, so the same token is read in each class and no difference between the two can come from tokenization.
 
-An item is included only if it occurs at least ten times in each class; forms occurring in only one are excluded, which makes part of speech the most restrictive of the three. This yields `r max(llm$n_items[llm$construction == "POS (noun/verb)"])` items for part of speech, `r max(llm$n_items[llm$construction == "role (subject/object)"])` for grammatical role and `r cm(gs("metaphor", "n_items_kept"))` for metaphor, with medians of `r gsf("pos_noun_verb_form", "tokens_per_cell_median")`, `r gsf("role_nsubj_obj", "tokens_per_cell_median")` and `r gs("metaphor", "tokens_per_cell_median")` tokens per item in each class (@tbl-constructions), inside the ten-to-one-hundred range the validation covers (Appendix \ref{sec-appendix-validate}). Appendix \ref{sec-appendix-morph} applies the same measure to number and tense, where an item cannot be the same token in both classes.
+An item is included only if it occurs at least ten times in each class; forms occurring in only one are excluded, which makes part of speech the most restrictive of the three. This yields `r max(llm$n_items[llm$construction == "POS (noun/verb)"])` items for part of speech, `r max(llm$n_items[llm$construction == "role (subject/object)"])` for grammatical role and `r cm(gs("metaphor", "n_items_kept"))` for metaphor, and a typical form occurs `r stimmed("pos_noun_verb_form")`, `r stimmed("role_nsubj_obj")` and `r stimmed("metaphor")` times in the two classes respectively (@tbl-constructions), inside the ten-to-one-hundred range the validation covers (Appendix \ref{sec-appendix-validate}). Appendix \ref{sec-appendix-morph} applies the same measure to number and tense, where an item cannot be the same token in both classes.
 
 ```{r}
 #| label: tbl-constructions
-#| tbl-cap: "Stimuli for the three classes. *Contrast* is the two classes an item has to occur in. *Forms* is how many word forms occur in both of them at least ten times; forms occurring in only one are excluded. *Median tokens* is how often a typical form occurs in one of its two classes, and so is the number of observations averaged into one mean."
+#| tbl-cap: "Stimuli for the three classes. *Contrast* is the two classes an item has to occur in. *Item types* is how many word forms occur in both of them at least ten times; forms occurring in only one are excluded. *Median tokens* is how often a typical form occurs in each of its two classes, given in the order of the contrast, and so is the number of observations averaged into one mean."
 tibble::tribble(
-  ~class,             ~contrast,              ~forms,
+  ~class,             ~contrast,              ~`item types`,
   "part of speech",   "noun / verb",          max(llm$n_items[llm$construction == "POS (noun/verb)"]),
   "grammatical role", "subject / object",     max(llm$n_items[llm$construction == "role (subject/object)"]),
   "metaphor",         "literal / figurative", gs("metaphor", "n_items_kept")) |>
-  mutate(med = c(gsf("pos_noun_verb_form", "tokens_per_cell_median"),
-                 gsf("role_nsubj_obj", "tokens_per_cell_median"),
-                 gsf("metaphor", "tokens_per_cell_median",
-                     gs("metaphor", "tokens_per_cell_median")))) |>
-  mutate(forms = format(forms, big.mark = ",", trim = TRUE),
-         med = ifelse(is.na(med), "---", formatC(med, format = "f", digits = 0))) |>
-  rename(`median tokens` = med) |>
+  mutate(`median tokens` = c(stimmed("pos_noun_verb_form"),
+                             stimmed("role_nsubj_obj"),
+                             stimmed("metaphor"))) |>
   kbl(booktabs = TRUE, align = "llrr", linesep = "", escape = FALSE) |>
   kable_styling(latex_options = c("HOLD_position"), font_size = 8)
 ```
