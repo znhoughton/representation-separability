@@ -39,7 +39,14 @@ CLEAR_HELPER="scripts/_clear_350m_rows.py"
 # run_all_measurements.sh already reads these. LLM_WORKERS is RAM-bound at
 # roughly 12 GB per worker, so it is deliberately NOT tied to core count.
 export TOY_WORKERS="${TOY_WORKERS:-$(nproc 2>/dev/null || echo 8)}"
-export LLM_WORKERS="${LLM_WORKERS:-4}"
+# measure.py peaks near 12 GB per worker, so this is bounded by RAM, not cores.
+# Derive it from installed memory rather than assuming a big box: 32 GB fits 2.
+_ram_gb=$(free -g 2>/dev/null | awk '/^Mem:/{print $2}')
+[ -z "$_ram_gb" ] && _ram_gb=$(python -c "import psutil;print(int(psutil.virtual_memory().total/1e9))" 2>/dev/null)
+[ -z "$_ram_gb" ] && _ram_gb=16
+export LLM_WORKERS="${LLM_WORKERS:-$(( _ram_gb / 14 ))}"
+[ "$LLM_WORKERS" -lt 1 ] && export LLM_WORKERS=1
+echo "  measure.py workers: $LLM_WORKERS (~12GB each, ${_ram_gb}GB RAM detected)"
 
 
 # ── Interpreter ──────────────────────────────────────────────────────────────
