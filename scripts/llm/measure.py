@@ -448,7 +448,16 @@ def main():
         # that each measured a 1.3B model hold ~17.6 GB apiece even while now on a 350M model, which
         # the VRAM budget below cannot see. The per-file spawn + torch import is a few seconds, dwarfed
         # by the measure. The CPU path benefits too (reps do not pile up across files).
-        pool_kw = dict(max_workers=nw, mp_context=mp.get_context("spawn"), max_tasks_per_child=1)
+        # max_tasks_per_child needs Python 3.11+. On 3.10 the pool still works,
+        # workers are just reused -- which only matters when several files in one
+        # sweep have very different footprints (the 1.3B-then-350M case above).
+        # Measuring a single model is unaffected.
+        pool_kw = dict(max_workers=nw, mp_context=mp.get_context("spawn"))
+        if sys.version_info >= (3, 11):
+            pool_kw["max_tasks_per_child"] = 1
+        elif on_gpu and len(todo) > 1:
+            print("  note: python <3.11, workers are reused; VRAM from the largest "
+                  "file measured is held for the rest of this sweep.", flush=True)
         with ProcessPoolExecutor(**pool_kw) as ex:
             if on_gpu:
                 pending = sorted(todo, key=gb_of.get, reverse=True)   # big first, so they get slots

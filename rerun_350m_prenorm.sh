@@ -150,11 +150,18 @@ else
 fi
 
 say "2b. Clear old 350M artifacts so the pipeline does not skip them"
-for f in data/llm_reps/*350m* data/vua_reps/*350m*; do
-    [ -e "$f" ] || continue
-    echo "  reps: $f"
-    run_soft rm -f "$f"
-done
+# Deleting the reps forces re-extraction. Skip that when SKIP_EXTRACT=1, or a
+# resumed run would destroy the extraction it was told not to redo.
+if [ "$SKIP_EXTRACT" = "1" ]; then
+    echo "  SKIP_EXTRACT=1: keeping existing reps (not forcing re-extraction)"
+else
+    for f in data/llm_reps/*350m* data/vua_reps/*350m*; do
+        [ -e "$f" ] || continue
+        echo "  reps: $f"
+        run_soft rm -f "$f"
+    done
+fi
+# Rows are always cleared: measure.py skips any (model, init) already present.
 run "$PY" "$CLEAR_HELPER" "$MODEL_ID"
 
 say "3. Extract representations for the new 350M only (both inits)"
