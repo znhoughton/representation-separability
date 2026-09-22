@@ -158,7 +158,7 @@ fi
 say "4. Re-measure (resumable; continues per model/init, deletes nothing)"
 run bash scripts/run_all_measurements.sh
 
-say "6. Verify the new slug actually reached the results"
+say "5. Verify the new 350M rows reached the results"
 if [ "$DRY_RUN" != "1" ]; then
 "$PY" - "$MODEL_ID" <<'PY'
 import csv, glob, sys
@@ -175,7 +175,7 @@ for path in sorted(glob.glob("data/llm_*.csv")):
 PY
 fi
 
-say "7. Re-render the paper"
+say "6. Re-render the paper"
 run quarto render paper/separability.qmd
 
 say "Done"
