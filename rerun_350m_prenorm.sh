@@ -106,7 +106,7 @@ if ! git diff --quiet || ! git diff --cached --quiet; then
 fi
 if [ ! -f "$CONLLU" ]; then
     echo "  $CONLLU missing; building it (concatenates the six UD treebanks)"
-    run "$PY" scripts/llm/build_ud_corpus.py
+    run "$PY" scripts/llm/build_ud_corpus.py --out "$CONLLU"
     [ "$DRY_RUN" = "1" ] || [ -f "$CONLLU" ] || { echo "  FATAL: build_ud_corpus.py did not produce $CONLLU"; exit 1; }
 else
     echo "  UD corpus present: $CONLLU"
