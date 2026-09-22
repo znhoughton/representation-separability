@@ -59,13 +59,24 @@ if [ -z "$PY" ]; then
 fi
 [ -n "$PY" ] || { echo "FATAL: no python found. Set PY=/path/to/python." >&2; exit 1; }
 
-"$PY" - <<'PROBE' || { echo "FATAL: $PY cannot import torch. Set PY= to the right env." >&2; exit 1; }
+# ALLOW_CPU=1 to proceed without a GPU (much slower; rarely what you want).
+ALLOW_CPU="${ALLOW_CPU:-0}"
+"$PY" - "$ALLOW_CPU" <<'PROBE' || { echo "FATAL: interpreter check failed (see above)." >&2; exit 1; }
 import sys, torch
+allow_cpu = len(sys.argv) > 1 and sys.argv[1] == "1"
 print(f"interpreter: {sys.executable}")
 print(f"torch {torch.__version__} | cuda {torch.cuda.is_available()}"
       + (f" | {torch.cuda.get_device_name(0)}" if torch.cuda.is_available() else ""))
 if not torch.cuda.is_available():
-    print("WARNING: no CUDA. GPU stages will run on CPU and take far longer.")
+    if allow_cpu:
+        print("WARNING: no CUDA, but ALLOW_CPU=1 — continuing on CPU. This will be slow.")
+    else:
+        print("ERROR: no CUDA available to this interpreter.")
+        print("       The GPU stages would take many times longer than intended, and")
+        print("       a silent CPU run is the expensive way to find that out.")
+        print("       Fix: activate the right environment, or pass PY=/path/to/python,")
+        print("       or set ALLOW_CPU=1 if you really mean to run on CPU.")
+        sys.exit(1)
 PROBE
 
 say () { echo; echo "=== $* ==="; }
