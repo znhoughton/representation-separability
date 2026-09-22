@@ -168,8 +168,11 @@ else
         --reps-dir data/llm_reps
     # extract_vua.py takes --out-dir, not --reps-dir, and already defaults to
     # data/vua_reps. ~14.5k sentences / ~88k content targets, one pass each.
+    # extract_ud.py's --models takes SUBSTRING FILTERS; extract_vua.py's --models
+    # REPLACES its list with literal ids (models = args.models or [...]). Passing
+    # the filter here made it request a repo named "opt-babylm-350m" and 404.
     run "$PY" scripts/llm/extract_vua.py \
-        --models "$FILTER" \
+        --models "$MODEL_ID" \
         --out-dir data/vua_reps
 fi
 
