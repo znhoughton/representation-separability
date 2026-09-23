@@ -7,7 +7,7 @@ author:
       - name: "University of Oregon"
     email: znh@uoregon.edu
 abstract: |
-  Lexical representations are central to linguistic theory, yet to what extent they're memorized, item-specific representations or abstract, generalizable representations remains a core debate. In the present study, we investigate how Large Language Models (LLMs) navigate this distinction using a quantitative framework that decomposes contextual word representations into three additive components: an item component, a class component, and an idiosyncratic word-class interaction. After validating our measurement on an artificial language, we evaluate six pretrained transformers (OPT-BabyLM and Pythia families) across three linguistic categories: part of speech, grammatical role, and metaphor. We find that the idiosyncratic interaction term is consistently non-zero and grows substantially in deeper layers. Crucially, while abstract lexical and class axes remain nearly orthogonal, the interaction term systematically overlaps with both, allowing a probe to recover the class even after removing shared category directions. Together, our results demonstrate that LLMs do not commit exclusively to pure abstraction or exemplar storage; rather, they construct representations that are simultaneously both abstract and holistic.
+  Lexical representations are central to linguistic theory, yet to what extent they're memorized, item-specific representations or abstract, generalizable representations remains a core debate. In the present study, we investigate how Large Language Models (LLMs) navigate this distinction using a quantitative framework that decomposes contextual word representations into three additive components: an item component, a class component, and an idiosyncratic word-class interaction. After validating our measurement on an artificial language, we evaluate six pretrained transformers (OPT-BabyLM and Pythia families) across two linguistic categories: part of speech and grammatical role. We find that the idiosyncratic interaction term is consistently non-zero and grows substantially in deeper layers. Crucially, while abstract lexical and class axes remain nearly orthogonal, the interaction term systematically overlaps with both, allowing a probe to recover the class even after removing shared category directions. Together, our results demonstrate that LLMs do not commit exclusively to pure abstraction or exemplar storage; rather, they construct representations that are simultaneously both abstract and holistic.
   
 bibliography: refs.bib
 acl-mode: review
@@ -345,11 +345,10 @@ toy_noise <- toy |> filter(w_int > 0, w_item > 0, w_class > 0) |>
 g <- function(x, digits = 3) formatC(x, format = "f", digits = digits)
 cm <- function(x) format(x, big.mark = ",")
 
-# Short display names for the three constructions. The data keeps the long ones, which the prose
+# Short display names for the two constructions. The data keeps the long ones, which the prose
 # and the inline expressions index by.
 SHORT <- c("POS (noun/verb)"               = "part of speech",
-           "role (subject/object)"         = "grammatical role",
-           "metaphor (literal/figurative)" = "metaphor")
+           "role (subject/object)"         = "grammatical role")
 shortname <- function(x) unname(SHORT[as.character(x)])
 nullget <- function(a, pl, col) toy_null[[col]][toy_null$act == a & toy_null$planted == pl]
 capget <- function(a, cap, col) toy_cap[[col]][toy_cap$act == a & toy_cap$capacity == cap]
@@ -362,7 +361,7 @@ capget <- function(a, cap, col) toy_cap[[col]][toy_cap$act == a & toy_cap$capaci
 stim <- rd("stimuli_items.csv")
 # The span of those per-class medians, for prose, where a slash pair does not read as a sentence.
 stimrange <- function() {
-  v <- unlist(lapply(c("pos_noun_verb_form", "role_nsubj_obj", "metaphor"), function(k) {
+  v <- unlist(lapply(c("pos_noun_verb_form", "role_nsubj_obj"), function(k) {
     g <- stim[stim$construction == k, ]
     g <- g[g$model == g$model[1], ]
     c(median(g$n_class_a), median(g$n_class_b))
@@ -381,8 +380,7 @@ gs <- function(constr, col) {
   # median(numeric(0)) is NA, so a construction missing from the stats file used to reach the
   # rendered PDF as a silent "NA". Refuse to render instead.
   if (!length(v)) stop("methods_grid_stats.csv has no rows for construction '", constr,
-                       "'; regenerate it with scripts/llm/dataset_stats.py (--vua-dir is ",
-                       "required for metaphor)", call. = FALSE)
+                       "'; regenerate it with scripts/llm/dataset_stats.py", call. = FALSE)
   if (is.numeric(v)) round(median(v)) else v[1]
 }
 
@@ -401,7 +399,7 @@ gsf <- function(constr, col, fallback = NA_real_) {
 # text is read from here rather than typed in. `ld` is the median across models.
 llm_deep <- NULL   # filled once `llm` exists, below
 ld <- function(constr, col) median(llm_deep[[col]][llm_deep$construction == constr], na.rm = TRUE)
-# Same, at the embedding layer, and a range of either across the three constructions. Both read
+# Same, at the embedding layer, and a range of either across the two constructions. Both read
 # NA through rather than erroring, so a column the CSVs predate degrades to a blank in the text.
 l0 <- function(constr, col) median(llm[[col]][llm$construction == constr & llm$layer == 0],
                                    na.rm = TRUE)
@@ -505,33 +503,9 @@ llm <- bind_rows(
               size_item_excludes_zero = size_item_excludes_zero,
               size_item_ci_lo, size_item_ci_med, size_item_ci_hi,
               size_class_ci_lo, size_class_ci_med, size_class_ci_hi,
-              size_interaction_ci_lo, size_interaction_ci_med, size_interaction_ci_hi),
-  rd("llm_metaphor.csv") |>
-    ensure("size_item_ci_med", "size_class_ci_med", "size_interaction_ci_med", "between_share_adj", "obs_size_class", "size_class_excludes_zero", "obs_size_interaction", "size_interaction_excludes_zero", "obs_size_item", "size_item_excludes_zero") |>
-    filter(init == "pretrained") |>
-    transmute(model, layer, d, n_items, construction = "metaphor (literal/figurative)",
-              size_item, size_class, size_int = size_interaction,
-              leak = leak_item_into_class,
-              leak_int = leak_int_into_margins,
-              leak_null = leak_item_into_class_null_hi,
-              leak_null_lo = leak_item_into_class_null_lo,
-              leak_null_med = leak_item_into_class_null_med,
-              leak_int_null = leak_int_into_margins_null_hi,
-              leak_int_null_lo = leak_int_into_margins_null_lo,
-              leak_int_null_med = leak_int_into_margins_null_med,
-              between = between_share, between_adj = between_share_adj,
-              obs_size_class = obs_size_class,
-              size_class_excludes_zero = size_class_excludes_zero,
-              obs_size_interaction = obs_size_interaction,
-              size_interaction_excludes_zero = size_interaction_excludes_zero,
-              obs_size_item = obs_size_item,
-              size_item_excludes_zero = size_item_excludes_zero,
-              size_item_ci_lo, size_item_ci_med, size_item_ci_hi,
-              size_class_ci_lo, size_class_ci_med, size_class_ci_hi,
               size_interaction_ci_lo, size_interaction_ci_med, size_interaction_ci_hi)) |>
   left_join(MODELS, by = "model") |>
-  mutate(construction = factor(construction, c("POS (noun/verb)", "role (subject/object)",
-                                               "metaphor (literal/figurative)")),
+  mutate(construction = factor(construction, c("POS (noun/verb)", "role (subject/object)")),
          depth = layer / ave(layer, model, construction, FUN = max),  # 0 = embeddings, 1 = final
          # Sizes are shares of the re-split medians, not of the permutation-denoised single
          # split. The cross-split product already has a null of exactly zero, so the permutation
@@ -590,7 +564,7 @@ Most of the evidence above concerns sequences of words, but the same question ar
 
 The evidence for both abstraction and item-specificity therefore raises a broader question about the structure of linguistic representations: is a representation of a specific linguistic construction a combination of abstract features, or does that representation also contain item-specific knowledge that is irreducible to these component parts? This is difficult to settle behaviorally, since a learner with no abstract representations at all can look like one that abstracts [@houghton2026exemplars], but it is a property of a representation, and unlike in humans, model representations can be examined directly [@pluthInterpretabilityWhisperEncodings2026].
 
-We hypothesize that linguistic representations can contain both abstract and item-specific information. We therefore decompose a word-in-class representation into three components: the item-component, the component that generalizes across different classes of the same word (the part of *walk* as a noun that is shared by *walk* as a verb), the class-component, the component that generalizes across all items of the same class (e.g., the part of *walk* as a noun that is shared by *run* as a noun, and *plant* as a noun) and what belongs to that word in that class alone (e.g., the part of the representation unique to *walk* as a noun). We first validate this decomposition in an artificial language with controlled representational structure, then apply it to six pretrained language models across part of speech, grammatical role, and metaphor.
+We hypothesize that linguistic representations can contain both abstract and item-specific information. We therefore decompose a word-in-class representation into three components: the item-component, the component that generalizes across different classes of the same word (the part of *walk* as a noun that is shared by *walk* as a verb), the class-component, the component that generalizes across all items of the same class (e.g., the part of *walk* as a noun that is shared by *run* as a noun, and *plant* as a noun) and what belongs to that word in that class alone (e.g., the part of the representation unique to *walk* as a noun). We first validate this decomposition in an artificial language with controlled representational structure, then apply it to six pretrained language models across part of speech and grammatical role.
 
 Our main contributions are as follows:
 
@@ -598,7 +572,7 @@ Our main contributions are as follows:
 
 -   Across six pretrained models, the word-class component is consistently present and grows with depth, with its size governed more by representational capacity than by language. The lexical and grammatical components occupy nearly separate axes, while the word-class component overlaps with both.
 
--   We show that the word-class component contains information about the class itself beyond the shared class representation, an effect that is especially pronounced for metaphor.
+-   We show that the word-class component contains information about the class itself beyond the shared class representation.
 
 # Experiment 1: Artificial Languages {#sec-exp1}
 
@@ -696,19 +670,19 @@ For models with larger dimensionality, the added room seems to be allocated towa
 
 # Experiment 2: Language Models {#sec-exp2}
 
-Experiment 1 established that if the language a learner model encounters is not purely additive, the model will represent the language in a non-separable manner, with the extent governed by the size and crowding of the model. Experiment 2 applies the same decomposition to the contextual representations of pretrained language models, across three linguistic categories: part of speech, grammatical role, and metaphor.
+Experiment 1 established that if the language a learner model encounters is not purely additive, the model will represent the language in a non-separable manner, with the extent governed by the size and crowding of the model. Experiment 2 applies the same decomposition to the contextual representations of pretrained language models, across two linguistic categories: part of speech and grammatical role.
 
 ## Dataset {#sec-exp2-data}
 
-In order to examine the separability of linguistic representations in models, we examined three linguistic categories: part of speech, grammatical role, and metaphor. For part of speech and grammatical role, we concatenate six general-domain English Universal Dependencies treebanks [@nivre2020ud]: EWT [@silveira2014ewt], GUM [@zeldes2017gum], LinES [@ahrenberg2007lines], ParTUT [@sanguinetti2015partut], GENTLE [@aoyama2023gentle], and PUD [@zeman2017pud], giving `r cm(gsf("ud_corpus", "n_sentences", 41095))` sentences and `r cm(gsf("ud_corpus", "n_pre_grid_tokens", 706323))` tokens. For metaphor we use the VUA20 corpus [@leong2020vua; @steen2010vua], restricted to nouns, verbs, adjectives, and adverbs in VUA's own annotation, which supplies `r cm(gs("metaphor", "n_pre_grid_tokens"))` labeled tokens. We measure two model families at three matched scales: OPT-BabyLM, trained on developmentally plausible quantities of child-available language [@warstadt2023babylm; @houghton2026holisticstorageverb+up], and Pythia, trained on the Pile [@biderman2023pythia], at 125M/160M, 350M/410M, and 1.3B/1.4B parameters, with widths of 768, 1024, and 2048. Appendix \ref{sec-appendix-models} gives parameter counts and training-token estimates.
+In order to examine the separability of linguistic representations in models, we examined two linguistic categories: part of speech and grammatical role. For both, we concatenate six general-domain English Universal Dependencies treebanks [@nivre2020ud]: EWT [@silveira2014ewt], GUM [@zeldes2017gum], LinES [@ahrenberg2007lines], ParTUT [@sanguinetti2015partut], GENTLE [@aoyama2023gentle], and PUD [@zeman2017pud], giving `r cm(gsf("ud_corpus", "n_sentences", 41095))` sentences and `r cm(gsf("ud_corpus", "n_pre_grid_tokens", 706323))` tokens. We measure two model families at three matched scales: OPT-BabyLM, trained on developmentally plausible quantities of child-available language [@warstadt2023babylm; @houghton2026holisticstorageverb+up], and Pythia, trained on the Pile [@biderman2023pythia], at 125M/160M, 350M/410M, and 1.3B/1.4B parameters, with widths of 768, 1024, and 2048. Appendix \ref{sec-appendix-models} gives parameter counts and training-token estimates.
 
 ## Stimuli {#sec-exp2-stimuli}
 
-Our stimuli comprise three linguistic categories: part of speech ([noun]{.smallcaps} versus [verb]{.smallcaps}), grammatical role (*nsubj* versus *obj*, restricted to nouns), and metaphor (literal versus figurative). For each category we select items that occur in both of its classes, such as *walk*, which occurs as both a noun and a verb. An item is a single inflected word form, not a lemma, so different inflections of one lemma are separate items: *walk* and *walking* are both items, each included only if it is itself attested in both classes. Pooling them under one lemma would collect *walk*, *walks*, *walked*, and *walking* into a single item, and the two classes would then be read at different tokens, which the embedding layer could then separate before any contextualization has occurred. Capitalization is ignored when occurrences are grouped, but not in the text the models read, so a sentence-initial *Walk* counts toward the item *walk* and is tokenized as it appears there.[^5]
+Our stimuli comprise two linguistic categories: part of speech ([noun]{.smallcaps} versus [verb]{.smallcaps}) and grammatical role (*nsubj* versus *obj*, restricted to nouns). For each category we select items that occur in both of its classes, such as *walk*, which occurs as both a noun and a verb. An item is a single inflected word form, not a lemma, so different inflections of one lemma are separate items: *walk* and *walking* are both items, each included only if it is itself attested in both classes. Pooling them under one lemma would collect *walk*, *walks*, *walked*, and *walking* into a single item, and the two classes would then be read at different tokens, which the embedding layer could then separate before any contextualization has occurred. Capitalization is ignored when occurrences are grouped, but not in the text the models read, so a sentence-initial *Walk* counts toward the item *walk* and is tokenized as it appears there.[^5]
 
 [^5]: OPT-BabyLM's tokenizer is uncased, so this choice has no effect for that family of models. On the other hand, Pythia's tokenizer is not uncased; however, lowercasing the input would be the larger distortion, since a sentence-initial word is capitalized in written English which the model was trained on.
 
-An item is included only if it occurs at least ten times in each class; forms occurring in only one are excluded, which makes part of speech the most restrictive of the three. This yields `r max(llm$n_items[llm$construction == "POS (noun/verb)"])` items for part of speech, `r max(llm$n_items[llm$construction == "role (subject/object)"])` for grammatical role, and `r cm(gs("metaphor", "n_items_kept"))` for metaphor, with median counts per class running from `r stimrange()` (@tbl-constructions), inside the range we validated for the measurement (Appendix \ref{sec-appendix-validate}).
+An item is included only if it occurs at least ten times in each class; forms occurring in only one are excluded, which makes part of speech the more restrictive of the two. This yields `r max(llm$n_items[llm$construction == "POS (noun/verb)"])` items for part of speech and `r max(llm$n_items[llm$construction == "role (subject/object)"])` for grammatical role, with median counts per class running from `r stimrange()` (@tbl-constructions), inside the range we validated for the measurement (Appendix \ref{sec-appendix-validate}).
 
 ## Method {#sec-exp2-method}
 
@@ -722,13 +696,13 @@ Transformer hidden states contain a few *rogue* dimensions whose variance exceed
 
 The results for the final layer are reported in @tbl-llm; the layer-by-layer results are shown in @fig-llm.
 
-The item effect is the largest component in all three categories, running from `r ldrng("POS (noun/verb)", "size_item", 3)` for part of speech, `r ldrng("role (subject/object)", "size_item", 3)` for grammatical role, and `r ldrng("metaphor (literal/figurative)", "size_item", 3)` for metaphor. What differs between them is how the remainder divides. For grammatical role the class effect, at `r ldrng("role (subject/object)", "size_class", 3)`, is comparable to the interaction at `r ldrng("role (subject/object)", "size_int", 3)`; for part of speech the interaction, at `r ldrng("POS (noun/verb)", "size_int", 3)`, runs well above the class effect at `r ldrng("POS (noun/verb)", "size_class", 3)`; and for metaphor the class effect, at `r ldrng("metaphor (literal/figurative)", "size_class", 3)`, is more than an order of magnitude below the interaction at `r ldrng("metaphor (literal/figurative)", "size_int", 3)`, though it still clears zero in `r outof("metaphor (literal/figurative)", "size_class")`.
+The item effect is the largest component in both categories, running from `r ldrng("POS (noun/verb)", "size_item", 3)` for part of speech and `r ldrng("role (subject/object)", "size_item", 3)` for grammatical role. What differs between them is how the remainder divides. For grammatical role the class effect, at `r ldrng("role (subject/object)", "size_class", 3)`, is comparable to the interaction at `r ldrng("role (subject/object)", "size_int", 3)`; for part of speech the interaction, at `r ldrng("POS (noun/verb)", "size_int", 3)`, runs well above the class effect at `r ldrng("POS (noun/verb)", "size_class", 3)`.
 
-Both the class effect and the interaction grow stronger through the layers of the model. The interaction is essentially absent at layer 0 in all three categories, between `r allrange("size_int", deep = FALSE)` across every category and model, and rises to between `r allrange("size_int")` (@fig-llm, top row). This is not surprising since at the first layer, the model has yet to integrate enough context into the representation to commit to the class of the representation. What the network builds over those layers is also not an artifact of where a word sits in the sentence: zeroing OPT-BabyLM's learned absolute position embeddings leaves the class structure more word-specific rather than less, and Pythia, which has no such embeddings to remove, shows the interaction at least as strongly (Appendix \ref{sec-appendix-positions}).
+Both the class effect and the interaction grow stronger through the layers of the model. The interaction is essentially absent at layer 0 in both categories, between `r allrange("size_int", deep = FALSE)` across every category and model, and rises to between `r allrange("size_int")` (@fig-llm, top row). This is not surprising since at the first layer, the model has yet to integrate enough context into the representation to commit to the class of the representation. What the network builds over those layers is also not an artifact of where a word sits in the sentence: zeroing OPT-BabyLM's learned absolute position embeddings leaves the class structure more word-specific rather than less, and Pythia, which has no such embeddings to remove, shows the interaction at least as strongly (Appendix \ref{sec-appendix-positions}).
 
-Turning to how those components are oriented, the class direction carries almost none of the item effect. At the deepest layer, item-class overlap runs `r ldrng("POS (noun/verb)", "leak")` for part of speech and `r ldrng("role (subject/object)", "leak")` for grammatical role, so projecting out the class direction leaves more than 99% of the item effect intact; metaphor's class effect is too small to fit a subspace to, so there is no orientation to read for it. While both overlaps are technically less orthogonal than a random subspace, the overlap itself is tiny, so the two are near-orthogonal rather than exactly orthogonal.
+Turning to how those components are oriented, the class direction carries almost none of the item effect. At the deepest layer, item-class overlap runs `r ldrng("POS (noun/verb)", "leak")` for part of speech and `r ldrng("role (subject/object)", "leak")` for grammatical role, so projecting out the class direction leaves more than 99% of the item effect intact. While both overlaps are technically less orthogonal than a random subspace, the overlap itself is tiny, so the two are near-orthogonal rather than exactly orthogonal.
 
-In contrast to the main effects, the interaction is not orthogonal to class or item. Across the six models, `r ldrng("POS (noun/verb)", "leak_int", 3)` of the interaction for part of speech is in the span of the two main effects, for grammatical role `r ldrng("role (subject/object)", "leak_int", 3)` is, and for metaphor `r ldrng("metaphor (literal/figurative)", "leak_int", 3)` is, against nulls whose upper ends run `r ldrng("POS (noun/verb)", "leak_int_null", 3)`, `r ldrng("role (subject/object)", "leak_int_null", 3)`, and `r ldrng("metaphor (literal/figurative)", "leak_int_null", 3)` respectively. The smallest of these overlaps exceeds the largest of the nulls, so the pattern holds in every model. In other words, the small departure from orthogonality between item and class becomes a large one for the interaction.
+In contrast to the main effects, the interaction is not orthogonal to class or item. Across the six models, `r ldrng("POS (noun/verb)", "leak_int", 3)` of the interaction for part of speech is in the span of the two main effects, and for grammatical role `r ldrng("role (subject/object)", "leak_int", 3)` is, against nulls whose upper ends run `r ldrng("POS (noun/verb)", "leak_int_null", 3)` and `r ldrng("role (subject/object)", "leak_int_null", 3)` respectively. The smallest of these overlaps exceeds the largest of the nulls, so the pattern holds in every model. In other words, the small departure from orthogonality between item and class becomes a large one for the interaction.
 
 ```{r}
 #| label: fig-llm
@@ -771,13 +745,13 @@ ggplot(plt, aes(depth, share, color = family, linetype = scale,
 
 # Experiment 3: Probing the Interaction {#sec-exp3}
 
-Experiment 2 shows that the interaction is large and that it replicates across independent splits of a word's occurrences, but neither shows what information is contained within the interaction. An item-by-class term captures any reliable difference between a word's uses in the two classes, and some of that difference may be correlated with the context, since metaphorical uses occur in different sentences from literal ones and subjects appear in different constructions from objects.
+Experiment 2 shows that the interaction is large and that it replicates across independent splits of a word's occurrences, but neither shows what information is contained within the interaction. An item-by-class term captures any reliable difference between a word's uses in the two classes, and some of that difference may be correlated with the context, since subjects appear in different constructions from objects.
 
 ## Method {#sec-exp3-method}
 
-We test whether the interaction encodes class information with a probe. If $\gamma$ encodes the class, the class should be recoverable from the part of a token's representation that is neither the item effect nor the shared class direction, and we remove both explicitly. All probing happens *within* a single word, so we ask whether *plant*'s figurative uses can be told from *plant*'s literal ones; the item effect is constant within a word and so cannot contribute. We then estimate $\beta$ as the difference between the two class means pooled over all items, normalize it, and remove that component from every token, so that whatever separates the classes afterwards is not the direction they share.
+We test whether the interaction encodes class information with a probe. If $\gamma$ encodes the class, the class should be recoverable from the part of a token's representation that is neither the item effect nor the shared class direction, and we remove both explicitly. All probing happens *within* a single word, so we ask whether *walk*'s noun uses can be told from *walk*'s verb uses; the item effect is constant within a word and so cannot contribute. We then estimate $\beta$ as the difference between the two class means pooled over all items, normalize it, and remove that component from every token, so that whatever separates the classes afterwards is not the direction they share.
 
-What remains is the interaction: the part of a word of a specific class that is neither a fact about the word nor a fact about the class. We fit a cross-validated logistic probe to it, five folds, with classes balanced by subsampling within each word so that chance is 0.50, and average the resulting accuracies over words, with a word contributing only if it has at least eight tokens in each class. Some words rest on few tokens, so the mean carries a percentile bootstrap interval over words. The whole procedure is then repeated with the class labels permutated within each word, which preserves every word's token count and class balance while destroying the labeling, and that null is where a probe reading its own cross-validation folds would land [@hewitt2019control]. We run this at the deepest layer of the largest model in each family, for all three categories.
+What remains is the interaction: the part of a word of a specific class that is neither a fact about the word nor a fact about the class. We fit a cross-validated logistic probe to it, five folds, with classes balanced by subsampling within each word so that chance is 0.50, and average the resulting accuracies over words, with a word contributing only if it has at least eight tokens in each class. Some words rest on few tokens, so the mean carries a percentile bootstrap interval over words. The whole procedure is then repeated with the class labels permutated within each word, which preserves every word's token count and class balance while destroying the labeling, and that null is where a probe reading its own cross-validation folds would land [@hewitt2019control]. We run this at the deepest layer of the largest model in each family, for both categories.
 
 ## Results {#sec-exp3-results}
 
@@ -788,13 +762,12 @@ Results are reported in @tbl-decode.
 #| tbl-cap: "Recovering the class from the interaction with a probe, at the deepest layer of the largest model in each family. The item is held fixed and the shared class direction is projected out, so neither main effect can contribute. *Accuracy* is the mean over them; *null* repeats the probe with the class labels permutated within each form. Brackets are percentile bootstrap intervals over forms, and chance is 0.50."
 dec <- bind_rows(
   rd("llm_decode_pos_form.csv") |> mutate(construction = "POS (noun/verb)"),
-  rd("llm_decode_interaction.csv") |> filter(construction != "pos") |>
+  rd("llm_decode_interaction.csv") |>
+    filter(construction == "role") |>
     mutate(construction = recode(construction,
-                                 role = "role (subject/object)",
-                                 metaphor = "metaphor (literal/figurative)"))) |>
+                                 role = "role (subject/object)"))) |>
   left_join(MODELS, by = "model") |>
-  mutate(construction = factor(construction, c("POS (noun/verb)", "role (subject/object)",
-                                               "metaphor (literal/figurative)")))
+  mutate(construction = factor(construction, c("POS (noun/verb)", "role (subject/object)")))
 
 dec |>
   arrange(construction, family) |>
@@ -807,23 +780,21 @@ dec |>
   kable_styling(latex_options = c("HOLD_position"), font_size = 7)
 ```
 
-For both families of LLMs across all three linguistic categories, the class is recoverable from the interaction at well above chance while the permutated null sits on chance, reaching `r g(dec$class_peritem[dec$construction == "POS (noun/verb)" & dec$family == "Pythia"], 2)` for part of speech, `r g(dec$class_peritem[dec$construction == "role (subject/object)" & dec$family == "Pythia"], 2)` for grammatical role, and `r g(dec$class_peritem[dec$construction == "metaphor (literal/figurative)" & dec$family == "Pythia"], 2)` for metaphor, with bootstrap intervals excluding the nulls in all six cases. The null landing on chance is what makes those accuracies interpretable, since it is the same probe, the same folds, and the same word-level averaging with only the labeling destroyed.
+For both families of LLMs across both linguistic categories, the class is recoverable from the interaction at well above chance while the permutated null sits on chance, reaching `r g(dec$class_peritem[dec$construction == "POS (noun/verb)" & dec$family == "Pythia"], 2)` for part of speech and `r g(dec$class_peritem[dec$construction == "role (subject/object)" & dec$family == "Pythia"], 2)` for grammatical role, with bootstrap intervals excluding the nulls in all four cases. The null landing on chance is what makes those accuracies interpretable, since it is the same probe, the same folds, and the same word-level averaging with only the labeling destroyed.
 
 The probe accuracies follow the same ordering across categories as the interaction sizes (@tbl-llm), providing converging evidence from the geometric and functional measures.
-
-Metaphor is the case where this matters most. Its shared class direction is too small to fit an orientation to, so a method reading only that direction would take metaphoricity to be barely represented, yet the probe recovers it from the interaction at `r g(dec$class_peritem[dec$construction == "metaphor (literal/figurative)" & dec$family == "Pythia"], 2)` against a null of `r g(dec$class_peritem_null[dec$construction == "metaphor (literal/figurative)" & dec$family == "Pythia"], 2)`. This suggests that most of what distinguishes its uses lives in the interaction rather than in a direction shared across words.
 
 The results demonstrate that $\gamma$ carries class information rather than generic correlated context, since generic context would not survive holding the word fixed and removing the shared axis. It does not show that $\gamma$ is *only* the label: context correlated with the class within a word survives both removals, so the interaction remains an upper bound.
 
 # Discussion and Conclusion {#sec-discussion}
 
-The present study examined whether a word's representation in a language model is exemplar-like or abstract and found that it contains elements of both. We decomposed a word's representation in a class into an item effect, a class effect, and a word-class interaction. The first two capture information shared across classes or words, respectively, while the interaction captures information specific to a particular word-class combination. Across six pretrained language models and three linguistic categories, this interaction was present in every model and category, nearly absent at the embedding layer, and grew throughout the network. The abstract components were nearly orthogonal, whereas the interaction overlapped with both, indicating that abstract and item-specific information are represented together rather than on separate axes.
+The present study examined whether a word's representation in a language model is exemplar-like or abstract and found that it contains elements of both. We decomposed a word's representation in a class into an item effect, a class effect, and a word-class interaction. The first two capture information shared across classes or words, respectively, while the interaction captures information specific to a particular word-class combination. Across six pretrained language models and two linguistic categories, this interaction was present in every model and category, nearly absent at the embedding layer, and grew throughout the network. The abstract components were nearly orthogonal, whereas the interaction overlapped with both, indicating that abstract and item-specific information are represented together rather than on separate axes.
 
 Overall, the central result is not simply that language-model representations are sensitive to context, but that this context sensitivity is organized around particular word-class combinations. Language-model representations therefore combine abstraction with item-specific structure: they generalize across words and classes while retaining information about particular combinations.
 
 # Limitations {.unnumbered}
 
-Our evaluation is restricted to English and relies on three linguistic categories tested across two model families (OPT-BabyLM and Pythia) at three parameter scales. While these choices cover a range of architectures and linguistic phenomena, broader typological, categorical, and architectural validation remains a direction for future work.
+Our evaluation is restricted to English and relies on two linguistic categories tested across two model families (OPT-BabyLM and Pythia) at three parameter scales. While these choices cover a range of architectures and linguistic phenomena, broader typological, categorical, and architectural validation remains a direction for future work.
 
 ```{=latex}
 \bibliography{refs}
@@ -1063,15 +1034,13 @@ They differ in two ways that matter elsewhere in the paper. The training corpora
 
 ```{r}
 #| label: tbl-constructions
-#| tbl-cap: "Stimuli for the three linguistic categories, with the two classes of each in parentheses. *Item types* is how many word forms occur in both of them at least ten times; forms occurring in only one are excluded. *Median tokens* is how often a typical form occurs in each of its two classes, in the order they are listed."
+#| tbl-cap: "Stimuli for the two linguistic categories, with the two classes of each in parentheses. *Item types* is how many word forms occur in both of them at least ten times; forms occurring in only one are excluded. *Median tokens* is how often a typical form occurs in each of its two classes, in the order they are listed."
 tibble::tribble(
   ~class,                                  ~`item types`,
   "part of speech (noun / verb)",          max(llm$n_items[llm$construction == "POS (noun/verb)"]),
-  "grammatical role (subject / object)",   max(llm$n_items[llm$construction == "role (subject/object)"]),
-  "metaphor (literal / figurative)",       gs("metaphor", "n_items_kept")) |>
+  "grammatical role (subject / object)",   max(llm$n_items[llm$construction == "role (subject/object)"])) |>
   mutate(`median tokens` = c(stimmed("pos_noun_verb_form"),
-                             stimmed("role_nsubj_obj"),
-                             stimmed("metaphor"))) |>
+                             stimmed("role_nsubj_obj"))) |>
   kbl(booktabs = TRUE, align = "lrl", linesep = "", escape = FALSE) |>
   kable_styling(latex_options = c("HOLD_position"), font_size = 8)
 ```
