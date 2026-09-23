@@ -54,6 +54,13 @@ change to the MEASUREMENT costing a re-measure and costing a retrain.
 import argparse
 import csv
 import os
+
+# Conda on Windows can ship two OpenMP runtimes, numpy's via MKL and torch's own; loading both
+# aborts the process with no Python traceback. Setting this before any torch import fixes
+# single-process runs in such an environment. It does NOT fix worker pools there -- those fail
+# for a separate reason -- so on Windows prefer a single process, or an interpreter whose
+# multiprocessing is known good. No effect on Linux, where the duplicate does not arise.
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 import sys
 import time
 from pathlib import Path
@@ -110,8 +117,23 @@ def build_abc(rng, n_form, n_class, n_obs, ctx_pool, vocab,
     L_class = rng.standard_normal((vocab, r_class)) / np.sqrt(r_class)
     L_int = rng.standard_normal((vocab, r_int)) / np.sqrt(r_int)
     L_ctx = rng.standard_normal((vocab, r_ctx)) / np.sqrt(r_ctx)
-    U_i = rng.standard_normal((r_item, r_int))
-    U_c = rng.standard_normal((r_class, r_int))
+    # The interaction is drawn INDEPENDENTLY of the item and class codes, then double-centred
+    # so it is pure interaction: zero item marginal, zero class marginal, and exact rank
+    # min(r_int, (n_form-1)(n_class-1)).
+    #
+    # It used to be (item_code @ U_i) * (class_code @ U_c), a product of the same codes that
+    # generate the marginals. That coupled it to them in two ways. Its rank was capped at
+    # r_item * (n_class - 1) = 24, so any r_int above 24 silently did nothing; and averaging the
+    # product over only n_class = 4 classes leaves a term that depends on the item alone, so a
+    # mean of 26% of what w_int delivered (4% to 75% across seeds) arrived as extra ITEM effect
+    # rather than interaction. Averaging over 60 items does vanish, which is why the class side
+    # leaked only 1%. Drawing it separately makes r_int mean what its name says and makes w_int
+    # deliver what it promises.
+    int_cell = rng.standard_normal((n_form, n_class, r_int))
+    int_cell = (int_cell
+                - int_cell.mean(0, keepdims=True)
+                - int_cell.mean(1, keepdims=True)
+                + int_cell.mean((0, 1), keepdims=True))
 
     n_cell = n_form * n_class
     cell_form = np.repeat(np.arange(n_form), n_class)
@@ -125,7 +147,7 @@ def build_abc(rng, n_form, n_class, n_obs, ctx_pool, vocab,
 
     t_item = unit(item_code[form_of] @ L_item.T)
     t_class = unit(class_code[class_of] @ L_class.T)
-    t_int = unit(((item_code[form_of] @ U_i) * (class_code[class_of] @ U_c)) @ L_int.T)
+    t_int = unit(int_cell[form_of, class_of] @ L_int.T)
     t_ctx = unit(ctx_code[ctx_of] @ L_ctx.T)
 
     w = np.array([w_item, w_class, w_int, w_ctx], float)
@@ -198,8 +220,11 @@ def train_and_extract(P, form_of, class_of, ctx_of, ctx_pool, d, act, seed, cfg)
     torch.set_num_threads(1)              # one thread per worker; parallelism is across cells
     dev = cfg.get("device", "cpu")
     if dev.startswith("cuda"):
-        torch.backends.cuda.matmul.allow_tf32 = False   # keep the numerics clean
-        torch.backends.cudnn.allow_tf32 = False
+        # Off unless asked for: TF32 keeps 10 mantissa bits, and what this script reports is a
+        # dot product of two independent split-half estimates whose null is exactly zero.
+        tf32 = bool(cfg.get("tf32", False))
+        torch.backends.cuda.matmul.allow_tf32 = tf32
+        torch.backends.cudnn.allow_tf32 = tf32
     torch.manual_seed(seed)
 
     n_form = int(form_of.max()) + 1; n_class = int(class_of.max()) + 1
@@ -264,8 +289,21 @@ WEIGHTS = [(a, b, c) for a in W_LEVELS for b in W_LEVELS for c in W_LEVELS
 # was planted.
 W_CTX = [0.5, 2.0, 6.0]
 
-RANK_TOTAL = 16                                  # r_item + r_class + r_int = 8 + 4 + 4
-D_VALUES = [8, 16, 32, 128]                     # capacity 2.0, 1.0, 0.5, 0.125
+# INTERACTION RANK. How many independent directions the item-by-class deviations span: 1 means
+# every cell deviates along one shared axis, and (n_form-1)(n_class-1) = 177 means every cell is
+# idiosyncratic in its own way. It is the abstraction/exemplar dial inside the interaction term,
+# and 177 is the saturated case. Reaching it needs d above r_item + r_class + 177 = 189, hence
+# the wider settings below.
+R_VALUES = [4, 16, 64, 177]
+D_VALUES = [8, 16, 32, 128]
+
+# Width 256 exists only so the saturated arm can reach capacity below 1: at r_int = 177 the
+# structure needs r_item + r_class + 177 = 189 dimensions, so d = 128 is over-subscribed
+# (capacity 1.48) and d = 256 gives 0.74. At r_int <= 64 the total rank is at most 76 and d = 128
+# already gives 0.59, so a 256-wide run there answers a question nobody asked while costing the
+# most of any cell in the grid (2.5x a 128-wide one). Widths are therefore chosen per rank.
+def d_values_for(r_int, base=D_VALUES):
+    return base + [256] if r_int >= 128 else list(base)
 
 CONFIG = dict(
     # n_ctx = 24 observations per cell is chosen to match the LLM regime: the median balanced
@@ -275,7 +313,8 @@ CONFIG = dict(
     n_form=60, n_class=4, vocab=600, n_obs=24, ctx_pool=400, scale=3.0,
     d_values=D_VALUES, activations=["identity", "relu"], n_seeds=5,
     w_ctx_values=W_CTX,
-    r_item=8, r_class=4, r_int=4, r_ctx=8,
+    r_item=8, r_class=4, r_ctx=8,          # r_int is swept per cell, see R_VALUES
+    r_values=R_VALUES,
     lr=0.01, max_iters=3000, patience=40, min_delta=1e-5,
     device="cpu", n_workers=8,
     out_csv=str(REPO_ROOT / "data" / "artificial_language_grid.csv"),
@@ -288,6 +327,7 @@ GRID_IDENT = ["key",                                          # resume identifie
               "w_item", "w_class", "w_int", "w_ctx",          # what was asked for (normalized)
               "ach_item", "ach_class", "ach_int", "ach_ctx",  # what the generator achieved
               "d", "rank", "capacity", "activation", "seed",
+              "r_int", "r_item", "r_class",                  # r_int is swept; the other two are not
               "n_form", "n_class", "n_obs",
               "iters", "loss", "fit_gap", "converged"]        # convergence, for the stopping check
 FIELDS = GRID_IDENT + REPORT_FIELDS
@@ -323,11 +363,11 @@ def _key(w, w_ctx):
 
 
 def run_cell(spec, cfg):
-    w, w_ctx, d, act, seed = spec
+    w, w_ctx, d, act, seed, r_int = spec
     rng = np.random.default_rng(seed)
     P, form_of, class_of, ctx_of, ach, wn = build_abc(
         rng, cfg["n_form"], cfg["n_class"], cfg["n_obs"], cfg["ctx_pool"], cfg["vocab"],
-        cfg["r_item"], cfg["r_class"], cfg["r_int"], cfg["r_ctx"],
+        cfg["r_item"], cfg["r_class"], r_int, cfg["r_ctx"],
         w[0], w[1], w[2], w_ctx, cfg["scale"])
     H, iters, loss, gap, plateaued = train_and_extract(
         P, form_of, class_of, ctx_of, cfg["ctx_pool"], d, act, seed, cfg)
@@ -338,17 +378,18 @@ def run_cell(spec, cfg):
                       keep_null_draws=bool(runs_dir))
     if runs_dir:
         # written from the worker so the arrays are never pickled back to the parent
-        tag = f"{_key(w, w_ctx)}__d{d}__{act}__s{seed}".replace("/", "-")
+        tag = f"{_key(w, w_ctx)}__d{d}__{act}__s{seed}__R{r_int}".replace("/", "-")
         np.savez_compressed(Path(runs_dir) / f"{tag}.npz",
                             H=H.astype(np.float32), form_of=form_of, class_of=class_of,
                             ctx_of=ctx_of, **{k: v for k, v in r.items()
                                               if k.startswith("draws_")})
-    rank = cfg["r_item"] + cfg["r_class"] + cfg["r_int"]
+    rank = cfg["r_item"] + cfg["r_class"] + r_int
     row = dict(key=_key(w, w_ctx),
                w_item=wn[0], w_class=wn[1], w_int=wn[2], w_ctx=wn[3],
                ach_item=round(ach[0], 4), ach_class=round(ach[1], 4),
                ach_int=round(ach[2], 4), ach_ctx=round(ach[3], 4),
-               d=d, rank=rank, capacity=round(rank / d, 3),
+               d=d, rank=rank, capacity=round(rank / d, 3), r_int=r_int,
+               r_item=cfg["r_item"], r_class=cfg["r_class"],
                activation=act, seed=seed, n_form=cfg["n_form"], n_class=cfg["n_class"],
                n_obs=cfg["n_obs"], iters=iters, loss=round(loss, 4), fit_gap=round(gap, 4),
                converged=bool(plateaued))
@@ -362,6 +403,10 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--probe", action="store_true", help="a handful of cells, printed")
     ap.add_argument("--device", default="cpu")
+    ap.add_argument("--tf32", action="store_true",
+                    help="allow TF32 matmuls on Ampere+. Much faster, but it drops mantissa "
+                         "bits: this measure reports dot products of split-half estimates, so "
+                         "leave it off for anything reported. Off by default.")
     ap.add_argument("--workers", type=int, default=None)
     ap.add_argument("--out", default=None)
     ap.add_argument("--n-resplit", type=int, default=200,
@@ -381,6 +426,7 @@ def main():
         cfg["runs_dir"] = args.runs_dir
     if args.workers:
         cfg["n_workers"] = args.workers
+    cfg["tf32"] = bool(args.tf32)
     if args.out:
         cfg["out_csv"] = args.out
 
@@ -389,7 +435,7 @@ def main():
               f"{'size a/b/g':>18} | {'sig':>5} {'leak':>7}")
         for w in [(1, 1, 0), (1, 1, .5), (1, 1, 2), (1, 0, .5)]:
             for act in ("identity", "relu"):
-                r = run_cell((w, 2.0, 64, act, 0), cfg)
+                r = run_cell((w, 2.0, 64, act, 0, cfg["r_values"][0]), cfg)
                 print(f"{str(w):>16} {act:>8} {r['fit_gap']:>6.2f} | "
                       f"{r['ach_item']:>5.2f}/{r['ach_class']:>5.2f}/{r['ach_int']:>5.2f} | "
                       f"{r['size_item']:>5.2f}/{r['size_class']:>5.2f}/{r['size_interaction']:>5.2f} | "
@@ -400,17 +446,33 @@ def main():
     import multiprocessing as mp
     import time
     from concurrent.futures import ProcessPoolExecutor, as_completed
-    cells = [(w, wc, d, act, s) for w in WEIGHTS for wc in cfg["w_ctx_values"]
-             for d in cfg["d_values"] for act in cfg["activations"]
-             for s in range(cfg["n_seeds"])]
+    cells = [(w, wc, d, act, s, r)
+             for w in WEIGHTS for wc in cfg["w_ctx_values"]
+             for r in cfg["r_values"] for d in d_values_for(r, cfg["d_values"])
+             for act in cfg["activations"] for s in range(cfg["n_seeds"])]
     out = Path(cfg["out_csv"]); out.parent.mkdir(parents=True, exist_ok=True)
 
     # resume: a cell is identified by the weights it was asked for, not the normalized ones,
     # so the key is rebuilt from the same tuple the scheduler uses
     # A killed run can leave a half-written final row, and the resume below would skip it as
     # unparseable and then append the same cell twice. Fix both before reading.
+    # REFUSE TO MIX GENERATORS. Rows written before the interaction was decoupled have no
+    # r_int column. They came from a different language: their interaction was a product of the
+    # item and class codes, so it was capped at rank 24 and delivered ~26% of w_int as item
+    # effect. Appending to them would silently pool two different experiments in one CSV, and
+    # the resume logic below would not catch it because those rows simply fail to parse.
+    if out.exists():
+        with open(out, newline="") as fh:
+            hdr = next(csv.reader(fh), [])
+        if hdr and "r_int" not in hdr:
+            raise SystemExit(
+                f"{out} predates the decoupled interaction (no r_int column). "
+                "Its rows came from the previous generator and cannot be pooled "
+                "with new ones. Move it aside and rerun:  "
+                f"mv {out} {out}.pre-decoupling")
+
     check_emits(FIELDS, ("",), "toy grid")   # refuse to train 7,560 models into a lossy CSV
-    repair(str(out), ["key", "d", "activation", "seed"])
+    repair(str(out), ["key", "d", "activation", "seed", "r_int"])
     # The resume below appends rows built from FIELDS. If the file predates a column, those
     # appended rows would misalign against its header, so bring the header forward first.
     migrate_header(str(out), FIELDS)
@@ -419,10 +481,12 @@ def main():
         with open(out, newline="") as fh:
             for r in csv.DictReader(fh):
                 try:
-                    done.add((r["key"], int(r["d"]), r["activation"], int(r["seed"])))
+                    done.add((r["key"], int(r["d"]), r["activation"], int(r["seed"]),
+                              int(r["r_int"])))
                 except (KeyError, ValueError):
                     continue
-    todo = [c for c in cells if (_key(c[0], c[1]), c[2], c[3], c[4]) not in done]
+    todo = [c for c in cells
+            if (_key(c[0], c[1]), c[2], c[3], c[4], c[5]) not in done]
     print(f"Experiment 10: {len(done)} done, {len(todo)} to run of {len(cells)}; "
           f"{cfg['n_workers']} workers, device={cfg['device']}", flush=True)
     if not todo:
