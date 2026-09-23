@@ -415,8 +415,17 @@ def main():
     # flat worker count overcommits VRAM whenever several large models land at once (this is what
     # OOM-killed the ablation runs). Admit workers under a VRAM budget instead: small models pack in,
     # large ones throttle, and a lone file larger than the budget still runs. The CPU path is
-    # RAM-bound and keeps the old fixed pool. SEP_VRAM_GB overrides the 72 GB default (of an 80 GB card).
-    budget = float(os.environ.get("SEP_VRAM_GB", "72"))
+    # RAM-bound and keeps the old fixed pool. SEP_VRAM_GB overrides the default, which is read from
+    # the card itself: a fixed 72 GB (an 80 GB A100) is not a safe default anywhere else. On an 8 GB
+    # consumer card it admitted two workers whose CUDA contexts are ~10 GB each, the driver killed
+    # both, and the stage reported BrokenProcessPool after silently emitting no rows.
+    def _card_gb():
+        try:
+            import torch
+            return torch.cuda.get_device_properties(0).total_memory / 1e9 * 0.85
+        except Exception:
+            return 72.0
+    budget = float(os.environ.get("SEP_VRAM_GB") or (_card_gb() if on_gpu else 72.0))
     gb_of = {p: _peak_gb(p) for p in todo} if on_gpu else {}
     print(f"measuring {args.construction} on {len(todo)} files with up to {nw} workers"
           + (f" under a {budget:.0f} GB VRAM budget" if on_gpu else ""), flush=True)
@@ -486,6 +495,15 @@ def main():
                 futs = {ex.submit(worker, p, args, layers): p for p in todo}
                 for fut in as_completed(futs):
                     _emit(fut, futs[fut].name)
+    # A dead worker must not look like a finished measurement. _emit() catches each future's
+    # exception so one bad file cannot abort the sweep, but the run still has to exit non-zero:
+    # a BrokenProcessPool for every file once printed "Done ->" over a header-only CSV, and the
+    # caller's `[ -s "$out" ]` check passed on the header alone.
+    if prog["fail"]:
+        raise SystemExit(
+            f"{prog['fail']} of {len(todo)} file(s) failed; {out} is incomplete. "
+            f"Exiting non-zero so nothing downstream consumes it as a finished result."
+        )
     print(f"Done -> {out}")
 
 

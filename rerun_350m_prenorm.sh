@@ -7,16 +7,23 @@
 # 350M/410M cell is one of three scale points: a normalization difference sat
 # on top of the family contrast at exactly one scale.
 #
-# WHERE TO RUN: locally. Extraction here is capped at --max-tokens 100000 over
-# one model and two inits, which is minutes on a consumer GPU. Nothing here
-# needs a rented box.
+# WHERE TO RUN: locally. One model, a few inits, on a consumer GPU.
 #
-# WHAT IT DOES NOT TOUCH: Experiment 1 (the artificial-language grid) is
-# model-independent, and the Pythia and 125M/1.3B rows are unchanged.
+# WHAT IT DOES NOT TOUCH:
+#   * Experiment 1 (the artificial-language grid) is model-independent.
+#   * The Pythia and 125M/1.3B rows are unchanged.
+#   * The decode analysis (llm_decode_*.csv). decode_from_interaction.py
+#     defaults to --models "pythia-1.4b opt-babylm-1.3B", so the 350M was never
+#     in it. It is left alone deliberately -- see SKIP_DERIVED below.
 #
-# THIS REPLACES. The measurement runner itself deletes nothing, so the new
-# model arrives as extra rows under the new id; step 7 then drops the old
-# post-LN rows, per file, and only where new rows were actually produced.
+# ---------------------------------------------------------------------------
+# SAMPLE SIZE. extract_ud.py defaults to --max-tokens 100000, but every model
+# already in these CSVs was extracted at 300000. Taking the default measured the
+# 350M on a third of the data of every model it is compared against, which is a
+# silent bias, not an error: nothing fails, the numbers are just quietly smaller.
+# MAX_TOKENS is therefore read off the existing rows rather than assumed, and
+# step 6 refuses to finish if the 350M's n_points does not match the others.
+# ---------------------------------------------------------------------------
 #
 # NO CODE EDITS. The corrected model was promoted into the original name
 # (opt-babylm-350m-20eps-seed964), so nothing in this repo needs changing.
@@ -36,17 +43,25 @@ CONLLU="${CONLLU:-data/ud/en_all-ud.conllu}"
 DRY_RUN="${DRY_RUN:-0}"
 SKIP_EXTRACT="${SKIP_EXTRACT:-0}"
 CLEAR_HELPER="scripts/_clear_350m_rows.py"
-# run_all_measurements.sh already reads these. LLM_WORKERS is RAM-bound at
-# roughly 12 GB per worker, so it is deliberately NOT tied to core count.
+# Extraction batch size. 32 is extract_ud.py's own default and fits an 8 GB card;
+# raise it on a bigger GPU. Nothing about the result depends on it.
+BATCH_SIZE="${BATCH_SIZE:-32}"
+# The decode stage rebuilds from every model's reps rather than resuming, so on a
+# machine that only holds the 350M it would replace two committed result files with
+# bare headers. It has nothing to do with the 350M; skip it here.
+export SKIP_DERIVED="${SKIP_DERIVED:-0}"
+
+# run_all_measurements.sh already reads these.
 export TOY_WORKERS="${TOY_WORKERS:-$(nproc 2>/dev/null || echo 8)}"
-# measure.py peaks near 12 GB per worker, so this is bounded by RAM, not cores.
-# Derive it from installed memory rather than assuming a big box: 32 GB fits 2.
+# measure.py peaks near 12 GB of RAM per worker, so this is bounded by RAM, not cores.
+# On the GPU path measure.py additionally admits workers under the card's real VRAM,
+# so a small card throttles to one worker regardless of what is set here.
 _ram_gb=$(free -g 2>/dev/null | awk '/^Mem:/{print $2}')
 [ -z "$_ram_gb" ] && _ram_gb=$(python -c "import psutil;print(int(psutil.virtual_memory().total/1e9))" 2>/dev/null)
 [ -z "$_ram_gb" ] && _ram_gb=16
 export LLM_WORKERS="${LLM_WORKERS:-$(( _ram_gb / 14 ))}"
 [ "$LLM_WORKERS" -lt 1 ] && export LLM_WORKERS=1
-echo "  measure.py workers: $LLM_WORKERS (~12GB each, ${_ram_gb}GB RAM detected)"
+echo "  measure.py workers: $LLM_WORKERS (~12GB RAM each, ${_ram_gb}GB detected)"
 
 
 # ── Interpreter ──────────────────────────────────────────────────────────────
@@ -104,10 +119,6 @@ run_soft () {
     "$@" || echo "  WARNING: non-fatal step failed: $*" >&2
 }
 
-# Verification below compares file mtimes against this, not a fixed window: a
-# long run would otherwise report its own early outputs as stale.
-RUN_STARTED_AT=$(date +%s)
-
 [ -f scripts/run_all_measurements.sh ] || { echo "Run me from the repo root."; exit 1; }
 
 say "0. Preconditions"
@@ -122,6 +133,26 @@ if [ ! -f "$CONLLU" ]; then
 else
     echo "  UD corpus present: $CONLLU"
 fi
+
+say "0b. Read the token budget off the models already measured"
+# Do not trust extract_ud.py's 100000 default: it does not match this paper's rows.
+MAX_TOKENS="${MAX_TOKENS:-$("$PY" - "$MODEL_ID" <<'PY'
+import csv, sys
+from collections import Counter
+mid = sys.argv[1]
+try:
+    rows = list(csv.DictReader(open("data/llm_unified_form.csv", newline="", encoding="utf-8")))
+except Exception:
+    print(300000); raise SystemExit
+other = [int(r["n_points"]) for r in rows if r["model"] != mid and r.get("n_points", "").isdigit()]
+if not other:
+    print(300000); raise SystemExit
+# n_points lands a few tokens over the cap (the last sentence is not split), so round down.
+print(int(round(Counter(other).most_common(1)[0][0], -4)))
+PY
+)}"
+echo "  MAX_TOKENS=$MAX_TOKENS  (every other model in llm_unified_form.csv was extracted at this)"
+[ "$MAX_TOKENS" -ge 1000 ] 2>/dev/null || { echo "  FATAL: implausible MAX_TOKENS=$MAX_TOKENS"; exit 1; }
 
 say "1. Confirm the new checkpoint is pre-LN before spending any time on it"
 if [ "$DRY_RUN" != "1" ]; then
@@ -164,17 +195,33 @@ fi
 # Rows are always cleared: measure.py skips any (model, init) already present.
 run "$PY" "$CLEAR_HELPER" "$MODEL_ID"
 
-say "3. Extract representations for the new 350M only (both inits)"
+say "3. Extract representations for the new 350M only"
 if [ "$SKIP_EXTRACT" = "1" ]; then
     echo "  SKIP_EXTRACT=1, reusing whatever is in data/llm_reps and data/vua_reps"
 else
+    # Intact, both inits.
     run "$PY" scripts/llm/extract_ud.py \
         --conllu "$CONLLU" \
         --models "$FILTER" \
         --inits pretrained random \
+        --max-tokens "$MAX_TOKENS" \
+        --batch-size "$BATCH_SIZE" \
+        --device cuda \
+        --reps-dir data/llm_reps
+    # Position-ablated, for tbl-posabl. The appendix table lists every OPT-BabyLM
+    # size intact and zeroed, so the 350M needs *_noposemb reps too or it drops
+    # out of the table with no error anywhere.
+    run "$PY" scripts/llm/extract_ud.py \
+        --conllu "$CONLLU" \
+        --models "$FILTER" \
+        --ablate-positions \
+        --max-tokens "$MAX_TOKENS" \
+        --batch-size "$BATCH_SIZE" \
+        --device cuda \
         --reps-dir data/llm_reps
     # extract_vua.py takes --out-dir, not --reps-dir, and already defaults to
-    # data/vua_reps. ~14.5k sentences / ~88k content targets, one pass each.
+    # data/vua_reps. It reads the whole VUA corpus (no token cap), so its sample
+    # size matches the other models automatically.
     # extract_ud.py's --models takes SUBSTRING FILTERS; extract_vua.py's --models
     # REPLACES its list with literal ids (models = args.models or [...]). Passing
     # the filter here made it request a repo named "opt-babylm-350m" and 404.
@@ -186,26 +233,50 @@ fi
 say "4. Re-measure (resumable; continues per model/init, deletes nothing)"
 run bash scripts/run_all_measurements.sh
 
-say "5. Verify the new 350M rows reached the results"
+say "5. Measure the ablation table's rows (tbl-posabl)"
+# run_all_measurements.sh only writes the _ablation CSVs under ABLATION=1, which
+# re-extracts every OPT model. The reps this script just made are enough for the
+# 350M's rows on their own, and measure.py skips the models already in the file.
+run "$PY" scripts/llm/measure.py pos --min-cell 10 --workers "$LLM_WORKERS" \
+    --n-resplit 200 --nulls-dir data/llm_nulls \
+    --out data/llm_unified_form_ablation.csv \
+    --reps-dir data/llm_reps --conllu "$CONLLU" --item-key form
+
+say "6. Verify: the 350M must be present AND measured on the same sample as the rest"
 if [ "$DRY_RUN" != "1" ]; then
 "$PY" - "$MODEL_ID" <<'PY'
-import csv, glob, sys
+import csv, sys
 mid = sys.argv[1]
-for path in sorted(glob.glob("data/llm_*.csv")):
+bad = 0
+# The four files the paper actually reads that carry per-model rows.
+for path in ("data/llm_unified_form.csv", "data/llm_role.csv",
+             "data/llm_metaphor.csv", "data/llm_unified_form_ablation.csv"):
     try:
         rows = list(csv.DictReader(open(path, newline="", encoding="utf-8")))
     except Exception as e:
-        print(f"  {path}: unreadable ({e})"); continue
+        print(f"  {path}: unreadable ({e})"); bad += 1; continue
     if not rows or "model" not in rows[0]:
-        continue
-    vals = {r["model"] for r in rows}
-    print(f"  {path}: 350M rows now present = {sum(v == mid for v in vals)}")
+        print(f"  {path}: no rows"); bad += 1; continue
+    mine  = {int(r["n_points"]) for r in rows if r["model"] == mid and r.get("n_points", "").isdigit()}
+    other = {int(r["n_points"]) for r in rows if r["model"] != mid and r.get("n_points", "").isdigit()}
+    if not mine:
+        print(f"  {path}: NO 350M ROWS"); bad += 1; continue
+    if other and abs(min(mine) - max(other)) / max(max(other), 1) > 0.05:
+        print(f"  {path}: SAMPLE MISMATCH 350M={sorted(mine)[:2]} others={sorted(other)[:2]}")
+        bad += 1; continue
+    n = sum(r["model"] == mid for r in rows)
+    print(f"  {path}: OK ({n} rows for the 350M, n_points={sorted(mine)[:2]})")
+if bad:
+    print(f"\n  {bad} file(s) wrong. Not rendering: the paper would report them as if correct.")
+    sys.exit(1)
 PY
+[ $? -ne 0 ] && exit 1
 fi
 
-say "6. Re-render the paper"
+say "7. Re-render the paper"
 run quarto render paper/separability.qmd
 
 say "Done"
-echo "The 350M rows now come from the corrected pre-LN model (same name, new weights)."
+echo "The 350M rows now come from the corrected pre-LN model (same name, new weights),"
+echo "measured on the same $MAX_TOKENS-token sample as every model it is compared to."
 echo "No code edits were made. Data files were rewritten in place; git restores the tracked ones."

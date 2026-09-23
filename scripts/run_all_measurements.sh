@@ -323,6 +323,22 @@ if [ "$SKIP_DERIVED" != "1" ]; then
   rc="${PIPESTATUS[0]}"; step_end stats
   [ "$rc" -eq 0 ] || { echo "[stats] FAILED (exit $rc)" >&2; rc_all=1; }
 
+  # decode_from_interaction.py defaults to --models "pythia-1.4b opt-babylm-1.3B" (the largest of
+  # each family) and rebuilds from scratch rather than resuming. If those reps are absent it writes
+  # a header and no rows, exits 0, and prints "Done" -- which is how two committed result files were
+  # replaced by bare headers on a machine holding only one model's reps. Check before retiring
+  # anything: a stage that cannot rebuild must leave the existing results alone.
+  decode_ready=1
+  for m in pythia-1.4b opt-babylm-1.3B; do
+    if ! ls "$REPS_DIR"/*"$m"*.npz >/dev/null 2>&1; then
+      decode_ready=0
+      echo "  [decode] SKIPPED: no reps matching '$m' in $REPS_DIR" >&2
+    fi
+  done
+  if [ "$decode_ready" != "1" ]; then
+    echo "  [decode] existing results left untouched; re-run where the full reps dir lives." >&2
+  else
+
   # decode appends, so a rerun would duplicate rows; retire the outputs and rebuild both.
   for f in data/llm_decode_pos_form.csv data/llm_decode_interaction.csv; do
     [ -s "$f" ] && mv "$f" "$OLDDIR/$(basename "$f" .csv).$stamp.csv" && \
@@ -341,6 +357,18 @@ if [ "$SKIP_DERIVED" != "1" ]; then
   } 2>&1 | tee "$LOGDIR/decode.log"
   rc="${PIPESTATUS[0]}"
   [ "$rc" -eq 0 ] || { echo "[decode] FAILED (exit $rc)" >&2; rc_all=1; }
+
+  # "Done" over an empty file is this stage's real failure mode, so check rows, not the exit code.
+  for f in data/llm_decode_pos_form.csv data/llm_decode_interaction.csv; do
+    n=$(( $(wc -l < "$f" 2>/dev/null || echo 1) - 1 ))
+    if [ "$n" -lt 1 ]; then
+      echo "[decode] $f came back with 0 rows; restoring the retired copy" >&2
+      prev=$(ls -1t "$OLDDIR/$(basename "$f" .csv)".*.csv 2>/dev/null | head -1)
+      [ -n "$prev" ] && cp "$prev" "$f" && echo "  restored from $prev" >&2
+      rc_all=1
+    fi
+  done
+  fi
 fi
 
 # ---------------------------------------------------------------- Appendix: validate the measure
