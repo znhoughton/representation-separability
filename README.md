@@ -13,8 +13,8 @@ axes and (b) how large the irreducibly-joint interaction is.
 two marginals are near-orthogonal, yet a large, depth-built item×class **interaction** remains that
 cannot be factored back into item plus class, and that interaction is not on axes of its own either:
 13–23% of it lies in the span of the two marginals. The balance is **graded across linguistic
-dimensions**, most portable for grammatical role, then part of speech, and least for metaphor, which
-is carried almost entirely word by word. An ACL methods/results draft is in [`paper/`](paper/).
+dimensions**, more portable for grammatical role than for part of speech. An ACL methods/results
+draft is in [`paper/`](paper/).
 
 ## Repository structure
 
@@ -42,8 +42,8 @@ representation-separability/
 │       ├── build_ud_corpus.py           # concatenate 6 UD English treebanks -> one CoNLL-U
 │       ├── extraction.py                # the extraction library: forward passes, alignment, labels
 │       ├── extract_ud.py                # drive extraction over UD for the model set (GPU)
-│       ├── extract_vua.py               # the same for VUA20 metaphor (GPU)
-│       ├── measure.py                    # all four constructions: pos, role, metaphor, morphology
+│       ├── extract_vua.py               # the same for VUA20 metaphor (GPU; not used by the paper)
+│       ├── measure.py                    # constructions: pos, role, morphology (also metaphor, unused by the paper)
 │       ├── decode_from_interaction.py   # Experiment 3
 │       ├── dataset_stats.py             # the counts quoted in the Dataset/Stimuli sections,
 │       │                                #   plus the per-item stimulus lists (stimuli_items.csv)
@@ -66,7 +66,6 @@ if you want just one of them.
 | Experiment 1 | `artificial_language_grid.csv` | `toy/artificial_language_grid.py` |
 | Experiment 2, part of speech | `llm_unified_form.csv` | `llm/measure.py pos --item-key form` |
 | Experiment 2, role | `llm_role.csv` | `llm/measure.py role` |
-| Experiment 2, metaphor | `llm_metaphor.csv` | `llm/measure.py metaphor` |
 | Experiment 3 | `llm_decode_pos_form.csv`, `llm_decode_interaction.csv` | `llm/decode_from_interaction.py` |
 | Dataset counts | `methods_grid_stats.csv`, `stimuli_items.csv` | `llm/dataset_stats.py` |
 | Appendix: validation | `validate_measure.csv.gz` (uncompressed is gitignored) | `toy/validate_measure.py` |
@@ -144,7 +143,6 @@ python scripts/llm/measure.py pos --reps-dir data/llm_reps --conllu data/ud/en_a
        --item-key form --out data/llm_unified_form.csv
 python scripts/llm/measure.py role  --reps-dir data/llm_reps --conllu data/ud/en_all-ud.conllu --out data/llm_role.csv
 python scripts/llm/measure.py morphology --reps-dir data/llm_reps --conllu data/ud/en_all-ud.conllu --out data/llm_morph.csv
-python scripts/llm/measure.py metaphor --reps-dir data/vua_reps --out data/llm_metaphor.csv
 python scripts/llm/decode_from_interaction.py --reps-dir data/llm_reps --conllu data/ud/en_all-ud.conllu \
        --out data/llm_decode_interaction.csv
 ```
@@ -166,8 +164,7 @@ seconds without a GPU. Worth running before spending hours on an extraction.
   `data/stimuli_items.csv`, one row per kept item per model, with its two class labels and the
   token count behind each grid cell of it (`pos_noun_verb_form`: 78 noun/verb conversion forms
   like *run*, *hit*, *claims*; `role_nsubj_obj`: 49 UD nouns attested as both subject and
-  object; `metaphor`: 180 VUA nouns, verbs, adjectives and adverbs annotated both literally and
-  figuratively). All three are same-token, keyed on the lowercased surface form, min 10 tokens
+  object). Both are same-token, keyed on the lowercased surface form, min 10 tokens
   per class. Regenerate with `python scripts/llm/dataset_stats.py` on the box holding the reps;
   the paper's Stimuli section (@sec-exp2-stimuli) summarizes the same file.
 - **Data policy:** result CSVs under `data/` are versioned, the one exception being the
