@@ -1136,13 +1136,10 @@ We measure the class effect's share of class-relevant structure which is the cla
 ```{r}
 #| label: tbl-posabl
 #| tbl-cap: "Trained OPT-BabyLM at the deepest layer, with absolute position embeddings intact and zeroed. Sizes are shares of the item-by-class structure and the portable fraction is the class effect divided by the sum of the class effect and the interaction."
-# Read from the main POS file, not llm_unified_form_ablation.csv. Both hold the same
-# models on the same reps at the same 300k-token sample -- n_points agrees on all 278
-# shared rows -- but the _ablation file was last written 2026-09-03 by a superseded
-# measure.py (19 columns, and no size_class_excludes_zero, which is the marker the
-# runner uses to retire old-format files). The main file carries the *_noposemb inits
-# for every OPT-BabyLM size under the current estimator, so sourcing the table here
-# keeps it consistent with every other table in this paper.
+# Read from the main POS file. It carries the *_noposemb inits for every OPT-BabyLM
+# size under the current estimator, so this table is on the same footing as every
+# other table in the paper. (An older, separate ablation CSV used to hold these rows
+# but was written by a superseded measure.py; it has been removed.)
 rd("llm_unified_form.csv") |>
   filter(grepl("babylm", model), grepl("^pretrained", init)) |>
   group_by(model, init) |>
