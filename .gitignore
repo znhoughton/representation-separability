@@ -25,7 +25,7 @@ data/experiment6_reps/
 data/experiment7_reps/
 data/experiment8_reps_shard1/*.npz
 data/experiment8_reps_shard0/*.npz
-
+model_cache/
 # LLM contextual reps (~325 GB, regenerable via run_llm_sweep.py) -- results CSVs stay tracked
 data/llm_reps/
 # Experiment 9 unified-grid saved reps (~8 GB, regenerable) -- CSVs stay tracked

@@ -1,0 +1,4 @@
+component,n_draws,max_rhat,worst_rhat_param,min_ess_bulk,min_ess_tail,divergences,treedepth_hits,converged
+item,36000,1.0052439309348016,b_Intercept,2264.2862198331622,4660.203920071804,0,0,TRUE
+class,36000,1.010035244631652,b_c_item,1950.530585054414,4009.837116494887,0,0,FALSE
+interaction,36000,1.0045015524599379,b_c_int:log2_rank,2313.406245162433,4960.953868272737,0,0,TRUE
