@@ -179,6 +179,12 @@ toy_learn_lin <- bind_rows(
   mutate(component = factor(component, c("item", "class", "interaction"))) |>
   filter(!is.na(planted), !is.na(measured))
 
+# Both arms in one frame for @fig-toy, which draws them as rows. toy_learn and toy_learn_lin are
+# left alone: the prose indexes them separately.
+toy_learn_both <- bind_rows(mutate(toy_learn, act = "ReLU"),
+                            mutate(toy_learn_lin, act = "linear")) |>
+  mutate(act = factor(act, c("ReLU", "linear")))
+
 # Colour carries width here, since the components are separated by panel. A single ramp from the
 # University of Oregon's green, because width is ordered and hues are not.
 # Built from the data rather than written out, so that adding a width to the grid cannot
@@ -677,15 +683,22 @@ Results are shown in @fig-toy; the effects of width are reported in Appendix \re
 #| label: fig-toy
 #| fig-env: figure*
 #| fig-width: 6.3
-#| fig-height: 2.0
+#| fig-height: 3.6
 #| out-width: "100%"
-#| fig-cap: "What the model represents of each component, against how much of that component the ground-truth language held, under ReLU. Each faint point is one run. Lines are least-squares fits through the runs at each hidden width, shaded with a 95% confidence band on the fit. The dashed diagonal is where a representation would sit had it reproduced the language's composition exactly. Runs in which none of the three components had a re-split 95% interval excluding zero are not plotted, since the three shares then divide noise."
-#| 
-ggplot(toy_learn, aes(planted, measured, color = factor(d), fill = factor(d))) +
+#| fig-cap: "Each component's share of the representation against its share of the language, by activation. Each faint point is one run. Lines are fitted values from the ordered beta models of @eq-ordbeta with 95% intervals, taken at the mean of the other two effect sizes and of the interaction's rank, which is why they need not pass through the centre of a cloud spanning every combination of those. The dashed diagonal is where a representation would sit had it reproduced the language's composition exactly. Runs in which none of the three components had a re-split 95% interval excluding zero are not plotted, since the three shares then divide noise."
+#|
+.fit <- rpred |>
+  filter(kind == "size", grid == "planted") |>
+  mutate(component = factor(component, c("item", "class", "interaction")),
+         act = factor(arm, c("relu", "linear"), c("ReLU", "linear")))
+ggplot(toy_learn_both, aes(planted, measured, color = factor(d), fill = factor(d))) +
   geom_abline(slope = 1, intercept = 0, linetype = 2, linewidth = .3, color = UO[["grey"]]) +
-  geom_point(size = .32, alpha = .22, stroke = 0) +
-  geom_smooth(method = "lm", formula = y ~ x, linewidth = .5, alpha = .16) +
-  facet_wrap(~ component, nrow = 1) +
+  geom_point(size = .3, alpha = .18, stroke = 0) +
+  geom_ribbon(data = .fit, aes(x = own, y = epred, ymin = lo, ymax = hi, fill = factor(width)),
+              inherit.aes = FALSE, alpha = .16) +
+  geom_line(data = .fit, aes(x = own, y = epred, color = factor(width)),
+            inherit.aes = FALSE, linewidth = .55) +
+  facet_grid(act ~ component) +
   scale_color_manual(values = WIDC, name = "hidden width") +
   scale_fill_manual(values = WIDC, guide = "none") +
   scale_x_continuous(limits = c(0, 1), breaks = c(0, .5, 1)) +
@@ -698,7 +711,7 @@ ggplot(toy_learn, aes(planted, measured, color = factor(d), fill = factor(d))) +
 
 The interaction effect in the linear condition was zero only where the language was additive. On the other hand, across the `r cm(nullget("linear", TRUE, "n"))` runs whose language contained an interaction, the linear model's interaction interval excludes zero in `r sprintf("%.0f%%", 100 * nullget("linear", TRUE, "flagged_ez"))` of them, against `r sprintf("%.0f%%", 100 * nullget("ReLU", TRUE, "flagged_ez"))` for ReLU. In contrast, where the language contained no interaction, the rates were `r sprintf("%.0f%%", 100 * nullget("linear", FALSE, "flagged_ez"))` and `r sprintf("%.0f%%", 100 * nullget("ReLU", FALSE, "flagged_ez"))`. The linear model has no parameter depending on the form and the class together beyond a linear combination of them, yet represents an interaction anyway. One possible explanation for this is that the model can still learn context-specific representations for different items, by learning that a specific item in a specific class occurs with a specific context (and then subsequently representing that information within the context weights). In the models with a ReLU activation function, surprisingly we see an interaction effect represented in the model even in cases where the language is additive. One potential explanation is that the model only ever encounters words in specific contexts; the additive structure of the language is visible across the corpus rather than in any single observation, and the model does not seem to abstract away the interaction completely.
 
-Full model results are in Appendix \ref{sec-appendix-component-models}; we describe them here and visualize them in @fig-toy-effects and @fig-toy-overlap.
+Full model results are in Appendix \ref{sec-appendix-component-models}; we describe them here and visualize them in @fig-toy and @fig-toy-overlap.
 
 Each effect's size in the language predicts its own size in the representation and not the others', so the decomposition is specific to the component it names, and of the three the item effect takes the largest share at every width.
 
@@ -707,31 +720,6 @@ The extent to which the interaction is encoded in the model's representation doe
 Width governs geometry as well as magnitude. At a hidden width of 8 the item and class effects overlap `r fv("item_class", 8, kindv = "overlap")` times as much as an arbitrary orientation would give; by width 256 they overlap `r fv("item_class", 256, kindv = "overlap")` times as much, which is below chance (`r cf("item_class", "width", kindv = "overlap")`). The interaction's overlap with the two margins follows the same course more weakly (@fig-toy-overlap). A narrow layer thus does not merely represent less of the interaction, it also forces the components it does represent onto shared directions, and given room the learner separates them by more than chance.
 
 Which components are forced together depends on which subspaces compete, not on the total structure. The item and class effects need a fixed twelve directions between them however much interaction structure the language holds, and their overlap accordingly crosses chance at the same width whether the interaction spans 4 dimensions or 177. A large interaction runs out of room for itself well before it pushes the item and class effects together. How much of each component the model builds, and how separately it keeps them, therefore depends on how wide the hidden layer is rather than on how many dimensions the interaction spans.
-
-```{r}
-#| label: fig-toy-effects
-#| fig-env: figure*
-#| fig-width: 6.3
-#| fig-height: 3.4
-#| out-width: "100%"
-#| fig-cap: "Fitted share of the representation taken by each component, against hidden width, with one line per rank of the interaction planted in the language and 95% intervals. Rows are the two activations, columns the three measured components. Effect sizes are held at their means. Were capacity the governing quantity, rank would separate the lines as strongly as width slopes them."
-RNKC <- setNames(colorRampPalette(c("#F2D493", "#7A5407"))(4), sort(unique(rpred$r_int[!is.na(rpred$r_int)])))
-rpred |>
-  filter(kind == "size", grid == "arch") |>
-  mutate(component = factor(component, c("item", "class", "interaction")),
-         arm = factor(arm, c("relu", "linear"), c("ReLU", "linear"))) |>
-  ggplot(aes(width, epred, color = factor(r_int), fill = factor(r_int))) +
-  geom_ribbon(aes(ymin = lo, ymax = hi), alpha = .14, color = NA) +
-  geom_line(linewidth = .6) +
-  facet_grid(arm ~ component,
-             labeller = labeller(component = function(z) paste("measured", z))) +
-  scale_color_manual(values = RNKC, name = "interaction rank\nin the language") +
-  scale_fill_manual(values = RNKC, guide = "none") +
-  scale_x_continuous(trans = "log2", breaks = sort(unique(rpred$width))) +
-  coord_cartesian(ylim = c(0, 1)) +
-  labs(x = "hidden width", y = "share of the representation") +
-  theme_paper(8) + theme(legend.position = "right")
-```
 
 ```{r}
 #| label: fig-toy-overlap
@@ -1134,6 +1122,31 @@ rcrwd |>
 ![Every coefficient of @eq-ordbeta, with 66% and 95% posterior intervals. Columns are the three measured components, one fitted model each. The upper block is the three effect sizes in the language, whose diagonal is the specificity check; the lower block is the architecture terms, where *effect size* refers to the panel's own component. The two blocks are drawn on separate x scales, since the language terms span a range several times wider than the architecture terms.](fig-toy-coefs.pdf){#fig-toy-coefs width="100%" fig-env="figure*"}
 
 ![The fitted surface of @eq-ordbeta with the rank of the interaction in the language broken out as rows, rather than held at its mean as in @fig-toy-effects. Columns are the three measured components and lines are hidden widths, with 95% intervals. Rows that look alike indicate that the rank an interaction requires does not constrain what the learner represents of it.](fig-toy-effects-full.pdf){#fig-toy-effects-full width="100%" fig-env="figure*"}
+
+```{r}
+#| label: fig-toy-effects
+#| fig-env: figure*
+#| fig-width: 6.3
+#| fig-height: 3.4
+#| out-width: "100%"
+#| fig-cap: "Fitted share of the representation taken by each component, against hidden width, with one line per rank of the interaction planted in the language and 95% intervals. Rows are the two activations, columns the three measured components. Effect sizes are held at their means. Were capacity the governing quantity, rank would separate the lines as strongly as width slopes them."
+RNKC <- setNames(colorRampPalette(c("#F2D493", "#7A5407"))(4), sort(unique(rpred$r_int[!is.na(rpred$r_int)])))
+rpred |>
+  filter(kind == "size", grid == "arch") |>
+  mutate(component = factor(component, c("item", "class", "interaction")),
+         arm = factor(arm, c("relu", "linear"), c("ReLU", "linear"))) |>
+  ggplot(aes(width, epred, color = factor(r_int), fill = factor(r_int))) +
+  geom_ribbon(aes(ymin = lo, ymax = hi), alpha = .14, color = NA) +
+  geom_line(linewidth = .6) +
+  facet_grid(arm ~ component,
+             labeller = labeller(component = function(z) paste("measured", z))) +
+  scale_color_manual(values = RNKC, name = "interaction rank\nin the language") +
+  scale_fill_manual(values = RNKC, guide = "none") +
+  scale_x_continuous(trans = "log2", breaks = sort(unique(rpred$width))) +
+  coord_cartesian(ylim = c(0, 1)) +
+  labs(x = "hidden width", y = "share of the representation") +
+  theme_paper(8) + theme(legend.position = "right")
+```
 
 # Model Details {#sec-appendix-models}
 
