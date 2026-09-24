@@ -138,7 +138,11 @@ cat(sprintf("  grouping: %s  ->  %s
 cat(sprintf("  %d chains x %d iter (%d warmup), adapt_delta %.2f
 ", CHAINS, ITER, WARMUP,
             ADAPT_DELTA))
-cat(sprintf("  %d cells, %d weight combinations%s\n", nrow(d), nlevels(droplevels(d$key)),
+# Report the levels of the grouping actually in use, not always key: the log said
+# "189 weight combinations" while the model was grouping by 756 languages.
+n_grp <- if (GROUPING == "key") nlevels(droplevels(d$key)) else nlevels(droplevels(d$lang))
+cat(sprintf("  %d cells, %d %s%s\n", nrow(d), n_grp,
+            if (GROUPING == "key") "weight combinations" else "languages",
             if (DEMO) "  [DEMO: subsampled, few iterations, DO NOT REPORT]" else ""))
 
 # The component's OWN planted strength is crossed with width and rank: a * b * c expands to all
