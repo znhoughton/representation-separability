@@ -1113,18 +1113,6 @@ They differ in two ways that matter elsewhere in the paper. The training corpora
 
 {{< pagebreak >}}
 
-# Positional Embeddings Are Not the Source {#sec-appendix-positions}
-
-One architectural explanation of the interaction has to be ruled out before it can be read as a fact about lexical representations. The BabyLMs add a *learned absolute position embedding* at the input. The two classes of a linguistic category are not positionally interchangeable in a sentence, since subjects precede objects and nouns and verbs occupy different slots, so a representation that varies with position varies with the class. If that is what the decomposition is picking up, the interaction would be an artifact of where words sit rather than of how they are represented.
-
-We re-extracted every OPT-BabyLM model with the positional embeddings zeroed out and measured it identically. The ablation was verified per model rather than assumed: with the embedding zeroed, the same token at two different offsets must give identical layer-0 states, and it does, in every model (drift $0.0$ to machine precision). Pythia has no such module, so there is nothing to zero there.
-
-We measure the class effect's share of class-relevant structure which is the class effect divided by the sum of the class effect and the interaction, which we call the *portable fraction*. If positions were manufacturing the interaction, removing them should leave a larger share of what distinguishes the two classes in a direction shared across words. Absolute sizes cannot be compared here: zeroing the embeddings in a model that was trained with them is a heavy intervention, and it shrinks every component at once, the class effect included.
-
-```{r}
-#| label: tbl-posabl
-#| tbl-cap: "Trained OPT-BabyLM at the deepest layer, with absolute position embeddings intact and zeroed. Sizes are shares of the item-by-class structure and the portable fraction is the class effect divided by the sum of the class effect and the interaction."
-
 # Stimulus Counts {#sec-appendix-stimuli}
 
 ```{r}
@@ -1139,55 +1127,6 @@ tibble::tribble(
   kbl(booktabs = TRUE, align = "lrl", linesep = "", escape = FALSE) |>
   kable_styling(latex_options = c("HOLD_position"), font_size = 8)
 ```
-
-{{< pagebreak >}}
-
-# The Decomposition {#sec-appendix-math}
-
-## The item-by-class means {#sec-appendix-math-grid}
-
-![Each word in each class is observed in many contexts, and those observations are averaged within the pairing to give one of the item-by-class means. Every one of them is a vector in $\mathbb{R}^d$, and every item appears in every class.](fig-grid.pdf){#fig-grid width="100%"}
-
-A word used in a given class is observed in many contexts, and the representation differs a little in each. Averaging those observations within the pairing gives one of the item-by-class means: for items $i \in \{1,\dots,I\}$ crossed with classes $c \in \{1,\dots,C\}$, $M[i,c] \in \mathbb{R}^d$ is the mean representation of item $i$ in class $c$ (@fig-grid). An item observed in only one class is dropped, as is an item with fewer than 10 tokens in either class, so the set is complete and every mean rests on a comparable number of observations. Because every item appears at every class, the means arrange into $I$ by $C$ positions, and the rest of this appendix calls that arrangement the grid when what matters is the positions rather than the vectors sitting at them. The variation across contexts that the averaging sets aside is not discarded; it is what the two splits of @sec-measure are drawn from.
-
-## Sizes {#sec-appendix-math-sizes}
-
-![How many positions of the grid each component occupies. $\alpha_i$ does not depend on the class, so it occupies all $C$ positions of its row; $\beta_c$ does not depend on the item, so it occupies all $I$ positions of its column; $\gamma_{ic}$ takes its own value at every position and is never repeated.](fig-replication.pdf){#fig-replication width="100%"}
-
-Since the effects are centered along their respective axes, their cross-terms cancel when summed over the full grid. Thus the total squared length partitions exactly:
-
-$$
-\sum_{i,c}\lVert M[i,c]-\mu\rVert^{2}
-= C\sum_{i}\lVert\alpha_i\rVert^{2}
-+ I\sum_{c}\lVert\beta_c\rVert^{2}
-+ \sum_{i,c}\lVert\gamma_{ic}\rVert^{2},
-$$
-
-Sizes are reported as shares of the total. All three terms scale linearly in $I$, so the shares do not depend on how many items there are and are comparable across categories of different size.
-
-The above decomposition, however, ignores the role of context. In order to estimate how the three components and context vary in size, we can instead decompose each representation into its pairing mean and its deviation from that mean, giving the standard within–between partition:
-
-$$
-\sum_{x}\lVert x-\bar x\rVert^{2}
-=
-\underbrace{\sum_{i,c}\sum_{x\in(i,c)}
-\lVert x-\hat M[i,c]\rVert^{2}}_{\text{within a pairing}}
-+
-\underbrace{\sum_{i,c}n_{ic}
-\lVert\hat M[i,c]-\bar x\rVert^{2}}_{\text{between pairings}}.
-$$
-
-The between-pairing term is the variation partitioned into item, class, and item-by-class components above, while the within-pairing term captures variation across contexts. The resulting context variance and the $\alpha$, $\beta$, and $\gamma$ variance components together partition the variance of the original representations.
-
-## The overlaps and their chance level {#sec-appendix-math-overlap}
-
-The component sizes describe how much variation each component accounts for, but not whether the components occupy the same directions in $\mathbb{R}^d$. To measure their overlap, we project each component into a target subspace and ask how much of its squared length is retained. Specifically, we project $\alpha$ into the subspace spanned by $\beta$, $\beta$ into the subspace spanned by $\alpha$, and $\gamma$ into the subspace jointly spanned by $\alpha$ and $\beta$. If $S$ is an orthonormal basis for the target subspace and $V$ is the component being projected, the overlap is
-
-$$
-\frac{\lVert VS\rVert_F^2}{\lVert V\rVert_F^2}
-$$ Thus, an overlap of zero means that the component is orthogonal to the target subspace, whereas an overlap of one means that it lies entirely within it. Because the projection uses squared lengths, opposite directions contribute equally rather than canceling. We use the leading singular vectors of each target component to define its subspace, with the number of directions determined by its participation ratio. The number of directions in the target subspace therefore determines its chance overlap under random orientation.
-
-The chance level for overlap is $r/d$, where $r$ is the dimensionality of the target subspace and $d$ is the full representation dimension. A randomly oriented component therefore has an expected fraction $r/d$ of its squared length in the target subspace. At $d=2048$, for example, the chance level is $0.0005$ for a one-dimensional class subspace. We therefore interpret observed overlaps relative to this chance level.
 
 {{< pagebreak >}}
 
@@ -1242,3 +1181,65 @@ rd("llm_unified_form.csv") |>
 ```
 
 Removing the position embeddings makes these representations *less* separable, not more. The portable fraction falls in every model, from 0.439 to 0.264, from 0.468 to 0.253, and from 0.333 to 0.198 (Table \ref{tbl-posabl}). Whatever the absolute position embedding contributes, it is contributing to the part of class structure that *is* carried by a shared direction. Take it away and what remains is more word-specific, not less. The interaction is not an artifact of position.
+
+# Positional Embeddings Are Not the Source {#sec-appendix-positions}
+
+One architectural explanation of the interaction has to be ruled out before it can be read as a fact about lexical representations. The BabyLMs add a *learned absolute position embedding* at the input. The two classes of a linguistic category are not positionally interchangeable in a sentence, since subjects precede objects and nouns and verbs occupy different slots, so a representation that varies with position varies with the class. If that is what the decomposition is picking up, the interaction would be an artifact of where words sit rather than of how they are represented.
+
+We re-extracted every OPT-BabyLM model with the positional embeddings zeroed out and measured it identically. The ablation was verified per model rather than assumed: with the embedding zeroed, the same token at two different offsets must give identical layer-0 states, and it does, in every model (drift $0.0$ to machine precision). Pythia has no such module, so there is nothing to zero there.
+
+We measure the class effect's share of class-relevant structure which is the class effect divided by the sum of the class effect and the interaction, which we call the *portable fraction*. If positions were manufacturing the interaction, removing them should leave a larger share of what distinguishes the two classes in a direction shared across words. Absolute sizes cannot be compared here: zeroing the embeddings in a model that was trained with them is a heavy intervention, and it shrinks every component at once, the class effect included.
+
+```{r}
+#| label: tbl-posabl
+#| tbl-cap: "Trained OPT-BabyLM at the deepest layer, with absolute position embeddings intact and zeroed. Sizes are shares of the item-by-class structure and the portable fraction is the class effect divided by the sum of the class effect and the interaction."
+
+# The Decomposition {#sec-appendix-math}
+
+## The item-by-class means {#sec-appendix-math-grid}
+
+![Each word in each class is observed in many contexts, and those observations are averaged within the pairing to give one of the item-by-class means. Every one of them is a vector in $\mathbb{R}^d$, and every item appears in every class.](fig-grid.pdf){#fig-grid width="100%"}
+
+A word used in a given class is observed in many contexts, and the representation differs a little in each. Averaging those observations within the pairing gives one of the item-by-class means: for items $i \in \{1,\dots,I\}$ crossed with classes $c \in \{1,\dots,C\}$, $M[i,c] \in \mathbb{R}^d$ is the mean representation of item $i$ in class $c$ (@fig-grid). An item observed in only one class is dropped, as is an item with fewer than 10 tokens in either class, so the set is complete and every mean rests on a comparable number of observations. Because every item appears at every class, the means arrange into $I$ by $C$ positions, and the rest of this appendix calls that arrangement the grid when what matters is the positions rather than the vectors sitting at them. The variation across contexts that the averaging sets aside is not discarded; it is what the two splits of @sec-measure are drawn from.
+
+## Sizes {#sec-appendix-math-sizes}
+
+![How many positions of the grid each component occupies. $\alpha_i$ does not depend on the class, so it occupies all $C$ positions of its row; $\beta_c$ does not depend on the item, so it occupies all $I$ positions of its column; $\gamma_{ic}$ takes its own value at every position and is never repeated.](fig-replication.pdf){#fig-replication width="100%"}
+
+Since the effects are centered along their respective axes, their cross-terms cancel when summed over the full grid. Thus the total squared length partitions exactly:
+
+$$
+\sum_{i,c}\lVert M[i,c]-\mu\rVert^{2}
+= C\sum_{i}\lVert\alpha_i\rVert^{2}
++ I\sum_{c}\lVert\beta_c\rVert^{2}
++ \sum_{i,c}\lVert\gamma_{ic}\rVert^{2},
+$$
+
+Sizes are reported as shares of the total. All three terms scale linearly in $I$, so the shares do not depend on how many items there are and are comparable across categories of different size.
+
+The above decomposition, however, ignores the role of context. In order to estimate how the three components and context vary in size, we can instead decompose each representation into its pairing mean and its deviation from that mean, giving the standard within–between partition:
+
+$$
+\sum_{x}\lVert x-\bar x\rVert^{2}
+=
+\underbrace{\sum_{i,c}\sum_{x\in(i,c)}
+\lVert x-\hat M[i,c]\rVert^{2}}_{\text{within a pairing}}
++
+\underbrace{\sum_{i,c}n_{ic}
+\lVert\hat M[i,c]-\bar x\rVert^{2}}_{\text{between pairings}}.
+$$
+
+The between-pairing term is the variation partitioned into item, class, and item-by-class components above, while the within-pairing term captures variation across contexts. The resulting context variance and the $\alpha$, $\beta$, and $\gamma$ variance components together partition the variance of the original representations.
+
+## The overlaps and their chance level {#sec-appendix-math-overlap}
+
+The component sizes describe how much variation each component accounts for, but not whether the components occupy the same directions in $\mathbb{R}^d$. To measure their overlap, we project each component into a target subspace and ask how much of its squared length is retained. Specifically, we project $\alpha$ into the subspace spanned by $\beta$, $\beta$ into the subspace spanned by $\alpha$, and $\gamma$ into the subspace jointly spanned by $\alpha$ and $\beta$. If $S$ is an orthonormal basis for the target subspace and $V$ is the component being projected, the overlap is
+
+$$
+\frac{\lVert VS\rVert_F^2}{\lVert V\rVert_F^2}
+$$ Thus, an overlap of zero means that the component is orthogonal to the target subspace, whereas an overlap of one means that it lies entirely within it. Because the projection uses squared lengths, opposite directions contribute equally rather than canceling. We use the leading singular vectors of each target component to define its subspace, with the number of directions determined by its participation ratio. The number of directions in the target subspace therefore determines its chance overlap under random orientation.
+
+The chance level for overlap is $r/d$, where $r$ is the dimensionality of the target subspace and $d$ is the full representation dimension. A randomly oriented component therefore has an expected fraction $r/d$ of its squared length in the target subspace. At $d=2048$, for example, the chance level is $0.0005$ for a one-dimensional class subspace. We therefore interpret observed overlaps relative to this chance level.
+
+{{< pagebreak >}}
+
