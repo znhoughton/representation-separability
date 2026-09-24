@@ -54,6 +54,19 @@ WARMUP      <- as.integer(Sys.getenv("WARMUP", "1000"))
 ADAPT_DELTA <- as.numeric(Sys.getenv("ADAPT_DELTA", "0.9"))
 CORES       <- as.integer(Sys.getenv("CORES", as.character(CHAINS)))
 stopifnot(WARMUP < ITER, CHAINS >= 1)
+
+# GROUPING. `key` is the weight combination (189 of them); `lang` is key crossed with the
+# interaction rank (756), which is the language specification that was actually generated.
+# Nested keeps both, and that matters for what stays estimable: width varies within `lang`
+# (4.9 distinct widths per group) so it is clean either way, while rank varies within `key` but
+# NOT within `lang`, so dropping the `key` level would push rank into the same between-group
+# block the effect sizes sit in. Seeds are replicates of one specification and share an intercept.
+GROUPING <- Sys.getenv("GROUPING", "nested")
+RE_TERM  <- switch(GROUPING,
+                   nested = "(1 | key) + (1 | lang)",
+                   key    = "(1 | key)",
+                   lang   = "(1 | lang)",
+                   stop("GROUPING must be one of: nested, key, lang"))
 CACHE  <- file.path(REPO, "model_cache", "toy"); dir.create(CACHE, recursive = TRUE, showWarnings = FALSE)
 FIGDIR <- file.path(REPO, "paper");             dir.create(FIGDIR, recursive = TRUE, showWarnings = FALSE)
 SUFFIX <- if (DEMO) "_demo" else ""
@@ -81,7 +94,11 @@ d <- read_csv(file.path(REPO, "data", "artificial_language_grid.csv"), show_col_
   mutate(rank_tot  = r_item + r_class + r_int,
          log2_d    = log2(d)        - mean(log2(d)),
          log2_rank = log2(rank_tot) - mean(log2(rank_tot)),
-         key       = factor(key))
+         key       = factor(key),
+         # The generated corpus depends on the weights, the interaction rank AND the seed, but a
+         # seed is a re-realisation of the same language specification rather than a different
+         # language, so seeds share an intercept and `lang` stops at (weights, rank).
+         lang      = factor(paste(key, r_int, sep = "_")))
 
 # CENTRE EVERY PREDICTOR, not just the two architecture ones. Leaving the effect sizes raw put
 # the intercept at a language containing none of that component, which is both an odd place to
@@ -99,6 +116,8 @@ if (DEMO) {
   set.seed(SEED)
   d <- d |> group_by(d, r_int) |> slice_sample(n = 60) |> ungroup()
 }
+cat(sprintf("  grouping: %s  ->  %s
+", GROUPING, RE_TERM))
 cat(sprintf("  %d chains x %d iter (%d warmup), adapt_delta %.2f
 ", CHAINS, ITER, WARMUP,
             ADAPT_DELTA))
@@ -117,7 +136,7 @@ OWN <- c(size_item = "c_item", size_class = "c_class", size_interaction = "c_int
 
 rhs_for <- function(v) {
   other <- setdiff(unname(OWN), OWN[[v]])
-  paste0(OWN[[v]], " * log2_d * log2_rank + ", paste(other, collapse = " + "), " + (1 | key)")
+  paste0(OWN[[v]], " * log2_d * log2_rank + ", paste(other, collapse = " + "), " + ", RE_TERM)
 }
 
 # brms's file_refit = "on_change" hashes the formula, the data and the priors, but
