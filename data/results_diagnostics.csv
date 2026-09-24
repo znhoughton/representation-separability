@@ -1,0 +1,11 @@
+model,kind,arm,component,n_draws,max_rhat,worst_rhat_param,min_ess_bulk,min_ess_tail,divergences,treedepth_hits,converged
+ordbeta_size_class,size,relu,class,36000,1.010035244631652,b_c_item,1950.530585054414,4009.837116494887,0,0,TRUE
+ordbeta_size_class_linear,size,linear,class,36000,1.0301092750375207,b_Intercept,503.169151671443,1195.609486922385,0,0,FALSE
+ordbeta_size_interaction,size,relu,interaction,36000,1.0045015524599379,b_c_int:log2_rank,2313.406245162433,4960.953868272737,0,0,TRUE
+ordbeta_size_interaction_linear,size,linear,interaction,36000,1.0015319334378905,"r_lang[0.5_0.5_0_6.0_16,Intercept]",7419.630064110869,14927.925227888705,0,0,TRUE
+ordbeta_size_item,size,relu,item,36000,1.0052439309348016,b_Intercept,2264.2862198331622,4660.203920071804,0,0,TRUE
+ordbeta_size_item_linear,size,linear,item,36000,1.0269014845000888,b_c_int,496.92073026954677,1018.6851866722925,0,0,FALSE
+overlap_int_margins_int,overlap,relu,int_margins_int,36000,1.004147485661139,b_c_int,2792.2853025368167,5616.692217521063,0,0,TRUE
+overlap_int_margins_int_linear,overlap,linear,int_margins_int,36000,1.0140579562582803,b_Intercept,709.0074119288124,1639.5453949883024,0,0,FALSE
+overlap_item_class,overlap,relu,item_class,36000,1.0011229424907573,lp__,7085.539239546784,11690.697835173267,0,0,TRUE
+overlap_item_class_linear,overlap,linear,item_class,36000,1.0013954656498836,b_c_int,6939.939277011429,13921.306684115985,0,0,TRUE
