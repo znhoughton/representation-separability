@@ -26,3 +26,15 @@ Chain 5 finished in 5596.6 seconds.
 Chain 3 finished in 5643.0 seconds.
 Chain 12 finished in 5646.7 seconds.
 Chain 1 finished in 5660.5 seconds.
+Chain 4 finished in 5851.9 seconds.
+
+All 12 chains finished successfully.
+Mean chain execution time: 5546.2 seconds.
+Total execution time: 5852.4 seconds.
+
+Loading required namespace: rstan
+
+=== size_class ===
+Start sampling
+Running MCMC with 12 parallel chains...
+
