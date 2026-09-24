@@ -1,0 +1,17 @@
+nohup: ignoring input
+  grouping=lang  chains=12  iter=6000  warmup=3000  adapt_delta=0.9
+  arms: identity
+  total post-warmup draws per model: 36000
+
+============================================================
+  ACT=identity
+============================================================
+CmdStan path set to: /opt/modeling/zhoughton/.cmdstan/cmdstan-2.40.0
+  grouping: lang  ->  (1 | lang)
+  12 chains x 6000 iter (3000 warmup), adapt_delta 0.90
+  18609 cells, 756 languages
+
+=== size_item ===
+Start sampling
+Running MCMC with 12 parallel chains...
+
