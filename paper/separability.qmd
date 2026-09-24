@@ -617,7 +617,7 @@ $$
 \end{aligned}
 $$ {#eq-toy}
 
-Each term is isotropically scaled to unit variance before it is weighted[^2] so changing the weights changes the mix of the three effects without changing how much signal there is in total.
+Each term is isotropically scaled to unit variance before it is weighted,[^2] so changing the weights changes the mix of the three effects without changing how much signal there is in total.
 
 [^2]: Specifically, each observation consists of a form in a specific class and context, paired with that term's raw contribution to the next-token distribution for that observation. We normalize this dataset by dividing each value in it by the total standard deviation across all observations. This is necessary because different matrices can contain the same information at different scales. For example, imagine a matrix with random numbers, and that same matrix with each number multiplied by two. The information is the same, but the weights will have a larger effect on the latter dataset.
 
@@ -709,6 +709,55 @@ The rank the interaction requires does not determine how much of it is built. Ra
 Crowding governs geometry rather than magnitude. At a hidden width of 8 the item and class effects overlap `r fv("item_class", 8, kindv = "overlap")` times as much as an arbitrary orientation would give; by width 256 they overlap `r fv("item_class", 256, kindv = "overlap")` times as much, which is below chance (`r cf("item_class", "width", kindv = "overlap")`). The interaction's overlap with the two margins follows the same course more weakly (@fig-toy-overlap). A narrow layer thus does not merely represent less of the interaction, it also forces the components it does represent onto shared directions, and given room the learner separates them by more than chance.
 
 Which components are forced together depends on which subspaces compete, not on the total structure. The item and class effects need a fixed twelve directions between them however much interaction structure the language holds, and their overlap accordingly crosses chance at the same width whether the planted interaction has rank 4 or rank 177 (Table \ref{tbl-crowding-cross}). A rank-177 interaction crowds itself long before it crowds an eight-dimensional item effect against a four-dimensional class one.
+
+```{r}
+#| label: fig-toy-effects
+#| fig-env: figure*
+#| fig-width: 6.3
+#| fig-height: 3.4
+#| out-width: "100%"
+#| fig-cap: "Fitted share of the representation taken by each component, against hidden width, with one line per rank of the interaction planted in the language and 95% intervals. Rows are the two activations, columns the three measured components. Effect sizes are held at their means. Were capacity the governing quantity, rank would separate the lines as strongly as width slopes them."
+RNKC <- setNames(colorRampPalette(c("#F2D493", "#7A5407"))(4), sort(unique(rpred$r_int[!is.na(rpred$r_int)])))
+rpred |>
+  filter(kind == "size", grid == "arch") |>
+  mutate(component = factor(component, c("item", "class", "interaction")),
+         arm = factor(arm, c("relu", "linear"), c("ReLU", "linear"))) |>
+  ggplot(aes(width, epred, color = factor(r_int), fill = factor(r_int))) +
+  geom_ribbon(aes(ymin = lo, ymax = hi), alpha = .14, color = NA) +
+  geom_line(linewidth = .6) +
+  facet_grid(arm ~ component,
+             labeller = labeller(component = function(z) paste("measured", z))) +
+  scale_color_manual(values = RNKC, name = "interaction rank\nin the language") +
+  scale_fill_manual(values = RNKC, guide = "none") +
+  scale_x_continuous(trans = "log2", breaks = sort(unique(rpred$width))) +
+  coord_cartesian(ylim = c(0, 1)) +
+  labs(x = "hidden width", y = "share of the representation") +
+  theme_paper(8) + theme(legend.position = "right")
+```
+
+```{r}
+#| label: fig-toy-overlap
+#| fig-width: 3.3
+#| fig-height: 2.6
+#| out-width: "72%"
+#| fig-cap: "Fitted overlap between the item and class effects, as a multiple of the level an arbitrary orientation would give, against hidden width. The dashed line is chance. Above it the two effects share directions more than orientation alone explains; below it the learner has separated them by more than chance."
+rpred |>
+  filter(kind == "overlap", component == "item_class", grid == "arch") |>
+  mutate(arm = factor(arm, c("relu", "linear"), c("ReLU", "linear"))) |>
+  group_by(arm, width) |>
+  summarize(epred = median(exp(epred)), lo = median(exp(lo)), hi = median(exp(hi)),
+            .groups = "drop") |>
+  ggplot(aes(width, epred, color = arm, fill = arm)) +
+  geom_hline(yintercept = 1, linetype = 2, linewidth = .35, color = UO[["grey"]]) +
+  geom_ribbon(aes(ymin = lo, ymax = hi), alpha = .16, color = NA) +
+  geom_line(linewidth = .7) + geom_point(size = 1.2) +
+  scale_color_manual(values = ACT2, name = NULL) +
+  scale_fill_manual(values = ACT2, guide = "none") +
+  scale_x_continuous(trans = "log2", breaks = sort(unique(rpred$width))) +
+  scale_y_log10() +
+  labs(x = "hidden width", y = "item-class overlap\n(multiple of chance)") +
+  theme_paper(8)
+```
 
 # Experiment 2: Language Models {#sec-exp2}
 
@@ -846,6 +895,7 @@ Our evaluation is restricted to English and relies on two linguistic categories 
 \renewcommand{\bibliography}[1]{}
 \clearpage
 ```
+
 \onecolumn
 
 \appendix
@@ -865,6 +915,7 @@ Our evaluation is restricted to English and relies on two linguistic categories 
 \floatplacement{figure}{H}
 \floatplacement{table}{H}
 ```
+
 # Validating the Measure {#sec-appendix-validate}
 
 Experiment 1 builds structure into a language and measures a trained model's representation. However, that approach cannot distinguish a failure of the measure from the model representing the language differently than the structure it was given. Here we remove that ambiguity by constructing representations in which $\mu$, $\alpha$, $\beta$, and $\gamma$ are set directly, with no model or training, and passing the result through the same analysis used for the language models. Ground truth therefore exists at the level where the measure operates.
@@ -1048,7 +1099,6 @@ toy_bylang |>
 
 {{< pagebreak >}}
 
-
 ## Component models {#sec-appendix-component-models}
 
 Table \ref{tbl-component-coefs} reports every coefficient of @eq-ordbeta and @fig-toy-coefs shows them.
@@ -1075,13 +1125,15 @@ rcoef |> filter(kind == "size") |>
 
 ```{r}
 #| label: tbl-component-crowding
-#| tbl-cap: "The crowding contrast, $\beta_{\text{width}} + \beta_{\text{rank}}$, for each measured component. Crowding is the rank the structure needs divided by the hidden width, so on the log scale of @eq-ordbeta the claim that only that ratio matters is the claim that this sum is zero. A contrast whose interval excludes zero is therefore evidence against a pure crowding account for that component."
+#| tbl-cap: "The crowding contrast, the sum of the width and rank coefficients, for each measured component and activation. Crowding is the rank the structure needs divided by the hidden width, so on the log scale of @eq-ordbeta the claim that only that ratio matters is the claim that this sum is zero, and a contrast whose interval excludes zero is evidence against a pure crowding account. The rightmost column marks the rows where the swept rank is the rank that measure depends on; where it is not, the contrast cannot ask the question."
 rcrwd |>
   transmute(arm, component, estimate = g(estimate, 2), error = g(error, 2),
             ci = paste0("[", g(lo95, 2), ", ", g(hi95, 2), "]"),
-            ez = ifelse(excludes_zero, "yes", "no")) |>
-  kbl(booktabs = TRUE, align = "llrrrr", linesep = "", escape = TRUE,
-      col.names = c("arm", "component", "estimate", "error", "95% CI", "excludes zero")) |>
+            ez = ifelse(excludes_zero, "yes", "no"),
+            rel = ifelse(rank_is_relevant, "yes", "no")) |>
+  kbl(booktabs = TRUE, align = "llrrrrr", linesep = "", escape = TRUE,
+      col.names = c("arm", "component", "estimate", "error", "95% CI",
+                    "excludes zero", "rank relevant")) |>
   kable_styling(latex_options = c("HOLD_position"), font_size = 7)
 ```
 
@@ -1159,26 +1211,15 @@ llm |> group_by(construction, model) |>
 
 {{< pagebreak >}}
 
-# Read from the main POS file. It carries the *_noposemb inits for every OPT-BabyLM
+# Read from the main POS file. It carries the \*\_noposemb inits for every OPT-BabyLM
+
 # size under the current estimator, so this table is on the same footing as every
+
 # other table in the paper. (An older, separate ablation CSV used to hold these rows
+
 # but was written by a superseded measure.py; it has been removed.)
-rd("llm_unified_form.csv") |>
-  filter(grepl("babylm", model), grepl("^pretrained", init)) |>
-  group_by(model, init) |>
-  slice_max(layer, n = 1, with_ties = FALSE) |>
-  ungroup() |>
-  transmute(model = sub(".*/", "", sub("-20eps-seed964", "", model)),
-            positions = ifelse(grepl("noposemb$", init), "zeroed", "intact"),
-            class = std_size_class, interaction = std_size_interaction,
-            portable = std_size_class / (std_size_class + std_size_interaction)) |>
-  arrange(match(model, c("opt-babylm-125m", "opt-babylm-350m", "opt-babylm-1.3B")),
-          desc(positions)) |>
-  transmute(model, positions, `class` = g(class, 3), `interaction` = g(interaction, 3),
-            `portable fraction` = g(portable, 3)) |>
-  kbl(longtable = FALSE, booktabs = TRUE, align = "llrrr", linesep = "") |>
-  kable_styling(font_size = 9)
-```
+
+rd("llm_unified_form.csv") \|\> filter(grepl("babylm", model), grepl("\^pretrained", init)) \|\> group_by(model, init) \|\> slice_max(layer, n = 1, with_ties = FALSE) \|\> ungroup() \|\> transmute(model = sub(".\*/", "", sub("-20eps-seed964", "", model)), positions = ifelse(grepl("noposemb\$", init), "zeroed", "intact"), class = std_size_class, interaction = std_size_interaction, portable = std_size_class / (std_size_class + std_size_interaction)) \|\> arrange(match(model, c("opt-babylm-125m", "opt-babylm-350m", "opt-babylm-1.3B")), desc(positions)) \|\> transmute(model, positions, `class` = g(class, 3), `interaction` = g(interaction, 3), `portable fraction` = g(portable, 3)) \|\> kbl(longtable = FALSE, booktabs = TRUE, align = "llrrr", linesep = "") \|\> kable_styling(font_size = 9) \`\`\`
 
 Removing the position embeddings makes these representations *less* separable, not more. The portable fraction falls in every model, from 0.439 to 0.264, from 0.468 to 0.253, and from 0.333 to 0.198 (Table \ref{tbl-posabl}). Whatever the absolute position embedding contributes, it is contributing to the part of class structure that *is* carried by a shared direction. Take it away and what remains is more word-specific, not less. The interaction is not an artifact of position.
 
@@ -1190,9 +1231,7 @@ We re-extracted every OPT-BabyLM model with the positional embeddings zeroed out
 
 We measure the class effect's share of class-relevant structure which is the class effect divided by the sum of the class effect and the interaction, which we call the *portable fraction*. If positions were manufacturing the interaction, removing them should leave a larger share of what distinguishes the two classes in a direction shared across words. Absolute sizes cannot be compared here: zeroing the embeddings in a model that was trained with them is a heavy intervention, and it shrinks every component at once, the class effect included.
 
-```{r}
-#| label: tbl-posabl
-#| tbl-cap: "Trained OPT-BabyLM at the deepest layer, with absolute position embeddings intact and zeroed. Sizes are shares of the item-by-class structure and the portable fraction is the class effect divided by the sum of the class effect and the interaction."
+\`\`\`{r} #\| label: tbl-posabl #\| tbl-cap: "Trained OPT-BabyLM at the deepest layer, with absolute position embeddings intact and zeroed. Sizes are shares of the item-by-class structure and the portable fraction is the class effect divided by the sum of the class effect and the interaction."
 
 # The Decomposition {#sec-appendix-math}
 
@@ -1242,4 +1281,3 @@ $$ Thus, an overlap of zero means that the component is orthogonal to the target
 The chance level for overlap is $r/d$, where $r$ is the dimensionality of the target subspace and $d$ is the full representation dimension. A randomly oriented component therefore has an expected fraction $r/d$ of its squared length in the target subspace. At $d=2048$, for example, the chance level is $0.0005$ for a one-dimensional class subspace. We therefore interpret observed overlaps relative to this chance level.
 
 {{< pagebreak >}}
-
