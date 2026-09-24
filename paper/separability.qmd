@@ -621,7 +621,7 @@ Each term is isotropically scaled to unit variance before it is weighted,[^2] so
 
 [^2]: Specifically, each observation consists of a form in a specific class and context, paired with that term's raw contribution to the next-token distribution for that observation. We normalize this dataset by dividing each value in it by the total standard deviation across all observations. This is necessary because different matrices can contain the same information at different scales. For example, imagine a matrix with random numbers, and that same matrix with each number multiplied by two. The information is the same, but the weights will have a larger effect on the latter dataset.
 
-The weights $w_\alpha$, $w_\beta$, and $w_\gamma$ in @eq-toy control how much of the true distribution each of the three effects contributes, and we cross them factorially over $\{0, 0.5, 1, 2\}$: zero removes an effect from the language altogether, and the other three values make an effect half as strong as another, equal to it, or twice it. Similarly, $w_{\text{ctx}}$ governs how much the context contributes, so we cross those languages with three context weights: $\{0.5, 2.0, 6.0\}$, ranging from context being a minor part of the true distribution to the dominant one. These terms are subsequently scaled to unit length, such that their squared lengths sum to 1.[^3] Additionally, we train a model on each of the resulting languages at hidden widths of `r paste(sort(unique(toy$d)), collapse = ", ")`, with either a linear or a ReLU activation. Whether the interaction can be given axes of its own depends on how many directions it needs, so we cross every language and width with the interaction given rank `r paste(sort(unique(toy$r_int)), collapse = ", ")` in the language, holding the item and class ranks fixed at `r unique(toy$r_item)` and `r unique(toy$r_class)` respectively. The whole grid is then run with five random seeds giving `r format(nrow(toy), big.mark = ",")` runs in all, of which `r sprintf("%.1f%%", 100 * mean(toy$converged))` trained to convergence.
+The weights $w_\alpha$, $w_\beta$, and $w_\gamma$ in @eq-toy control how much of the true distribution each of the three effects contributes, and we cross them factorially over $\{0, 0.5, 1, 2\}$: zero removes an effect from the language altogether, and the other three values make an effect half as strong as another, equal to it, or twice it. Similarly, $w_{\text{ctx}}$ governs how much the context contributes, so we cross those languages with three context weights: $\{0.5, 2.0, 6.0\}$, ranging from context being a minor part of the true distribution to the dominant one. These terms are subsequently scaled to unit length, such that their squared lengths sum to 1.[^3] Additionally, we train a model on each of the resulting languages at hidden widths of `r paste(sort(unique(toy$d)), collapse = ", ")`, with either a linear or a ReLU activation. Whether the interaction can be given axes of its own depends on how many directions it needs, so we cross every language and width with the interaction given rank `r paste(sort(unique(toy$r_int)), collapse = ", ")` in the language, holding the item and class ranks fixed at `r unique(toy$r_item)` and `r unique(toy$r_class)` respectively. The whole grid is then run with five random seeds giving `r format(nrow(toy), big.mark = ",")` runs in all, of which `r sprintf("%.1f%%", 100 * mean(toy$converged))` trained to convergence; Appendix \ref{sec-appendix-grid} lists every factor and its levels.
 
 [^3]: This makes the resulting languages more comparable by enforcing the same total signal (i.e., the variance of the weighted sum in @eq-toy is held constant), despite individual differences in the amount that each individual term contributes.
 
@@ -919,6 +919,38 @@ Our evaluation is restricted to English and relies on two linguistic categories 
 \floatplacement{figure}{H}
 \floatplacement{table}{H}
 ```
+
+# The Artificial-Language Grid {#sec-appendix-grid}
+
+Table \ref{tbl-grid} lists every factor crossed in Experiment 1 and its levels. The three effect weights and the context weight define the language; the interaction's rank is a property of the language too, since it sets how many directions the interaction spans. Hidden width and activation belong to the learner, and the seed redraws both the language's realization and the model's initialization.
+
+```{r}
+#| label: tbl-grid
+#| tbl-cap: "The Experiment 1 grid. The first five rows define an artificial language, the next two the learner, and the last is replication. Item and class ranks are held fixed so that the interaction's rank is the only one that varies. Crossing every level gives 38,400 cells; the three languages in which all three effect weights are zero contain no item-by-class structure at all and are excluded, leaving the reported total."
+.k <- toy$key |> strsplit("_") |> do.call(what = rbind) |>
+  as.data.frame() |> lapply(\(x) sort(unique(as.numeric(x))))
+lv <- function(x) paste(formatC(x, format = "g"), collapse = ", ")
+tibble::tribble(
+  ~factor,                      ~levels,                              ~n,
+  "item weight",                lv(.k[[1]]),                          length(.k[[1]]),
+  "class weight",               lv(.k[[2]]),                          length(.k[[2]]),
+  "interaction weight",         lv(.k[[3]]),                          length(.k[[3]]),
+  "context weight",             lv(.k[[4]]),                          length(.k[[4]]),
+  "interaction rank",           lv(sort(unique(toy$r_int))),          length(unique(toy$r_int)),
+  "hidden width",               lv(sort(unique(toy$d))),              length(unique(toy$d)),
+  "activation",                 "linear, ReLU",                       2L,
+  "seed",                       lv(sort(unique(toy$seed))),           length(unique(toy$seed))) |>
+  kbl(booktabs = TRUE, align = "llr", linesep = "", escape = TRUE,
+      col.names = c("factor", "levels", "n")) |>
+  kable_styling(latex_options = c("HOLD_position"), font_size = 8) |>
+  pack_rows("language", 1, 5) |>
+  pack_rows("learner", 6, 7) |>
+  pack_rows("replication", 8, 8)
+```
+
+Item rank is fixed at `r unique(toy$r_item)` and class rank at `r unique(toy$r_class)`, so the structure a language requires is `r unique(toy$r_item) + unique(toy$r_class)` directions plus the interaction's rank, running from `r min(toy$rank)` to `r max(toy$rank)`. Against the widths above this gives crowding values from `r g(min(toy$capacity), 3)` to `r g(max(toy$capacity), 1)`. Of the `r cm(nrow(toy))` runs, `r sprintf("%.1f%%", 100 * mean(toy$converged))` trained to convergence.
+
+{{< pagebreak >}}
 
 # Validating the Measure {#sec-appendix-validate}
 
