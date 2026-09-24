@@ -78,12 +78,20 @@ RE_TERM  <- switch(GROUPING,
                    stop("GROUPING must be one of: lang, key, nested"))
 CACHE  <- file.path(REPO, "model_cache", "toy"); dir.create(CACHE, recursive = TRUE, showWarnings = FALSE)
 FIGDIR <- file.path(REPO, "paper");             dir.create(FIGDIR, recursive = TRUE, showWarnings = FALSE)
-SUFFIX <- if (DEMO) "_demo" else ""
+# Both activations get the same treatment. The linear arm was previously excluded on the
+# grounds that it cannot synthesise an interaction by construction, but the paper's own result
+# is that it does represent one, so the claim it makes about width being spent elsewhere
+# deserves the same model rather than a median.
+ACT    <- Sys.getenv("ACT", "relu")                 # "relu" or "identity"
+stopifnot(ACT %in% c("relu", "identity"))
+ARM    <- if (ACT == "relu") "" else "_linear"
+SUFFIX <- paste0(ARM, if (DEMO) "_demo" else "")
 
 COMPONENTS <- c(size_item = "item", size_class = "class", size_interaction = "interaction")
 
-# INCLUSION. relu only, since the identity arm cannot synthesise an interaction by construction
-# and so answers a different question. Converged only (0.5% of cells hit the iteration cap).
+# INCLUSION. One activation per fit, set by ACT, so the two arms get the same model rather
+# than one arm getting a model and the other a median. Converged only (0.5% of cells hit
+# the iteration cap).
 #
 # And `resolved`: at least one of the three components has a re-split interval excluding zero,
 # the same rule the descriptive figure uses. Where nothing resolves, the three shares are each a
@@ -99,7 +107,7 @@ COMPONENTS <- c(size_item = "item", size_class = "class", size_interaction = "in
 d <- read_csv(file.path(REPO, "data", "artificial_language_grid.csv"), show_col_types = FALSE) |>
   mutate(resolved = size_item_excludes_zero | size_class_excludes_zero |
                     size_interaction_excludes_zero) |>
-  filter(activation == "relu", converged %in% c(TRUE, "True", "TRUE"), resolved) |>
+  filter(activation == ACT, converged %in% c(TRUE, "True", "TRUE"), resolved) |>
   mutate(rank_tot  = r_item + r_class + r_int,
          log2_d    = log2(d)        - mean(log2(d)),
          log2_rank = log2(rank_tot) - mean(log2(rank_tot)),

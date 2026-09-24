@@ -20,7 +20,14 @@ suppressMessages({
 })
 
 DEMO   <- nzchar(Sys.getenv("DEMO"))
-SUFFIX <- if (DEMO) "_demo" else ""
+# Both activations get the same treatment. The linear arm was previously excluded on the
+# grounds that it cannot synthesise an interaction by construction, but the paper's own result
+# is that it does represent one, so the claim it makes about width being spent elsewhere
+# deserves the same model rather than a median.
+ACT    <- Sys.getenv("ACT", "relu")                 # "relu" or "identity"
+stopifnot(ACT %in% c("relu", "identity"))
+ARM    <- if (ACT == "relu") "" else "_linear"
+SUFFIX <- paste0(ARM, if (DEMO) "_demo" else "")
 CACHE  <- file.path(".", "model_cache", "toy")
 OUT    <- file.path(".", "data")
 FIGDIR <- file.path(".", "paper")
@@ -135,7 +142,7 @@ cat(sprintf("  wrote %d coefficient rows and %d crowding rows -> %s\n",
 d <- read_csv(file.path(OUT, "artificial_language_grid.csv"), show_col_types = FALSE) |>
   mutate(resolved = size_item_excludes_zero | size_class_excludes_zero |
                     size_interaction_excludes_zero) |>
-  filter(activation == "relu", converged %in% c(TRUE, "True", "TRUE"), resolved) |>
+  filter(activation == ACT, converged %in% c(TRUE, "True", "TRUE"), resolved) |>
   mutate(rank_tot = r_item + r_class + r_int,
          log2_d = log2(d) - mean(log2(d)), log2_rank = log2(rank_tot) - mean(log2(rank_tot)))
 
