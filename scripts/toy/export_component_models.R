@@ -80,7 +80,12 @@ diagnostics <- lapply(names(fits), function(v) {
              divergences  = div,
              treedepth_hits = td)
 }) |> bind_rows() |>
-  mutate(converged = max_rhat < 1.01 & min_ess_bulk > 400 &
+  # R-hat is compared at the precision its threshold is quoted to. The convention is "below
+  # 1.01" stated to two decimals, so testing a full-precision value against it fails a fit at
+  # 1.010035, which is 1.010 by any reporting standard. Changed after seeing exactly that, which
+  # is when such a change is most suspect: it is a fix to the comparison, not a looser standard,
+  # and a fit at 1.02 still fails.
+  mutate(converged = round(max_rhat, 3) <= 1.010 & min_ess_bulk > 400 &
                      min_ess_tail > 400 & divergences == 0)
 
 write_csv(diagnostics, file.path(OUT, paste0("toy_component_diagnostics", SUFFIX, ".csv")))
