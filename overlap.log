@@ -1,0 +1,75 @@
+nohup: ignoring input
+CmdStan path set to: /opt/modeling/zhoughton/.cmdstan/cmdstan-2.40.0
+  ACT=relu  14419 runs, 691 languages  (76.3% of this arm's converged runs)
+  12 chains x 6000 iter (3000 warmup)
+Start sampling
+Running MCMC with 12 parallel chains...
+
+Chain 4 finished in 125.2 seconds.
+Chain 9 finished in 137.5 seconds.
+Chain 11 finished in 140.1 seconds.
+Chain 12 finished in 144.9 seconds.
+Chain 2 finished in 151.1 seconds.
+Chain 3 finished in 154.4 seconds.
+Chain 1 finished in 157.4 seconds.
+Chain 5 finished in 158.6 seconds.
+Chain 8 finished in 159.9 seconds.
+Chain 7 finished in 162.0 seconds.
+Chain 10 finished in 163.6 seconds.
+Chain 6 finished in 165.3 seconds.
+
+All 12 chains finished successfully.
+Mean chain execution time: 151.7 seconds.
+Total execution time: 165.7 seconds.
+
+Loading required namespace: rstan
+
+=== convergence ===
+  overlap_item_class     rhat 1.0011 (lp__)  ess_bulk  7086  ess_tail 11691  div 0  -> OK
+
+=== what the coefficients say ===
+  wider hidden layer        -0.350 [-0.358, -0.341]  LESS overlap
+  higher interaction rank   -0.038 [-0.059, -0.017]  LESS overlap
+  width x rank              -0.010 [-0.016, -0.004]  LESS overlap
+  crowding alone? (w+r=0)   -0.388 [-0.411, -0.365]  NO: width and rank do not act as a ratio
+
+  wrote 20 fitted-value rows
+
+Converged.
+CmdStan path set to: /opt/modeling/zhoughton/.cmdstan/cmdstan-2.40.0
+  ACT=identity  15123 runs, 694 languages  (80.0% of this arm's converged runs)
+  12 chains x 6000 iter (3000 warmup)
+Start sampling
+Running MCMC with 12 parallel chains...
+
+Chain 3 finished in 153.1 seconds.
+Chain 2 finished in 155.1 seconds.
+Chain 1 finished in 158.1 seconds.
+Chain 11 finished in 179.9 seconds.
+Chain 5 finished in 182.2 seconds.
+Chain 10 finished in 183.3 seconds.
+Chain 4 finished in 184.3 seconds.
+Chain 9 finished in 184.7 seconds.
+Chain 8 finished in 185.9 seconds.
+Chain 7 finished in 186.1 seconds.
+Chain 6 finished in 187.3 seconds.
+Chain 12 finished in 187.4 seconds.
+
+All 12 chains finished successfully.
+Mean chain execution time: 177.3 seconds.
+Total execution time: 188.0 seconds.
+
+Loading required namespace: rstan
+
+=== convergence ===
+  overlap_item_class_linear rhat 1.0014 (b_c_int)  ess_bulk  6940  ess_tail 13921  div 0  -> OK
+
+=== what the coefficients say ===
+  wider hidden layer        +0.033 [+0.027, +0.038]  MORE overlap
+  higher interaction rank   -0.057 [-0.074, -0.039]  LESS overlap
+  width x rank              -0.018 [-0.022, -0.014]  LESS overlap
+  crowding alone? (w+r=0)   -0.024 [-0.042, -0.006]  NO: width and rank do not act as a ratio
+
+  wrote 20 fitted-value rows
+
+Converged.
