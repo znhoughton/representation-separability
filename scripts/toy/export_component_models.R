@@ -233,3 +233,14 @@ ggsave(sub("[.]pdf$", ".png", out), p, width = 7.2, height = 6.4, dpi = 160)
 cat(sprintf("  appendix figure -> %s\n", out))
 
 print(crowd, row.names = FALSE, digits = 3)
+
+# Exit non-zero when anything failed to converge, AFTER writing every output. A caller chaining
+# the two activation arms with && then stops rather than spending another arm's worth of hours
+# at a budget already known to be too small, while the CSVs and figures stay on disk to
+# diagnose from.
+if (!all(diagnostics$converged)) {
+  cat("\nFAILED: ", sum(!diagnostics$converged), " of ", nrow(diagnostics),
+      " models did not converge. Outputs written for inspection; do not report them.\n", sep = "")
+  quit(status = 1)
+}
+cat("\nAll models converged.\n")
