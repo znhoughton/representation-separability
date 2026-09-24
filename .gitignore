@@ -116,3 +116,17 @@ paper/*.out
 
 # scratch renders for comparing figure options, not part of the paper
 figure-candidates/
+
+# Demo artifacts from the component-model scripts. DEMO=1 subsamples the grid and
+# runs a fraction of the draws, so these must never reach the paper; they are
+# suffixed _demo precisely so they cannot be confused with the reported numbers.
+*_demo.csv
+*_demo.pdf
+*_demo.png
+
+# Fitted brms/ordbetareg objects: reproducible from the scripts, tens of MB each,
+# and stale ones are worse than absent ones.
+model_cache/
+
+# Run logs from the component-model fits
+toy_models_full.log
