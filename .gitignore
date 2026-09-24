@@ -53,6 +53,11 @@ paper/*.pdf
 !paper/fig-measurement.pdf
 !paper/fig-grid.pdf
 !paper/fig-projection.pdf
+# The component-model figures are built from the fitted brms objects, which are ~200MB each and
+# stay out of git, so these PDFs cannot be regenerated from a clone and must be tracked.
+!paper/fig-toy-effects.pdf
+!paper/fig-toy-effects-full.pdf
+!paper/fig-toy-coefs.pdf
 !paper/fig-replication.pdf
 !paper/separability.pdf
 paper/*.tex
