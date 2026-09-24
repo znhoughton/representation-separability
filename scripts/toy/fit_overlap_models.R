@@ -1,5 +1,5 @@
 #!/usr/bin/env Rscript
-# Does crowding govern whether the item and class effects share directions?
+# Does crowding govern whether the components share directions?
 #
 # The size models ask how MUCH of each component is represented, and find that width governs it
 # and crowding does not. But crowding is a claim about geometry, not magnitude: when the
@@ -18,16 +18,16 @@
 # In the size models that was decisively rejected for the interaction. Here it is the hypothesis
 # the appendix's descriptive figure supports, so this is a real test rather than a formality.
 #
-# SELECTION, and it is the reason this models item-class overlap and not the interaction's.
-# Overlap is only defined when a component is large enough to have a direction at all, and that
-# depends on width: item-class overlap is defined for 38.6% of runs at width 8 rising to 90.5% at
-# 256, while the interaction's is defined for 7.5% at width 8. Modelling the latter would mean
-# modelling, at narrow widths, the few runs that unusually did build an interaction -- selected on
-# a quantity that is the size models' outcome. The item-class measure is selected too and that is
-# stated in the paper, but 38.6% is a caveat where 7.5% is a different dataset.
+# SELECTION, which every reading of these models has to carry. Overlap is defined only where a
+# component is large enough to have a direction at all, and that tracks width. The estimand is
+# therefore conditional: among runs whose component can be oriented, what moves its overlap. The
+# script prints coverage by width so the conditioning is visible rather than implied, and both
+# measures are fitted on both arms, since fitting a measure on one arm only would let the choice
+# of arm do work the reader cannot check.
 #
-# Usage:  ACT=relu     Rscript scripts/toy/fit_overlap_models.R
-#         ACT=identity Rscript scripts/toy/fit_overlap_models.R
+# Usage:  ACT=relu                        Rscript scripts/toy/fit_overlap_models.R
+#         ACT=identity                    Rscript scripts/toy/fit_overlap_models.R
+#         MEASURE=int_margins ACT=relu    Rscript scripts/toy/fit_overlap_models.R
 #         CHAINS=12 ITER=6000 WARMUP=3000 ACT=relu Rscript scripts/toy/fit_overlap_models.R
 
 suppressMessages({
@@ -46,22 +46,46 @@ WARMUP      <- as.integer(Sys.getenv("WARMUP", "3000"))
 ADAPT_DELTA <- as.numeric(Sys.getenv("ADAPT_DELTA", "0.9"))
 CORES       <- as.integer(Sys.getenv("CORES", as.character(CHAINS)))
 ACT         <- Sys.getenv("ACT", "relu")
-stopifnot(ACT %in% c("relu", "identity"), WARMUP < ITER, CHAINS >= 1)
+
+# MEASURE. item_class is the item effect projected onto the class direction; int_margins is the
+# interaction projected onto the span of both margins, which is the "is there a third component
+# that is neither" question the separability claim rests on.
+#
+# MIN_WIDTH. Overlap exists only where a component is large enough to orient, and that tracks
+# width. For item_class, coverage runs 39% at width 8 to 91% at 256. For int_margins under ReLU
+# it runs 7% to 82%, and under the linear learner 0% at width 16, because a linear learner's
+# interaction stays under the floor at which an orientation is reported at all. Default is no
+# floor: the selection is reported rather than silently cut, since a floor applied to one measure
+# and not another is a choice a reader cannot check.
+#
+# FAMILY. gaussian by default so every overlap model matches. The logged ratio is close to
+# symmetric for item_class (skew 0.77 under ReLU, 0.39 linear) but less so for int_margins
+# (skew 1.2-1.4), so student is available. Change it for ALL overlap models or none.
+MEASURE     <- Sys.getenv("MEASURE", "item_class")
+MIN_WIDTH   <- as.integer(Sys.getenv("MIN_WIDTH", "1"))
+FAMILY      <- Sys.getenv("FAMILY", "gaussian")
+stopifnot(ACT %in% c("relu", "identity"), WARMUP < ITER, CHAINS >= 1,
+          MEASURE %in% c("item_class", "int_margins"), FAMILY %in% c("gaussian", "student"))
+
+COL  <- c(item_class = "leak_item_into_class", int_margins = "leak_int_into_margins")[[MEASURE]]
+NULLCOL <- paste0(COL, "_null_med")
+TAG  <- if (MEASURE == "item_class") "" else "_int"
 
 ARM    <- if (ACT == "relu") "" else "_linear"
-SUFFIX <- paste0(ARM, if (DEMO) "_demo" else "")
+SUFFIX <- paste0(TAG, ARM, if (DEMO) "_demo" else "")
 CACHE  <- file.path(".", "model_cache", "toy"); dir.create(CACHE, recursive = TRUE, showWarnings = FALSE)
 OUT    <- file.path(".", "data")
 
 d <- read_csv(file.path(OUT, "artificial_language_grid.csv"), show_col_types = FALSE) |>
   filter(activation == ACT, converged %in% c(TRUE, "True", "TRUE"),
-         !is.na(leak_item_into_class), !is.na(leak_item_into_class_null_med),
-         leak_item_into_class > 0, leak_item_into_class_null_med > 0) |>
+         d >= MIN_WIDTH,
+         !is.na(.data[[COL]]), !is.na(.data[[NULLCOL]]),
+         .data[[COL]] > 0, .data[[NULLCOL]] > 0) |>
   mutate(rank_tot  = r_item + r_class + r_int,
          log2_d    = log2(d)        - mean(log2(d)),
          log2_rank = log2(rank_tot) - mean(log2(rank_tot)),
          lang      = factor(paste(key, r_int, sep = "_")),
-         log_ratio = log(leak_item_into_class / leak_item_into_class_null_med))
+         log_ratio = log(.data[[COL]] / .data[[NULLCOL]]))
 
 # Centred like the size models, so each coefficient is read at the mean of the others and the
 # intercept is not defined at a language holding none of the component.
@@ -76,6 +100,15 @@ cat(sprintf("  ACT=%s  %d runs, %d languages  (%.1f%% of this arm's converged ru
             ACT, nrow(d), nlevels(droplevels(d$lang)), 100 * nrow(d) / 18900))
 cat(sprintf("  %d chains x %d iter (%d warmup)\n", CHAINS, ITER, WARMUP))
 
+# Coverage, printed because it is the conditioning the estimand carries. A width whose runs
+# mostly lack the measure contributes only its atypical ones, and the width coefficient is
+# read accordingly.
+cov <- read_csv(file.path(OUT, "artificial_language_grid.csv"), show_col_types = FALSE) |>
+  filter(activation == ACT) |>
+  group_by(d) |> summarise(pct = 100 * mean(!is.na(.data[[COL]])), .groups = "drop")
+cat("  coverage by width: ",
+    paste(sprintf("%d:%.0f%%", cov$d, cov$pct), collapse = "  "), "\n", sep = "")
+
 # The three effect sizes are controls, not the question: overlap is a property of item AND class
 # together, so there is no single "own" strength to cross with the architecture the way the size
 # models do. The architecture terms are crossed, since their interaction is what says whether
@@ -83,7 +116,7 @@ cat(sprintf("  %d chains x %d iter (%d warmup)\n", CHAINS, ITER, WARMUP))
 RHS <- "c_item + c_class + c_int + log2_d * log2_rank + (1 | lang)"
 
 want_draws <- CHAINS * ((if (DEMO) 600 else ITER) - (if (DEMO) 300 else WARMUP))
-rds <- file.path(CACHE, paste0("overlap_item_class", SUFFIX, ".rds"))
+rds <- file.path(CACHE, paste0("overlap_", MEASURE, SUFFIX, ".rds"))
 if (file.exists(rds)) {
   got <- tryCatch(brms::ndraws(readRDS(rds)), error = function(e) NA_integer_)
   if (is.na(got) || got != want_draws) {
@@ -94,7 +127,8 @@ if (file.exists(rds)) {
 }
 
 fit <- brm(
-  formula = as.formula(paste("log_ratio ~", RHS)), data = d, family = gaussian(),
+  formula = as.formula(paste("log_ratio ~", RHS)), data = d,
+  family = if (FAMILY == "student") student() else gaussian(),
   chains = CHAINS, cores = CORES,
   iter = if (DEMO) 600 else ITER, warmup = if (DEMO) 300 else WARMUP,
   control = list(adapt_delta = ADAPT_DELTA),
@@ -107,7 +141,7 @@ su  <- summarise_draws(as_draws_df(fit), "rhat", "ess_bulk", "ess_tail")
 su  <- su[is.finite(su$rhat), ]
 np  <- brms::nuts_params(fit)
 diagnostics <- data.frame(
-  model = paste0("overlap_item_class", ARM), n_draws = ndraws(fit),
+  model = paste0("overlap_", MEASURE, ARM), n_draws = ndraws(fit),
   max_rhat = max(su$rhat), worst_rhat_param = su$variable[which.max(su$rhat)],
   min_ess_bulk = min(su$ess_bulk), min_ess_tail = min(su$ess_tail),
   divergences = sum(np$Value[np$Parameter == "divergent__"]),
@@ -126,14 +160,14 @@ LABELS <- c(b_Intercept = "intercept", b_c_item = "item", b_c_class = "class", b
 dr <- as.data.frame(as_draws_df(fit))
 coefs <- lapply(intersect(names(LABELS), names(dr)), function(tm) {
   x <- dr[[tm]]
-  data.frame(model = paste0("overlap_item_class", ARM), term = tm, label = unname(LABELS[tm]),
+  data.frame(model = paste0("overlap_", MEASURE, ARM), term = tm, label = unname(LABELS[tm]),
              estimate = mean(x), error = sd(x),
              lo95 = unname(quantile(x, .025)), hi95 = unname(quantile(x, .975)),
              p_gt0 = mean(x > 0))
 }) |> bind_rows() |> mutate(excludes_zero = lo95 > 0 | hi95 < 0)
 
 h <- hypothesis(fit, "log2_d + log2_rank = 0")$hypothesis
-crowd <- data.frame(model = paste0("overlap_item_class", ARM), estimate = h$Estimate,
+crowd <- data.frame(model = paste0("overlap_", MEASURE, ARM), estimate = h$Estimate,
                     error = h$Est.Error, lo95 = h$CI.Lower, hi95 = h$CI.Upper,
                     excludes_zero = h$CI.Lower > 0 | h$CI.Upper < 0)
 

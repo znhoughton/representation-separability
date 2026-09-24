@@ -670,6 +670,16 @@ where $d$ is the hidden width, $r$ is the rank the structure requires, and $\tim
 
 Width and rank enter separately rather than as crowding because the three are linearly dependent. Crowding is $r/d$, so its log is $\log r - \log d$ and only two of the three quantities can be estimated at once. Keeping width and rank therefore makes crowding a contrast we can test rather than a variable we have to choose between: the claim that only the ratio matters is the hypothesis that the width and rank coefficients are equal and opposite.
 
+We model the overlaps in the same way, with two differences. The outcome is an overlap divided by its own chance level and logged, so that a coefficient is multiplicative on chance and the model is not asked to explain a floor that itself moves with rank and width; the family is therefore Gaussian rather than ordered beta, the ratio being positive and unbounded above. And because an overlap is a property of two components jointly, there is no single effect size to cross with the architecture, so the three enter as main effects while width and rank are crossed:
+
+$$
+\log\!\left(\frac{o}{o_{\text{chance}}}\right) \;\sim\; \sum_k x_k \;+\; \log_2 d \times \log_2 r \;+\; (1 \mid \text{language}).
+$$ {#eq-overlap}
+
+An overlap is only defined where a component is large enough to have a direction, so these estimates are conditional on that: they describe the runs in which a component exists to be oriented, and Appendix \ref{sec-appendix-component-models} reports how many that is at each width.
+
+Experiment 2 is not modelled this way. Experiment 1 crosses effect size, width and rank factorially, which makes them collinear by construction and a regression the only way to separate them; the language models are six fixed architectures with no such manipulation, so a regression over them would add nothing the descriptive comparison does not already give.
+
 ## Results {#sec-exp1-results}
 
 Results are shown in @fig-toy; the effects of crowding are reported in Appendix \ref{sec-appendix-capacity}.
