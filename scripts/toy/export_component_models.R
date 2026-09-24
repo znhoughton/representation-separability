@@ -202,6 +202,45 @@ NDRAWS   <- if (DEMO) 200 else 1000
 UO_GREEN <- "#154733"
 WIDC <- setNames(grDevices::colorRampPalette(c("#BFCFA8", UO_GREEN))(length(D_LEVELS)), D_LEVELS)
 
+# Fitted values are written out as well as plotted. Producing them needs the fitted objects,
+# which are ~206MB each and stay out of git; plotting them needs only these few thousand rows.
+# Separating the two means figures can be redesigned from a clone, and the paper can rebuild
+# them without the models being present.
+#
+#   grid = planted : own effect size 0-1 crossed with width, rank held at its mean
+#   grid = arch    : width crossed with rank, all three effect sizes held at their means
+#   grid = full    : own effect size crossed with width AND rank, for the appendix facets
+grids <- list(
+  planted = expand_grid(own = seq(0, 1, length.out = 25), width = D_LEVELS, r_int = NA_real_),
+  arch    = expand_grid(own = NA_real_, width = D_LEVELS, r_int = R_LEVELS),
+  full    = expand_grid(own = seq(0, 1, length.out = 25), width = D_LEVELS, r_int = R_LEVELS)
+)
+
+preds <- lapply(names(grids), function(gname) {
+  g <- grids[[gname]] |>
+    mutate(log2_d = log2(width) - MU_D,
+           log2_rank = if (all(is.na(r_int))) 0 else
+                       log2(R2RANK[as.character(r_int)]) - MU_RANK)
+  lapply(names(fits), function(v) {
+    nn <- g
+    for (a in names(AT_MEAN)) nn[[a]] <- AT_MEAN[[a]]
+    if (!all(is.na(g$own)))
+      nn[[OWN[[v]]]] <- nn$own - MU_ACH[[sub("^c_", "", OWN[[v]])]]
+    add_epred_draws(fits[[v]], newdata = nn, re_formula = NA, ndraws = NDRAWS) |>
+      ungroup() |>
+      group_by(own, width, r_int) |>
+      median_qi(.epred, .width = 0.95) |>
+      ungroup() |>
+      mutate(component = COMPONENTS[[v]], grid = gname)
+  }) |> bind_rows()
+}) |> bind_rows() |>
+  select(grid, component, own, width, r_int, epred = .epred, lo = .lower, hi = .upper)
+
+write_csv(preds, file.path(OUT, paste0("toy_component_predictions", SUFFIX, ".csv")))
+cat(sprintf("  wrote %d fitted-value rows -> %s\n", nrow(preds),
+            file.path(OUT, paste0("toy_component_predictions", SUFFIX, ".csv"))))
+
+# the appendix figure below is drawn from the 'full' grid of those same predictions
 nd <- expand_grid(own = seq(0, 1, length.out = 25), width = D_LEVELS, r_int = R_LEVELS) |>
   mutate(log2_d = log2(width) - MU_D, log2_rank = log2(R2RANK[as.character(r_int)]) - MU_RANK)
 
