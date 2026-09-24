@@ -61,6 +61,28 @@ def standardize_columns(X, eps=1e-8):
     return X / sd
 
 
+def _svd(V, full_matrices=False, compute_uv=True):
+    """np.linalg.svd, with a fallback for the cases where LAPACK's gesdd fails to converge.
+
+    numpy's default driver is fast but occasionally raises "SVD did not converge" on
+    ill-conditioned input. That cost one cell of a 32,130-cell grid run: a real result lost
+    to a numerical corner rather than to anything about the model. gesvd is slower and more
+    robust, so try it before giving up; if scipy is unavailable, perturb at the 1e-10 level
+    (far below any reported quantity) and retry. Returns the same shapes as np.linalg.svd.
+    """
+    try:
+        return np.linalg.svd(V, full_matrices=full_matrices, compute_uv=compute_uv)
+    except np.linalg.LinAlgError:
+        try:
+            from scipy.linalg import svd as _scipy_svd
+            return _scipy_svd(V, full_matrices=full_matrices,
+                              compute_uv=compute_uv, lapack_driver="gesvd")
+        except Exception:
+            scale = float(np.max(np.abs(V))) or 1.0
+            Vj = V + np.random.default_rng(0).standard_normal(V.shape) * (1e-10 * scale)
+            return np.linalg.svd(Vj, full_matrices=full_matrices, compute_uv=compute_uv)
+
+
 def _orthobasis(vectors, rank=None, energy=0.999, max_rank=None):
     """Orthonormal basis (d x r) for the row-space of `vectors` (m x d) via SVD. Rank is the
     participation ratio of the singular values (rounded) unless `rank` is given, capped so we
@@ -70,7 +92,7 @@ def _orthobasis(vectors, rank=None, energy=0.999, max_rank=None):
         V = V[None, :]
     if V.shape[0] == 0 or not np.any(np.abs(V) > 1e-12):
         return np.zeros((V.shape[1], 0))
-    U, s, Vt = np.linalg.svd(V, full_matrices=False)
+    U, s, Vt = _svd(V, full_matrices=False)
     s2 = s ** 2
     if rank is None:
         denom = float((s2 ** 2).sum())
@@ -241,7 +263,7 @@ def _principal_angle_overlap(A, B):
     orthonormal bases A (d x ra) and B (d x rb). 0 = orthogonal, 1 = one contains the other."""
     if A.shape[1] == 0 or B.shape[1] == 0:
         return 0.0
-    s = np.linalg.svd(A.T @ B, compute_uv=False)   # cosines of principal angles
+    s = _svd(A.T @ B, compute_uv=False)            # cosines of principal angles
     return float((s ** 2).mean())
 
 
