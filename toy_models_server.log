@@ -1,0 +1,40 @@
+nohup: ignoring input
+  grouping=lang  chains=12  iter=6000  warmup=3000  adapt_delta=0.9
+  arms: relu identity
+  total post-warmup draws per model: 36000
+
+============================================================
+  ACT=relu
+============================================================
+CmdStan path set to: /opt/modeling/zhoughton/.cmdstan/cmdstan-2.40.0
+  grouping: lang  ->  (1 | lang)
+  12 chains x 6000 iter (3000 warmup), adapt_delta 0.90
+  17786 cells, 189 weight combinations
+
+=== size_item ===
+Start sampling
+Running MCMC with 12 parallel chains...
+
+Chain 2 finished in 3674.7 seconds.
+Chain 5 finished in 3714.0 seconds.
+Chain 8 finished in 3741.6 seconds.
+Chain 12 finished in 3764.8 seconds.
+Chain 4 finished in 3774.1 seconds.
+Chain 1 finished in 3781.0 seconds.
+Chain 10 finished in 3793.8 seconds.
+Chain 11 finished in 3813.1 seconds.
+Chain 7 finished in 3825.1 seconds.
+Chain 3 finished in 3838.0 seconds.
+Chain 9 finished in 3847.1 seconds.
+Chain 6 finished in 3884.9 seconds.
+
+All 12 chains finished successfully.
+Mean chain execution time: 3787.7 seconds.
+Total execution time: 3885.7 seconds.
+
+Loading required namespace: rstan
+
+=== size_class ===
+Start sampling
+Running MCMC with 12 parallel chains...
+
