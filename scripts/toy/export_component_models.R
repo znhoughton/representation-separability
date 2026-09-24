@@ -134,6 +134,41 @@ write_csv(crowd, file.path(OUT, paste0("toy_component_crowding", SUFFIX, ".csv")
 cat(sprintf("  wrote %d coefficient rows and %d crowding rows -> %s\n",
             nrow(coefs), nrow(crowd), OUT))
 
+# ---------------------------------------------------------------- reading guide
+# Each question the experiment asks, mapped onto the coefficient that answers it. Printed rather
+# than left to the reader because the mapping is not obvious from the term names: crowding in
+# particular has no coefficient of its own, since log(rank/width) = log(rank) - log(width) makes
+# it a linear combination of two terms already in the model.
+#
+# Every coefficient is conditional: the predictors are centred, so each is read at the mean of
+# the others rather than averaged over them.
+fmt <- function(r) sprintf("%+.3f [%+.3f, %+.3f]", r$estimate, r$lo95, r$hi95)
+dirn <- function(r) if (r$lo95 > 0) "INCREASES it" else if (r$hi95 < 0) "DECREASES it" else "no clear effect"
+
+cat("\n=== what the coefficients say ===\n")
+for (cm in unname(COMPONENTS)) {
+  g <- function(lab) coefs[coefs$component == cm & coefs$label == lab, ]
+  others <- setdiff(unname(COMPONENTS), cm)
+  cr <- crowd[crowd$component == cm, ]
+  cat(sprintf("\n  measured %s\n", cm))
+  cat(sprintf("    more of it in the language       %-24s %s\n", fmt(g(cm)), dirn(g(cm))))
+  cat(sprintf("    wider hidden layer               %-24s %s\n", fmt(g("width")), dirn(g("width"))))
+  cat(sprintf("    higher interaction rank          %-24s %s\n", fmt(g("rank")), dirn(g("rank"))))
+  cat(sprintf("    crowding alone? (width+rank=0)   %-24s %s\n",
+              sprintf("%+.3f [%+.3f, %+.3f]", cr$estimate, cr$lo95, cr$hi95),
+              if (cr$excludes_zero) "NO: width and rank do not trade off as a ratio"
+              else "consistent with depending only on rank/width"))
+  cat(sprintf("    width x rank                     %-24s %s\n",
+              fmt(g("width x rank")), dirn(g("width x rank"))))
+  cat(sprintf("    width changes that mapping       %-24s %s\n",
+              fmt(g("effect size x width")), dirn(g("effect size x width"))))
+  for (o in others)
+    cat(sprintf("    specificity: %-19s %-24s %s\n", paste0(o, " in language"),
+                fmt(g(o)), dirn(g(o))))
+}
+cat("\n  (width x rank is the term that decides whether the fitted-value figure needs its\n")
+cat("   second row: with no interaction, rank adds nothing the width panel does not show.)\n")
+
 # ---------------------------------------------------------------- appendix figure: the three-way
 # The main-text figure holds rank at its mean, which is the right simplification there but hides
 # the three-way term entirely. Here rank becomes a row of facets, so the question the reviewer
