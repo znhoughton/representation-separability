@@ -55,18 +55,27 @@ ADAPT_DELTA <- as.numeric(Sys.getenv("ADAPT_DELTA", "0.9"))
 CORES       <- as.integer(Sys.getenv("CORES", as.character(CHAINS)))
 stopifnot(WARMUP < ITER, CHAINS >= 1)
 
-# GROUPING. `key` is the weight combination (189 of them); `lang` is key crossed with the
-# interaction rank (756), which is the language specification that was actually generated.
-# Nested keeps both, and that matters for what stays estimable: width varies within `lang`
-# (4.9 distinct widths per group) so it is clean either way, while rank varies within `key` but
-# NOT within `lang`, so dropping the `key` level would push rank into the same between-group
-# block the effect sizes sit in. Seeds are replicates of one specification and share an intercept.
-GROUPING <- Sys.getenv("GROUPING", "nested")
+# GROUPING. A random intercept is for a source of non-independence the fixed effects do not
+# already account for, not for every factor the grid happened to cross: width and rank are
+# deliberately chosen levels whose effects we are estimating, not draws from a population.
+#
+# The unit that satisfies that test is the generated language. A run's corpus is determined by
+# the weights and the interaction rank together, so `lang` is those two, 756 of them at ~23.5
+# runs each, and runs sharing one see the same corpus with idiosyncrasies beyond its three
+# achieved shares. A seed is a re-realisation of the same specification rather than a different
+# language, so seeds share an intercept and seed-to-seed spread belongs in the residual.
+#
+# NOT `key`, the weight combination alone. Two runs sharing a key but differing in rank are
+# different languages, and what they have in common is already carried by the fixed effects,
+# since their achieved shares are nearly identical. Adding a key level would mainly serve to
+# keep rank varying within a cluster, and rank is a property OF the language: it belongs in the
+# between-language block with the effect sizes, whatever that costs its precision.
+GROUPING <- Sys.getenv("GROUPING", "lang")
 RE_TERM  <- switch(GROUPING,
-                   nested = "(1 | key) + (1 | lang)",
-                   key    = "(1 | key)",
                    lang   = "(1 | lang)",
-                   stop("GROUPING must be one of: nested, key, lang"))
+                   key    = "(1 | key)",
+                   nested = "(1 | key) + (1 | lang)",
+                   stop("GROUPING must be one of: lang, key, nested"))
 CACHE  <- file.path(REPO, "model_cache", "toy"); dir.create(CACHE, recursive = TRUE, showWarnings = FALSE)
 FIGDIR <- file.path(REPO, "paper");             dir.create(FIGDIR, recursive = TRUE, showWarnings = FALSE)
 SUFFIX <- if (DEMO) "_demo" else ""
