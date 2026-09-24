@@ -69,7 +69,10 @@ stopifnot(ACT %in% c("relu", "identity"), WARMUP < ITER, CHAINS >= 1,
 
 COL  <- c(item_class = "leak_item_into_class", int_margins = "leak_int_into_margins")[[MEASURE]]
 NULLCOL <- paste0(COL, "_null_med")
-TAG  <- if (MEASURE == "item_class") "" else "_int"
+# No TAG: MEASURE is already in the filename, and adding one produced
+# overlap_int_margins_int.rds, which prepare_results.R then read back as a component
+# called "int_margins_int".
+TAG  <- ""
 
 ARM    <- if (ACT == "relu") "" else "_linear"
 SUFFIX <- paste0(TAG, ARM, if (DEMO) "_demo" else "")
