@@ -295,15 +295,24 @@ W_CTX = [0.5, 2.0, 6.0]
 # and 177 is the saturated case. Reaching it needs d above r_item + r_class + 177 = 189, hence
 # the wider settings below.
 R_VALUES = [4, 16, 64, 177]
-D_VALUES = [8, 16, 32, 128]
 
-# Width 256 exists only so the saturated arm can reach capacity below 1: at r_int = 177 the
-# structure needs r_item + r_class + 177 = 189 dimensions, so d = 128 is over-subscribed
-# (capacity 1.48) and d = 256 gives 0.74. At r_int <= 64 the total rank is at most 76 and d = 128
-# already gives 0.59, so a 256-wide run there answers a question nobody asked while costing the
-# most of any cell in the grid (2.5x a 128-wide one). Widths are therefore chosen per rank.
+# FULL CROSS of width against interaction rank. 256 is here because at r_int = 177 the structure
+# needs r_item + r_class + 177 = 189 dimensions, so d = 128 is over-subscribed (capacity 1.48)
+# and only 256 gets the saturated arm below 1 (0.74).
+#
+# It is run at EVERY rank, not just 177, and that matters. Measured interaction rises with width
+# even when capacity was never binding: at r_int = 4 (rank 16) going from d = 32 to d = 128 takes
+# it from 0.022 to 0.087, a 3.9x increase across capacities of 0.50 and 0.12. So a d = 128 to
+# d = 256 comparison at r_int = 177 alone cannot say whether the gain came from relieving
+# crowding or from the width effect that shows up everywhere. Crossing them gives the control:
+# the same step at a rank that was never crowded isolates width, and the difference isolates
+# crowding. An earlier version ran 256 only at 177 to save ~15% of the cells, which saved an hour
+# and made the one comparison the sweep exists for uninterpretable.
+D_VALUES = [8, 16, 32, 128, 256]
+
+
 def d_values_for(r_int, base=D_VALUES):
-    return base + [256] if r_int >= 128 else list(base)
+    return list(base)
 
 CONFIG = dict(
     # n_ctx = 24 observations per cell is chosen to match the LLM regime: the median balanced
