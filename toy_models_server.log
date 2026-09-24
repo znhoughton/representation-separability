@@ -38,3 +38,104 @@ Loading required namespace: rstan
 Start sampling
 Running MCMC with 12 parallel chains...
 
+Chain 4 finished in 3727.2 seconds.
+Chain 7 finished in 3726.7 seconds.
+Chain 2 finished in 3733.3 seconds.
+Chain 6 finished in 3736.8 seconds.
+Chain 5 finished in 3747.1 seconds.
+Chain 12 finished in 3782.4 seconds.
+Chain 11 finished in 3805.0 seconds.
+Chain 10 finished in 3828.7 seconds.
+Chain 9 finished in 3831.8 seconds.
+Chain 8 finished in 3835.0 seconds.
+Chain 1 finished in 3848.1 seconds.
+Chain 3 finished in 3863.6 seconds.
+
+All 12 chains finished successfully.
+Mean chain execution time: 3788.8 seconds.
+Total execution time: 3864.2 seconds.
+
+
+=== size_interaction ===
+Start sampling
+Running MCMC with 12 parallel chains...
+
+Chain 2 finished in 3702.1 seconds.
+Chain 12 finished in 3711.2 seconds.
+Chain 9 finished in 3718.6 seconds.
+Chain 6 finished in 3733.0 seconds.
+Chain 3 finished in 3736.3 seconds.
+Chain 11 finished in 3743.4 seconds.
+Chain 7 finished in 3744.3 seconds.
+Chain 5 finished in 3761.5 seconds.
+Chain 4 finished in 3763.0 seconds.
+Chain 10 finished in 3767.0 seconds.
+Chain 1 finished in 3810.4 seconds.
+Chain 8 finished in 3840.1 seconds.
+
+All 12 chains finished successfully.
+Mean chain execution time: 3752.6 seconds.
+Total execution time: 3841.6 seconds.
+
+
+=== crowding test: does only rank/d matter?  (b_width + b_rank = 0) ===
+  item              -0.066  CI [-0.115, -0.017]  EXCLUDES 0 -> not a pure ratio
+  class             -0.016  CI [-0.068, +0.035]  includes 0 -> consistent with a ratio
+  interaction       +0.542  CI [+0.507, +0.578]  EXCLUDES 0 -> not a pure ratio
+
+  main figure -> ./paper/fig-toy-effects.pdf
+
+  figure -> ./paper/fig-toy-coefs.pdf
+Done.
+CmdStan path set to: /opt/modeling/zhoughton/.cmdstan/cmdstan-2.40.0
+Loading required namespace: rstan
+
+=== convergence ===
+  item         rhat 1.0052 (b_Intercept)  ess_bulk  2264  ess_tail  4660  div 0  td 0  -> OK
+  class        rhat 1.0100 (b_c_item)  ess_bulk  1951  ess_tail  4010  div 0  td 0  -> *** CHECK ***
+  interaction  rhat 1.0045 (b_c_int:log2_rank)  ess_bulk  2313  ess_tail  4961  div 0  td 0  -> OK
+  WARNING: at least one model failed a convergence threshold; do not report these.
+  wrote 27 coefficient rows and 3 crowding rows -> ./data
+
+=== what the coefficients say ===
+
+  measured item
+    more of it in the language       +1.576 [+1.284, +1.866]  INCREASES it
+    wider hidden layer               -0.095 [-0.103, -0.087]  DECREASES it
+    higher interaction rank          +0.029 [-0.019, +0.078]  no clear effect
+    crowding alone? (width+rank=0)   -0.066 [-0.115, -0.017]  NO: width and rank do not trade off as a ratio
+    width x rank                     +0.008 [+0.002, +0.014]  INCREASES it
+    width changes that mapping       -0.124 [-0.157, -0.090]  DECREASES it
+    specificity: class in language   -1.945 [-2.260, -1.630]  DECREASES it
+    specificity: interaction in language -0.479 [-0.767, -0.192]  DECREASES it
+
+  measured class
+    more of it in the language       +1.966 [+1.627, +2.300]  INCREASES it
+    wider hidden layer               +0.031 [+0.023, +0.038]  INCREASES it
+    higher interaction rank          -0.047 [-0.098, +0.004]  no clear effect
+    crowding alone? (width+rank=0)   -0.016 [-0.068, +0.035]  consistent with depending only on rank/width
+    width x rank                     -0.015 [-0.020, -0.009]  DECREASES it
+    width changes that mapping       -0.662 [-0.700, -0.625]  DECREASES it
+    specificity: item in language    -1.463 [-1.774, -1.146]  DECREASES it
+    specificity: interaction in language +0.301 [-0.010, +0.610]  no clear effect
+
+  measured interaction
+    more of it in the language       +2.484 [+2.274, +2.689]  INCREASES it
+    wider hidden layer               +0.557 [+0.550, +0.565]  INCREASES it
+    higher interaction rank          -0.016 [-0.050, +0.019]  no clear effect
+    crowding alone? (width+rank=0)   +0.542 [+0.507, +0.578]  NO: width and rank do not trade off as a ratio
+    width x rank                     +0.038 [+0.033, +0.043]  INCREASES it
+    width changes that mapping       -0.176 [-0.201, -0.150]  DECREASES it
+    specificity: item in language    -0.236 [-0.442, -0.023]  DECREASES it
+    specificity: class in language   +0.056 [-0.166, +0.279]  no clear effect
+
+  (width x rank is the term that decides whether the fitted-value figure needs its
+   second row: with no interaction, rank adds nothing the width panel does not show.)
+  appendix figure -> ./paper/fig-toy-effects-full.pdf
+   component estimate  error    lo95    hi95 excludes_zero
+        item  -0.0659 0.0249 -0.1145 -0.0168          TRUE
+       class  -0.0162 0.0262 -0.0675  0.0355         FALSE
+ interaction   0.5419 0.0180  0.5068  0.5775          TRUE
+
+FAILED: 1 of 3 models did not converge. Outputs written for inspection; do not report them.
+FAILED: ACT=relu did not converge; not starting any remaining arm.
