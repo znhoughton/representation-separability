@@ -129,9 +129,26 @@ figure-candidates/
 *_demo.pdf
 *_demo.png
 
-# Fitted brms/ordbetareg objects: reproducible from the scripts, tens of MB each,
-# and stale ones are worse than absent ones.
-model_cache/
+# Fitted brms/ordbetareg objects. Reproducible from the scripts with seed 964, and ~206MB each
+# at the reported budget, which is past GitHub's 100MB per-file limit. The component-model fits
+# are kept anyway, through LFS, because regenerating them costs about an hour of compute per
+# model; everything else under model_cache stays out.
+#
+# NOTE on removing them later: deleting the file in a future commit does NOT reclaim the LFS
+# object on the remote, and GitHub offers no way to purge one. Treat pushing these as permanent.
+#
+# Negations need dir/* rather than dir/: git will not re-include a file whose parent directory
+# is itself excluded, so excluding the contents and then re-including by name is the only form
+# that works here.
+model_cache/*
+!model_cache/toy/
+model_cache/toy/*
+!model_cache/toy/ordbeta_size_item.rds
+!model_cache/toy/ordbeta_size_class.rds
+!model_cache/toy/ordbeta_size_interaction.rds
+!model_cache/toy/ordbeta_size_item_linear.rds
+!model_cache/toy/ordbeta_size_class_linear.rds
+!model_cache/toy/ordbeta_size_interaction_linear.rds
 
 # Run logs from the component-model fits
 toy_models_full.log
