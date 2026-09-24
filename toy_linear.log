@@ -15,3 +15,14 @@ CmdStan path set to: /opt/modeling/zhoughton/.cmdstan/cmdstan-2.40.0
 Start sampling
 Running MCMC with 12 parallel chains...
 
+Chain 2 finished in 5282.0 seconds.
+Chain 11 finished in 5413.5 seconds.
+Chain 10 finished in 5444.0 seconds.
+Chain 8 finished in 5477.9 seconds.
+Chain 9 finished in 5494.8 seconds.
+Chain 7 finished in 5506.8 seconds.
+Chain 6 finished in 5536.9 seconds.
+Chain 5 finished in 5596.6 seconds.
+Chain 3 finished in 5643.0 seconds.
+Chain 12 finished in 5646.7 seconds.
+Chain 1 finished in 5660.5 seconds.

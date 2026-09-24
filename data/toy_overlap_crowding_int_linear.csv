@@ -1,0 +1,2 @@
+model,estimate,error,lo95,hi95,excludes_zero
+overlap_int_margins_linear,-0.0979860625581389,0.025184267990104533,-0.14674642025000004,-0.04829806849999996,TRUE
