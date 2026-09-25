@@ -1,0 +1,39 @@
+nohup: ignoring input
+CmdStan path set to: /opt/modeling/zhoughton/.cmdstan/cmdstan-2.40.0
+  ACT=identity  1675 runs, 247 languages  (8.9% of this arm's converged runs)
+  12 chains x 18000 iter (9000 warmup)
+  coverage by width: 8:1%  16:0%  32:1%  128:19%  256:23%
+Start sampling
+Running MCMC with 12 parallel chains...
+
+Chain 2 finished in 54.1 seconds.
+Chain 9 finished in 54.0 seconds.
+Chain 10 finished in 54.2 seconds.
+Chain 11 finished in 54.8 seconds.
+Chain 4 finished in 57.0 seconds.
+Chain 5 finished in 57.6 seconds.
+Chain 8 finished in 59.6 seconds.
+Chain 3 finished in 61.5 seconds.
+Chain 12 finished in 62.5 seconds.
+Chain 7 finished in 65.0 seconds.
+Chain 1 finished in 66.2 seconds.
+Chain 6 finished in 67.9 seconds.
+
+All 12 chains finished successfully.
+Mean chain execution time: 59.5 seconds.
+Total execution time: 68.2 seconds.
+
+Loading required namespace: rstan
+
+=== convergence ===
+  overlap_int_margins_linear rhat 1.0049 (b_c_item)  ess_bulk  2072  ess_tail  4715  div 0  -> OK
+
+=== what the coefficients say ===
+  wider hidden layer        +0.104 [+0.092, +0.116]  MORE overlap
+  higher interaction rank   -0.201 [-0.250, -0.151]  LESS overlap
+  width x rank              -0.099 [-0.106, -0.091]  LESS overlap
+  crowding alone? (w+r=0)   -0.096 [-0.147, -0.046]  NO: width and rank do not act as a ratio
+
+  wrote 20 fitted-value rows
+
+Converged.

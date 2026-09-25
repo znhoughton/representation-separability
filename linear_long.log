@@ -1,0 +1,85 @@
+nohup: ignoring input
+CmdStan path set to: /opt/modeling/zhoughton/.cmdstan/cmdstan-2.40.0
+  grouping: lang  ->  (1 | lang)
+  12 chains x 18000 iter (9000 warmup), adapt_delta 0.90
+  18609 cells, 756 languages
+Loading required namespace: rstan
+  cached size_item has 36000 draws, want 108000 -- refitting
+  cached size_class has 36000 draws, want 108000 -- refitting
+  cached size_interaction has 36000 draws, want 108000 -- refitting
+
+=== size_item ===
+Start sampling
+Running MCMC with 12 parallel chains...
+
+Chain 7 finished in 14232.6 seconds.
+Chain 10 finished in 14337.8 seconds.
+Chain 9 finished in 14417.2 seconds.
+Chain 11 finished in 14418.8 seconds.
+Chain 2 finished in 14441.9 seconds.
+Chain 5 finished in 14506.4 seconds.
+Chain 8 finished in 14561.3 seconds.
+Chain 3 finished in 14659.6 seconds.
+Chain 6 finished in 14672.5 seconds.
+Chain 12 finished in 14713.5 seconds.
+Chain 1 finished in 14720.4 seconds.
+Chain 4 finished in 14828.6 seconds.
+
+All 12 chains finished successfully.
+Mean chain execution time: 14542.5 seconds.
+Total execution time: 14829.2 seconds.
+
+
+=== size_class ===
+Start sampling
+Running MCMC with 12 parallel chains...
+
+Chain 2 finished in 13604.1 seconds.
+Chain 9 finished in 13742.2 seconds.
+Chain 11 finished in 13745.4 seconds.
+Chain 7 finished in 13751.2 seconds.
+Chain 8 finished in 13826.6 seconds.
+Chain 10 finished in 13920.1 seconds.
+Chain 1 finished in 13944.7 seconds.
+Chain 3 finished in 14003.7 seconds.
+Chain 4 finished in 14017.6 seconds.
+Chain 6 finished in 14078.4 seconds.
+Chain 12 finished in 14087.5 seconds.
+Chain 5 finished in 14305.2 seconds.
+
+All 12 chains finished successfully.
+Mean chain execution time: 13918.9 seconds.
+Total execution time: 14306.0 seconds.
+
+
+=== size_interaction ===
+Start sampling
+Running MCMC with 12 parallel chains...
+
+Chain 11 finished in 5260.0 seconds.
+Chain 3 finished in 5753.6 seconds.
+Chain 9 finished in 5884.5 seconds.
+Chain 12 finished in 5907.9 seconds.
+Chain 7 finished in 5912.8 seconds.
+Chain 1 finished in 5923.6 seconds.
+Chain 10 finished in 5936.4 seconds.
+Chain 8 finished in 5954.9 seconds.
+Chain 2 finished in 5971.6 seconds.
+Chain 5 finished in 5982.7 seconds.
+Chain 4 finished in 6001.7 seconds.
+Chain 6 finished in 6035.4 seconds.
+
+All 12 chains finished successfully.
+Mean chain execution time: 5877.1 seconds.
+Total execution time: 6036.7 seconds.
+
+
+=== crowding test: does only rank/d matter?  (b_width + b_rank = 0) ===
+  item              +0.249  CI [+0.173, +0.324]  EXCLUDES 0 -> not a pure ratio
+  class             -0.252  CI [-0.326, -0.179]  EXCLUDES 0 -> not a pure ratio
+  interaction       +0.121  CI [+0.101, +0.140]  EXCLUDES 0 -> not a pure ratio
+
+  main figure -> ./paper/fig-toy-effects_linear.pdf
+
+  figure -> ./paper/fig-toy-coefs_linear.pdf
+Done.
