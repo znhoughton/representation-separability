@@ -13,20 +13,20 @@ ordbeta_size_class,size,relu,class,sd_lang__Intercept,sd(language),0.94525706176
 ordbeta_size_class,size,relu,class,phi,phi,3.796647649202778,0.03940995966385029,3.720352435,3.8746834900000002,1,TRUE
 ordbeta_size_class,size,relu,class,cutzero,cutzero,-5.015269337366667,0.0580647527147338,-5.131120885,-4.90186668,0,TRUE
 ordbeta_size_class,size,relu,class,cutone,cutone,2.2626537723583335,0.00923276632263296,2.2445256175,2.280837875,1,TRUE
-ordbeta_size_class_linear,size,linear,class,b_Intercept,intercept,-1.0067942288683334,0.052197654814375265,-1.1072147399999999,-0.9030712217500001,0,TRUE
-ordbeta_size_class_linear,size,linear,class,b_c_item,item,-3.024422189402778,0.2241319100812722,-3.46386316,-2.5814234075,0,TRUE
-ordbeta_size_class_linear,size,linear,class,b_c_class,class,4.053929044041666,0.20061771554479685,3.6677528799999997,4.454272080000001,1,TRUE
-ordbeta_size_class_linear,size,linear,class,b_c_int,interaction,-1.0952869255983333,0.22654035817683663,-1.54242609,-0.6499840687499998,0,TRUE
-ordbeta_size_class_linear,size,linear,class,b_log2_d,width,-0.23553146423666665,0.0026803058784368025,-0.24077500224999998,-0.23027661325,0,TRUE
-ordbeta_size_class_linear,size,linear,class,b_log2_rank,rank,-0.014890385241055465,0.03738597834164473,-0.087519957275,0.061388744075000036,0.33741666666666664,FALSE
-ordbeta_size_class_linear,size,linear,class,b_log2_d:log2_rank,width x rank,-0.006870713293953722,0.0019097192503055487,-0.010622716125,-0.0031228614374999995,1.6666666666666666e-4,TRUE
-ordbeta_size_class_linear,size,linear,class,b_c_class:log2_d,effect size x width,-0.46883978788361114,0.01290647482576916,-0.49394034800000003,-0.44376651824999996,0,TRUE
-ordbeta_size_class_linear,size,linear,class,b_c_class:log2_rank,effect size x rank,0.001832709349040764,0.1433460416763095,-0.27819092649999994,0.2769458182500002,0.5040833333333333,FALSE
-ordbeta_size_class_linear,size,linear,class,b_c_class:log2_d:log2_rank,effect size x width x rank,-0.025249681071395674,0.009634286940118296,-0.044185201550000004,-0.006407930452499983,0.004416666666666667,TRUE
-ordbeta_size_class_linear,size,linear,class,sd_lang__Intercept,sd(language),1.403174340436111,0.03781111597120713,1.3315841975,1.4803910674999998,1,TRUE
-ordbeta_size_class_linear,size,linear,class,phi,phi,15.54628345725,0.1773908435249948,15.200668024999999,15.897176400000001,1,TRUE
-ordbeta_size_class_linear,size,linear,class,cutzero,cutzero,-6.149025740691667,0.055970111506617,-6.259557602499999,-6.0394590725,0,TRUE
-ordbeta_size_class_linear,size,linear,class,cutone,cutone,2.468479312711111,0.00833584679631099,2.4521270874999996,2.48492741,1,TRUE
+ordbeta_size_class_linear,size,linear,class,b_Intercept,intercept,-1.0083094123739815,0.05264608985846243,-1.110184005,-0.9035961287500001,0,TRUE
+ordbeta_size_class_linear,size,linear,class,b_c_item,item,-3.0198238942953703,0.22538060057041226,-3.4632375675,-2.5855314000000003,0,TRUE
+ordbeta_size_class_linear,size,linear,class,b_c_class,class,4.043605937372222,0.20361743559095716,3.64709371,4.4456586725,1,TRUE
+ordbeta_size_class_linear,size,linear,class,b_c_int,interaction,-1.1074743999493242,0.22565154056126793,-1.5513283375,-0.6704417385000007,0,TRUE
+ordbeta_size_class_linear,size,linear,class,b_log2_d,width,-0.2355170398561111,0.0026824899987617115,-0.24077005825000003,-0.230294466,0,TRUE
+ordbeta_size_class_linear,size,linear,class,b_log2_rank,rank,-0.01617164351340912,0.03721889299333461,-0.089901070025,0.056608564449999996,0.33408333333333334,FALSE
+ordbeta_size_class_linear,size,linear,class,b_log2_d:log2_rank,width x rank,-0.006863352591324259,0.0019186469976528366,-0.010632041749999998,-0.003086974850000001,1.2962962962962963e-4,TRUE
+ordbeta_size_class_linear,size,linear,class,b_c_class:log2_d,effect size x width,-0.46883738171324074,0.012990952143730137,-0.4943675605,-0.44350397225000004,0,TRUE
+ordbeta_size_class_linear,size,linear,class,b_c_class:log2_rank,effect size x rank,-0.0020921802085019873,0.14270325146137644,-0.28295119199999996,0.2746411449999999,0.49521296296296297,FALSE
+ordbeta_size_class_linear,size,linear,class,b_c_class:log2_d:log2_rank,effect size x width x rank,-0.02526845633947404,0.009611156336841602,-0.044032370375,-0.006481745675000004,0.004212962962962963,TRUE
+ordbeta_size_class_linear,size,linear,class,sd_lang__Intercept,sd(language),1.4037192222898147,0.037683151859078425,1.3322726625,1.479320735,1,TRUE
+ordbeta_size_class_linear,size,linear,class,phi,phi,15.546116763842592,0.17764088688122243,15.2001601,15.895864074999999,1,TRUE
+ordbeta_size_class_linear,size,linear,class,cutzero,cutzero,-6.149164071260185,0.05563425788627381,-6.25960801,-6.0413585175,0,TRUE
+ordbeta_size_class_linear,size,linear,class,cutone,cutone,2.468484936859259,0.008329753171592388,2.4521863925,2.484862515,1,TRUE
 ordbeta_size_interaction,size,relu,interaction,b_Intercept,intercept,-3.28158472375,0.02512494485015274,-3.3314503875,-3.233202085,0,TRUE
 ordbeta_size_interaction,size,relu,interaction,b_c_item,item,-0.23565934626170126,0.1062636954582478,-0.44194595025000005,-0.022630252024999874,0.014416666666666666,TRUE
 ordbeta_size_interaction,size,relu,interaction,b_c_class,class,0.05553790416968522,0.11264001757881822,-0.16581441775000003,0.27926267650000025,0.6886666666666666,FALSE
@@ -41,20 +41,20 @@ ordbeta_size_interaction,size,relu,interaction,sd_lang__Intercept,sd(language),0
 ordbeta_size_interaction,size,relu,interaction,phi,phi,24.6520695635,0.3425528523924689,23.98577115,25.330341525,1,TRUE
 ordbeta_size_interaction,size,relu,interaction,cutzero,cutzero,-5.225703138825,0.02632050166885742,-5.27692954,-5.1741762824999995,0,TRUE
 ordbeta_size_interaction,size,relu,interaction,cutone,cutone,2.268459886038889,0.025605778160068992,2.22046501,2.320875055,1,TRUE
-ordbeta_size_interaction_linear,size,linear,interaction,b_Intercept,intercept,-4.221161455533333,0.016712427892241557,-4.253954172499999,-4.1885117649999994,0,TRUE
-ordbeta_size_interaction_linear,size,linear,interaction,b_c_item,item,-0.12502156586150776,0.054333629312015685,-0.23179695649999998,-0.01855655959999999,0.011222222222222222,TRUE
-ordbeta_size_interaction_linear,size,linear,interaction,b_c_class,class,-0.6522646854616667,0.05946299033286544,-0.76851240675,-0.5361734437499999,0,TRUE
-ordbeta_size_interaction_linear,size,linear,interaction,b_c_int,interaction,1.4083813185611112,0.053102324340999006,1.30472063,1.512549575,1,TRUE
-ordbeta_size_interaction_linear,size,linear,interaction,b_log2_d,width,0.13981735750416666,0.004384489227841908,0.13126339500000003,0.14835755974999998,1,TRUE
-ordbeta_size_interaction_linear,size,linear,interaction,b_log2_rank,rank,-0.01929637950764107,0.009209120703517142,-0.03753941445,-0.0012253533224999996,0.017472222222222222,TRUE
-ordbeta_size_interaction_linear,size,linear,interaction,b_log2_d:log2_rank,width x rank,0.02424162494875,0.003178209838071704,0.017986162924999997,0.030396550725000002,1,TRUE
-ordbeta_size_interaction_linear,size,linear,interaction,b_c_int:log2_d,effect size x width,0.3880243908925,0.015106245695625466,0.358028328,0.41772996875,1,TRUE
-ordbeta_size_interaction_linear,size,linear,interaction,b_c_int:log2_rank,effect size x rank,0.06322189640958528,0.03770488242006535,-0.010068544225,0.13702189925,0.9538333333333333,FALSE
-ordbeta_size_interaction_linear,size,linear,interaction,b_c_int:log2_d:log2_rank,effect size x width x rank,0.029728391503816846,0.011053828333213054,0.008002588137499999,0.051304275025,0.9965555555555555,TRUE
-ordbeta_size_interaction_linear,size,linear,interaction,sd_lang__Intercept,sd(language),0.25771715938555556,0.012600114047653571,0.23365938049999999,0.28309625200000005,1,TRUE
-ordbeta_size_interaction_linear,size,linear,interaction,phi,phi,28.57300880963889,0.4561668290143508,27.690820625000004,29.4728721,1,TRUE
-ordbeta_size_interaction_linear,size,linear,interaction,cutzero,cutzero,-5.093668782141667,0.021825180631202954,-5.136162819999999,-5.050452330000001,0,TRUE
-ordbeta_size_interaction_linear,size,linear,interaction,cutone,cutone,2.2010760052416667,0.04293713460201185,2.121731105,2.2902715775,1,TRUE
+ordbeta_size_interaction_linear,size,linear,interaction,b_Intercept,intercept,-4.2210182516481485,0.016748447040473017,-4.2540001175,-4.18823477,0,TRUE
+ordbeta_size_interaction_linear,size,linear,interaction,b_c_item,item,-0.12494239767227515,0.05466569550799248,-0.23214176949999998,-0.017825726375000003,0.011425925925925926,TRUE
+ordbeta_size_interaction_linear,size,linear,interaction,b_c_class,class,-0.6521296774866666,0.05936356947662995,-0.7689407735,-0.5356292550000001,0,TRUE
+ordbeta_size_interaction_linear,size,linear,interaction,b_c_int,interaction,1.4089502261074074,0.05317630774690163,1.3054047075000001,1.5137298899999998,1,TRUE
+ordbeta_size_interaction_linear,size,linear,interaction,b_log2_d,width,0.1398261343912037,0.004380203401000954,0.1312449755,0.148385055,1,TRUE
+ordbeta_size_interaction_linear,size,linear,interaction,b_log2_rank,rank,-0.019234021158020056,0.009159471735224238,-0.03724678142500001,-0.0013456978025000086,0.017287037037037038,TRUE
+ordbeta_size_interaction_linear,size,linear,interaction,b_log2_d:log2_rank,width x rank,0.02422896940260185,0.003194209664458469,0.017996403475000002,0.030480294374999998,1,TRUE
+ordbeta_size_interaction_linear,size,linear,interaction,b_c_int:log2_d,effect size x width,0.38804093702175924,0.01521593694048255,0.358198529,0.4178789575,1,TRUE
+ordbeta_size_interaction_linear,size,linear,interaction,b_c_int:log2_rank,effect size x rank,0.06324087249200383,0.03766150470305405,-0.010422340699999998,0.13702931175,0.9538611111111112,FALSE
+ordbeta_size_interaction_linear,size,linear,interaction,b_c_int:log2_d:log2_rank,effect size x width x rank,0.029737795302293656,0.011030120889450849,0.0080643098525,0.05135246272499998,0.9961944444444445,TRUE
+ordbeta_size_interaction_linear,size,linear,interaction,sd_lang__Intercept,sd(language),0.2575933446937963,0.012537063961101706,0.233489318,0.28276689075,1,TRUE
+ordbeta_size_interaction_linear,size,linear,interaction,phi,phi,28.56974303961111,0.4584209549313331,27.678886950000003,29.4684534,1,TRUE
+ordbeta_size_interaction_linear,size,linear,interaction,cutzero,cutzero,-5.093525023122222,0.022037468794499193,-5.1368040125,-5.050256265000001,0,TRUE
+ordbeta_size_interaction_linear,size,linear,interaction,cutone,cutone,2.200918061272222,0.04285270465801149,2.1222448025000005,2.2897399,1,TRUE
 ordbeta_size_item,size,relu,item,b_Intercept,intercept,0.2320241720001389,0.033823843510042036,0.16560156775,0.29846147975000004,1,TRUE
 ordbeta_size_item,size,relu,item,b_c_item,item,1.5760590804844445,0.1499800118790691,1.283518905,1.8659640175,1,TRUE
 ordbeta_size_item,size,relu,item,b_c_class,class,-1.945105834738889,0.1607785998367854,-2.2595272225000005,-1.62966669,0,TRUE
@@ -69,38 +69,38 @@ ordbeta_size_item,size,relu,item,sd_lang__Intercept,sd(language),0.8937241596936
 ordbeta_size_item,size,relu,item,phi,phi,3.3785985405083334,0.0342935611173317,3.3117889725,3.44615717,1,TRUE
 ordbeta_size_item,size,relu,item,cutzero,cutzero,-3.8655476485055558,0.04808734188647801,-3.9612183800000005,-3.7722551875,0,TRUE
 ordbeta_size_item,size,relu,item,cutone,cutone,2.2418612347444444,0.009899962956511592,2.2225054225000003,2.2612133875,1,TRUE
-ordbeta_size_item_linear,size,linear,item,b_Intercept,intercept,0.9346883162138889,0.050908327650517615,0.83699127975,1.03751706,1,TRUE
-ordbeta_size_item_linear,size,linear,item,b_c_item,item,2.8583513322166665,0.22140281801017508,2.4203652475000004,3.2884738125,1,TRUE
-ordbeta_size_item_linear,size,linear,item,b_c_class,class,-3.6146802663222224,0.20445113132737266,-4.0130162625,-3.21006307,0,TRUE
-ordbeta_size_item_linear,size,linear,item,b_c_int,interaction,1.2086269286758333,0.2245221676143471,0.76411281975,1.63937193,1,TRUE
-ordbeta_size_item_linear,size,linear,item,b_log2_d,width,0.24775731435055556,0.0025560524185931723,0.24273605175000001,0.25274247299999997,1,TRUE
-ordbeta_size_item_linear,size,linear,item,b_log2_rank,rank,-2.588678366240276e-4,0.037325325880688966,-0.07373208305000001,0.07274312412500003,0.5005555555555555,FALSE
-ordbeta_size_item_linear,size,linear,item,b_log2_d:log2_rank,width x rank,0.006830440460165639,0.0018093754477112873,0.0032662088475000003,0.010372715725,0.9998888888888889,TRUE
-ordbeta_size_item_linear,size,linear,item,b_c_item:log2_d,effect size x width,-0.7175206418552778,0.012036379300767123,-0.74099811975,-0.6939268662499999,0,TRUE
-ordbeta_size_item_linear,size,linear,item,b_c_item:log2_rank,effect size x rank,-0.008136540477755,0.157445166440962,-0.3089914145,0.30825598450000014,0.47430555555555554,FALSE
-ordbeta_size_item_linear,size,linear,item,b_c_item:log2_d:log2_rank,effect size x width x rank,-0.015391103932948425,0.0087925440167911,-0.032664906225000005,0.0017352756675000052,0.03875,FALSE
-ordbeta_size_item_linear,size,linear,item,sd_lang__Intercept,sd(language),1.4205071505333333,0.03838782725049901,1.3464476799999998,1.4974915025,1,TRUE
-ordbeta_size_item_linear,size,linear,item,phi,phi,17.056386169,0.19334525718607706,16.68108795,17.43448115,1,TRUE
-ordbeta_size_item_linear,size,linear,item,cutzero,cutzero,-4.788500372022222,0.06135287832141337,-4.9095388125,-4.6684420975,0,TRUE
-ordbeta_size_item_linear,size,linear,item,cutone,cutone,2.4307702913472222,0.007970341425927752,2.4150170775,2.4465933925,1,TRUE
-overlap_int_margins_int,overlap,relu,int_margins_int,b_Intercept,intercept,0.0542956811132025,0.013197635096369243,0.028604002375,0.08014923680000001,0.9999722222222223,TRUE
-overlap_int_margins_int,overlap,relu,int_margins_int,b_c_item,item,-1.3090855002388888,0.06055504422929385,-1.4275246225,-1.191806165,0,TRUE
-overlap_int_margins_int,overlap,relu,int_margins_int,b_c_class,class,-0.7773730417819444,0.06257221682675003,-0.8993745365,-0.6550340162499999,0,TRUE
-overlap_int_margins_int,overlap,relu,int_margins_int,b_c_int,interaction,-0.5393967005083333,0.054544023401232496,-0.6459314565000001,-0.43110716275,0,TRUE
-overlap_int_margins_int,overlap,relu,int_margins_int,b_log2_d,width,-0.09455616482052778,0.002418771804621735,-0.099285183725,-0.089800808025,0,TRUE
-overlap_int_margins_int,overlap,relu,int_margins_int,b_log2_rank,rank,-0.049608221856916664,0.009207989434282544,-0.067503424075,-0.03147978569999999,0,TRUE
-overlap_int_margins_int,overlap,relu,int_margins_int,b_log2_d:log2_rank,width x rank,-0.050601594267666666,0.0017467074546062694,-0.054023296675,-0.047161214925,0,TRUE
-overlap_int_margins_int,overlap,relu,int_margins_int,sd_lang__Intercept,sd(language),0.3095993767247222,0.0111279790693056,0.2885538365,0.33197747,1,TRUE
-overlap_int_margins_int,overlap,relu,int_margins_int,sigma,sigma,0.2746220728916667,0.0022837597486025877,0.27016860300000006,0.27912727649999997,1,TRUE
-overlap_int_margins_int_linear,overlap,linear,int_margins_int,b_Intercept,intercept,-0.7672633934869444,0.03789731285496789,-0.84295570925,-0.6942461249999999,0,TRUE
-overlap_int_margins_int_linear,overlap,linear,int_margins_int,b_c_item,item,-1.6764421636527778,0.160425793834903,-1.9941479075,-1.3631382575,0,TRUE
-overlap_int_margins_int_linear,overlap,linear,int_margins_int,b_c_class,class,-2.2039441595305553,0.2737422703702255,-2.7507649549999997,-1.68226625,0,TRUE
-overlap_int_margins_int_linear,overlap,linear,int_margins_int,b_c_int,interaction,-1.3849630207933334,0.13696326277464074,-1.6527418425,-1.1166380024999998,0,TRUE
-overlap_int_margins_int_linear,overlap,linear,int_margins_int,b_log2_d,width,0.10411139238569445,0.006059126447528288,0.092233242375,0.11592287400000001,1,TRUE
-overlap_int_margins_int_linear,overlap,linear,int_margins_int,b_log2_rank,rank,-0.20209745494383333,0.024717575659394895,-0.25032252725,-0.1534742055,0,TRUE
-overlap_int_margins_int_linear,overlap,linear,int_margins_int,b_log2_d:log2_rank,width x rank,-0.09865999578291666,0.003846710599661612,-0.10618764125,-0.09111325617499999,0,TRUE
-overlap_int_margins_int_linear,overlap,linear,int_margins_int,sd_lang__Intercept,sd(language),0.5366636867838889,0.026169664162386662,0.48800589425,0.59090388,1,TRUE
-overlap_int_margins_int_linear,overlap,linear,int_margins_int,sigma,sigma,0.1645126243513889,0.003085887965928714,0.15860098825000002,0.17070849275,1,TRUE
+ordbeta_size_item_linear,size,linear,item,b_Intercept,intercept,0.9340443052564815,0.052026201146930594,0.83105364975,1.034262915,1,TRUE
+ordbeta_size_item_linear,size,linear,item,b_c_item,item,2.8559118362916665,0.22523494567543656,2.414492,3.2943957800000003,1,TRUE
+ordbeta_size_item_linear,size,linear,item,b_c_class,class,-3.6174485636287037,0.20039662129314606,-4.004757554999999,-3.2168881575,0,TRUE
+ordbeta_size_item_linear,size,linear,item,b_c_int,interaction,1.2131114932485185,0.2252620243857998,0.7779540490000001,1.660268095,1,TRUE
+ordbeta_size_item_linear,size,linear,item,b_log2_d,width,0.24776543719796296,0.0025621207797455877,0.24274764625,0.25279302475,1,TRUE
+ordbeta_size_item_linear,size,linear,item,b_log2_rank,rank,0.0010411810695940393,0.038420469596213834,-0.07423103419999999,0.07588415377499994,0.5128981481481482,FALSE
+ordbeta_size_item_linear,size,linear,item,b_log2_d:log2_rank,width x rank,0.0068322997257055,0.001825692009348777,0.003250048595,0.010429439924999999,0.9999259259259259,TRUE
+ordbeta_size_item_linear,size,linear,item,b_c_item:log2_d,effect size x width,-0.7174586255797222,0.012007737998563738,-0.740896932,-0.6937982955,0,TRUE
+ordbeta_size_item_linear,size,linear,item,b_c_item:log2_rank,effect size x rank,-0.019514847849326993,0.16184576735879835,-0.3419758835,0.2965809857499995,0.45516666666666666,FALSE
+ordbeta_size_item_linear,size,linear,item,b_c_item:log2_d:log2_rank,effect size x width x rank,-0.015352848047981246,0.008744709019443209,-0.032520176375,0.0017629983449999908,0.039935185185185185,FALSE
+ordbeta_size_item_linear,size,linear,item,sd_lang__Intercept,sd(language),1.4197728008944444,0.03807443031698908,1.3475696775000001,1.49590149,1,TRUE
+ordbeta_size_item_linear,size,linear,item,phi,phi,17.056007589953705,0.19315576670963344,16.67883795,17.436013074999998,1,TRUE
+ordbeta_size_item_linear,size,linear,item,cutzero,cutzero,-4.788897234726852,0.06120068498272844,-4.9097339325,-4.669545867500001,0,TRUE
+ordbeta_size_item_linear,size,linear,item,cutone,cutone,2.430794203600926,0.007997154069816386,2.4151085975,2.44651281,1,TRUE
+overlap_int_margins,overlap,relu,int_margins,b_Intercept,intercept,0.0542956811132025,0.013197635096369243,0.028604002375,0.08014923680000001,0.9999722222222223,TRUE
+overlap_int_margins,overlap,relu,int_margins,b_c_item,item,-1.3090855002388888,0.06055504422929385,-1.4275246225,-1.191806165,0,TRUE
+overlap_int_margins,overlap,relu,int_margins,b_c_class,class,-0.7773730417819444,0.06257221682675003,-0.8993745365,-0.6550340162499999,0,TRUE
+overlap_int_margins,overlap,relu,int_margins,b_c_int,interaction,-0.5393967005083333,0.054544023401232496,-0.6459314565000001,-0.43110716275,0,TRUE
+overlap_int_margins,overlap,relu,int_margins,b_log2_d,width,-0.09455616482052778,0.002418771804621735,-0.099285183725,-0.089800808025,0,TRUE
+overlap_int_margins,overlap,relu,int_margins,b_log2_rank,rank,-0.049608221856916664,0.009207989434282544,-0.067503424075,-0.03147978569999999,0,TRUE
+overlap_int_margins,overlap,relu,int_margins,b_log2_d:log2_rank,width x rank,-0.050601594267666666,0.0017467074546062694,-0.054023296675,-0.047161214925,0,TRUE
+overlap_int_margins,overlap,relu,int_margins,sd_lang__Intercept,sd(language),0.3095993767247222,0.0111279790693056,0.2885538365,0.33197747,1,TRUE
+overlap_int_margins,overlap,relu,int_margins,sigma,sigma,0.2746220728916667,0.0022837597486025877,0.27016860300000006,0.27912727649999997,1,TRUE
+overlap_int_margins_linear,overlap,linear,int_margins,b_Intercept,intercept,-0.7687010065421296,0.03706279418018982,-0.8396173324999999,-0.6948270420000001,0,TRUE
+overlap_int_margins_linear,overlap,linear,int_margins,b_c_item,item,-1.6811660401394444,0.16036486092561555,-1.9938168474999998,-1.36607451,0,TRUE
+overlap_int_margins_linear,overlap,linear,int_margins,b_c_class,class,-2.1998727224716665,0.27363930859810376,-2.7391743175,-1.6678528800000003,0,TRUE
+overlap_int_margins_linear,overlap,linear,int_margins,b_c_int,interaction,-1.3853232180887036,0.13479198369659479,-1.6493556624999999,-1.121511955,0,TRUE
+overlap_int_margins_linear,overlap,linear,int_margins,b_log2_d,width,0.10405769575301851,0.006057261554577559,0.09213142865,0.11592130450000002,1,TRUE
+overlap_int_margins_linear,overlap,linear,int_margins,b_log2_rank,rank,-0.20054590114549073,0.02508410754364618,-0.24972848025000002,-0.15096442750000003,0,TRUE
+overlap_int_margins_linear,overlap,linear,int_margins,b_log2_d:log2_rank,width x rank,-0.09861644998593519,0.003800896292855468,-0.1060807615,-0.0911778272,0,TRUE
+overlap_int_margins_linear,overlap,linear,int_margins,sd_lang__Intercept,sd(language),0.5361619216054629,0.02589806603207726,0.48833346675,0.5901007292499999,1,TRUE
+overlap_int_margins_linear,overlap,linear,int_margins,sigma,sigma,0.16448855761666667,0.00311018181905837,0.15853761524999999,0.17074183599999998,1,TRUE
 overlap_item_class,overlap,relu,item_class,b_Intercept,intercept,0.21189275748277778,0.014722988103712675,0.18335185399999998,0.24088515125000004,1,TRUE
 overlap_item_class,overlap,relu,item_class,b_c_item,item,-0.6456710394305556,0.06874445052774333,-0.7805905340000001,-0.509694011,0,TRUE
 overlap_item_class,overlap,relu,item_class,b_c_class,class,-1.5787206177305555,0.07591218827469436,-1.7285230575,-1.4299616999999998,0,TRUE
