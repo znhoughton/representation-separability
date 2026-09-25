@@ -359,6 +359,17 @@ cm <- function(x) format(x, big.mark = ",")
 SHORT <- c("POS (noun/verb)"               = "part of speech",
            "role (subject/object)"         = "grammatical role")
 shortname <- function(x) unname(SHORT[as.character(x)])
+# The portable fraction of @tbl-posabl, for one model size with positions intact or zeroed,
+# so the prose quotes the same numbers the table does rather than hardcoding them.
+pf <- function(size, positions) {
+  d <- rd("llm_unified_form.csv") |>
+    filter(grepl(size, model, fixed = TRUE), grepl("^pretrained", init)) |>
+    mutate(pos = ifelse(grepl("noposemb$", init), "zeroed", "intact")) |>
+    filter(pos == positions) |>
+    slice_max(layer, n = 1, with_ties = FALSE)
+  g(d$std_size_class / (d$std_size_class + d$std_size_interaction), 3)
+}
+
 nullget <- function(a, pl, col) toy_null[[col]][toy_null$act == a & toy_null$planted == pl]
 capget <- function(a, cap, col) toy_cap[[col]][toy_cap$act == a & toy_cap$capacity == cap]
 
@@ -719,7 +730,7 @@ Full model results are in Appendix \ref{sec-appendix-component-models}; we descr
 
 Each effect's size in the language predicts its own size in the representation and not the others', so the decomposition is specific to the component it names, and of the three the item effect takes the largest share at every width.
 
-The extent to which the interaction is encoded in the model's representation does not depend on its rank in the language (`r cf("interaction", "rank")`). Instead, it is the size of the hidden layer that determines how much of the interaction is encoded (`r cf("interaction", "width")`): the larger the hidden layer, the larger the size of the interaction it encodes. This is not the case for the item effect, which decreases as the hidden layer grows (`r cf("item", "width")`), or for the class effect, which barely changes (`r cf("class", "width")`). In the linear condition the hidden layer is spent the other way, on the item effect, leaving the interaction near zero throughout.
+The extent to which the interaction is encoded in the model's representation does not depend on its rank in the language (`r cf("interaction", "rank")`). Instead, it is the size of the hidden layer that determines how much of the interaction is encoded (`r cf("interaction", "width")`): the larger the hidden layer, the larger the size of the interaction it encodes. This is not the case for the item effect, which decreases as the hidden layer grows (`r cf("item", "width")`), or for the class effect, which barely changes (`r cf("class", "width")`). In the linear condition the hidden layer is spent the other way, on the item effect, leaving the interaction near zero throughout; rank does register there (`r cf("interaction", "rank", "linear")`), but well below width (`r cf("interaction", "width", "linear")`).
 
 Width governs geometry as well as magnitude. At a hidden width of 8 the item and class effects overlap `r fv("item_class", 8, kindv = "overlap")` times as much as an arbitrary orientation would give; by width 256 they overlap `r fv("item_class", 256, kindv = "overlap")` times as much, which is below chance (`r cf("item_class", "width", kindv = "overlap")`). The interaction's overlap with the two margins follows the same course more weakly. Under a linear learner the two move the other way: item-class overlap rises with width, from `r fv("item_class", 8, "linear", "overlap")` to `r fv("item_class", 256, "linear", "overlap")` times chance, and stays well below it throughout (@fig-toy-overlap). A narrow layer thus does not merely represent less of the interaction, it also forces the components it does represent onto shared directions, and given room the learner separates them by more than chance.
 
@@ -1040,7 +1051,7 @@ v_ov_power |>
 
 Whether the item and class effects are orthogonal depends on the width of the representation. @fig-toy-overlap reports that relationship from the fitted models; this appendix gives the remaining properties of the artificial-language runs.
 
-Under ReLU, overlap stays below chance at wide layers and rises above it as the layer narrows, while the linear condition remains near its chance level throughout. Varying the rank of the interaction does not move the point at which that crossing happens.
+Under ReLU, overlap stays below chance at wide layers and rises above it as the layer narrows, while the linear condition stays well below chance at every width. Varying the rank of the interaction does not move the point at which that crossing happens.
 
 At low widths, the representations also vary substantially across runs, with this variability decreasing as width increases. For example, two runs of the same language differ by `r g(seedspan(8, "item"), 2)` in the item effect and `r g(seedspan(8, "class"), 2)` in the class effect at width 8, compared with `r g(seedspan(32, "item"), 2)` and `r g(seedspan(32, "class"), 2)` at width 32. This variability reflects the different ways models can distribute information when representational capacity is limited.
 
@@ -1064,6 +1075,8 @@ toy_bylang |>
 Table \ref{tbl-component-coefs} reports every coefficient of @eq-ordbeta and @fig-toy-coefs shows them.
 
 We fit each activation separately, giving six models in all, so that the linear arm is described by the same model as the ReLU arm rather than by medians alone. We keep only runs that converged and in which at least one of the three components has a re-split interval excluding zero. That second criterion matters more here than it does for the descriptive figure: where nothing resolves, each of the three shares is a noise-sized quantity divided by a noise-sized total, so whichever component happens to land slightly positive takes nearly all of it, and the resulting value is arbitrary rather than small. Unlike the descriptive figure, we do keep languages in which a component was given no weight at all, since those runs anchor the low end of the effect-size predictors and are what identify the off-diagonal terms.
+
+Every component and overlap model used at least `r cm(min(rdiag$n_draws))` post-warmup draws, produced no divergent transitions, and reached a bulk effective sample size of at least `r cm(round(min(rdiag$min_ess_bulk)))`. The largest $\hat{R}$ across them is `r g(max(rdiag$max_rhat), 2)`.
 
 Because @eq-ordbeta carries a three-way interaction, the width and rank coefficients are conditional main effects: each is the effect at the mean of the other predictors rather than an effect averaged over them. The contrast in Table \ref{tbl-component-ratio} is evaluated at the same point.
 
@@ -1097,13 +1110,12 @@ rcrwd |>
   kable_styling(latex_options = c("HOLD_position"), font_size = 7)
 ```
 
-![Every coefficient of @eq-ordbeta, with 66% and 95% posterior intervals. Columns are the three measured components, one fitted model each. The upper block is the three effect sizes in the language, whose diagonal is the specificity check; the lower block is the architecture terms, where *effect size* refers to the panel's own component. The two blocks are drawn on separate x scales, since the language terms span a range several times wider than the architecture terms.](fig-toy-coefs.pdf){#fig-toy-coefs width="100%" fig-env="figure*"}
+![Every coefficient of @eq-ordbeta, with 66% and 95% posterior intervals. Columns are the three measured components, one fitted model each. The upper block is the three effect sizes in the language, whose diagonal is the specificity check; the lower block is the architecture terms, where *effect size* refers to the panel's own component. The two blocks are drawn on separate x scales, since the language terms span a range several times wider than the architecture terms.](fig-toy-coefs.pdf){#fig-toy-coefs width="100%"}
 
-![The fitted surface of @eq-ordbeta with the rank of the interaction in the language broken out as rows, rather than held at its mean as in @fig-toy-effects. Columns are the three measured components and lines are hidden widths, with 95% intervals. Rows that look alike indicate that the rank an interaction requires does not constrain what the learner represents of it.](fig-toy-effects-full.pdf){#fig-toy-effects-full width="100%" fig-env="figure*"}
+![The fitted surface of @eq-ordbeta with the rank of the interaction in the language broken out as rows, rather than held at its mean as in @fig-toy-effects. Columns are the three measured components and lines are hidden widths, with 95% intervals. Rows that look alike indicate that the rank an interaction requires does not constrain what the learner represents of it.](fig-toy-effects-full.pdf){#fig-toy-effects-full width="100%"}
 
 ```{r}
 #| label: fig-toy-overlap
-#| fig-env: figure*
 #| fig-width: 6.3
 #| fig-height: 2.7
 #| out-width: "100%"
@@ -1140,7 +1152,6 @@ rpred |>
 
 ```{r}
 #| label: fig-toy-effects
-#| fig-env: figure*
 #| fig-width: 6.3
 #| fig-height: 3.4
 #| out-width: "100%"
@@ -1233,18 +1244,6 @@ llm |> group_by(construction, model) |>
 
 {{< pagebreak >}}
 
-# Read from the main POS file. It carries the \*\_noposemb inits for every OPT-BabyLM
-
-# size under the current estimator, so this table is on the same footing as every
-
-# other table in the paper. (An older, separate ablation CSV used to hold these rows
-
-# but was written by a superseded measure.py; it has been removed.)
-
-rd("llm_unified_form.csv") \|\> filter(grepl("babylm", model), grepl("\^pretrained", init)) \|\> group_by(model, init) \|\> slice_max(layer, n = 1, with_ties = FALSE) \|\> ungroup() \|\> transmute(model = sub(".\*/", "", sub("-20eps-seed964", "", model)), positions = ifelse(grepl("noposemb\$", init), "zeroed", "intact"), class = std_size_class, interaction = std_size_interaction, portable = std_size_class / (std_size_class + std_size_interaction)) \|\> arrange(match(model, c("opt-babylm-125m", "opt-babylm-350m", "opt-babylm-1.3B")), desc(positions)) \|\> transmute(model, positions, `class` = g(class, 3), `interaction` = g(interaction, 3), `portable fraction` = g(portable, 3)) \|\> kbl(longtable = FALSE, booktabs = TRUE, align = "llrrr", linesep = "") \|\> kable_styling(font_size = 9) \`\`\`
-
-Removing the position embeddings makes these representations *less* separable, not more. The portable fraction falls in every model, from 0.439 to 0.264, from 0.468 to 0.253, and from 0.333 to 0.198 (Table \ref{tbl-posabl}). Whatever the absolute position embedding contributes, it is contributing to the part of class structure that *is* carried by a shared direction. Take it away and what remains is more word-specific, not less. The interaction is not an artifact of position.
-
 # Positional Embeddings Are Not the Source {#sec-appendix-positions}
 
 One architectural explanation of the interaction has to be ruled out before it can be read as a fact about lexical representations. The BabyLMs add a *learned absolute position embedding* at the input. The two classes of a linguistic category are not positionally interchangeable in a sentence, since subjects precede objects and nouns and verbs occupy different slots, so a representation that varies with position varies with the class. If that is what the decomposition is picking up, the interaction would be an artifact of where words sit rather than of how they are represented.
@@ -1253,7 +1252,31 @@ We re-extracted every OPT-BabyLM model with the positional embeddings zeroed out
 
 We measure the class effect's share of class-relevant structure which is the class effect divided by the sum of the class effect and the interaction, which we call the *portable fraction*. If positions were manufacturing the interaction, removing them should leave a larger share of what distinguishes the two classes in a direction shared across words. Absolute sizes cannot be compared here: zeroing the embeddings in a model that was trained with them is a heavy intervention, and it shrinks every component at once, the class effect included.
 
-\`\`\`{r} #\| label: tbl-posabl #\| tbl-cap: "Trained OPT-BabyLM at the deepest layer, with absolute position embeddings intact and zeroed. Sizes are shares of the item-by-class structure and the portable fraction is the class effect divided by the sum of the class effect and the interaction."
+```{r}
+#| label: tbl-posabl
+#| tbl-cap: "Trained OPT-BabyLM at the deepest layer, with absolute position embeddings intact and zeroed. Sizes are shares of the item-by-class structure and the portable fraction is the class effect divided by the sum of the class effect and the interaction."
+# Read from the main POS file. It carries the *_noposemb inits for every OPT-BabyLM
+# size under the current estimator, so this table is on the same footing as every
+# other table in the paper. (An older, separate ablation CSV used to hold these rows
+# but was written by a superseded measure.py; it has been removed.)
+rd("llm_unified_form.csv") |>
+  filter(grepl("babylm", model), grepl("^pretrained", init)) |>
+  group_by(model, init) |>
+  slice_max(layer, n = 1, with_ties = FALSE) |>
+  ungroup() |>
+  transmute(model = sub(".*/", "", sub("-20eps-seed964", "", model)),
+            positions = ifelse(grepl("noposemb$", init), "zeroed", "intact"),
+            class = std_size_class, interaction = std_size_interaction,
+            portable = std_size_class / (std_size_class + std_size_interaction)) |>
+  arrange(match(model, c("opt-babylm-125m", "opt-babylm-350m", "opt-babylm-1.3B")),
+          desc(positions)) |>
+  transmute(model, positions, `class` = g(class, 3), `interaction` = g(interaction, 3),
+            `portable fraction` = g(portable, 3)) |>
+  kbl(longtable = FALSE, booktabs = TRUE, align = "llrrr", linesep = "") |>
+  kable_styling(font_size = 9)
+```
+
+Removing the position embeddings makes these representations *less* separable, not more. The portable fraction falls in every model, from `r pf("125m", "intact")` to `r pf("125m", "zeroed")`, from `r pf("350m", "intact")` to `r pf("350m", "zeroed")`, and from `r pf("1.3B", "intact")` to `r pf("1.3B", "zeroed")` (Table \ref{tbl-posabl}). Whatever the absolute position embedding contributes, it is contributing to the part of class structure that *is* carried by a shared direction. Take it away and what remains is more word-specific, not less. The interaction is not an artifact of position.
 
 # The Decomposition {#sec-appendix-math}
 

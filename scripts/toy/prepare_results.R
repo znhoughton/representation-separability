@@ -27,6 +27,12 @@ OUT    <- file.path(".", "data")
 NDRAWS <- as.integer(Sys.getenv("NDRAWS", "1000"))
 ONLY   <- Sys.getenv("MODELS", "")
 
+# add_epred_draws() below takes a random subsample of NDRAWS of the fit's draws, so without
+# a seed the fitted values shift a little on every run even when the fits are untouched.
+# The drift is small (under 0.2%, well inside the two decimals the paper prints) but it made
+# the results CSVs churn for no reason and left the numbers unreproducible.
+set.seed(964)
+
 # Demo fits are subsampled with a fraction of the draws and must never reach the paper.
 rds <- list.files(CACHE, pattern = "^(ordbeta_size|overlap)_.*[.]rds$", full.names = TRUE)
 rds <- rds[!grepl("_demo[.]rds$", rds)]
