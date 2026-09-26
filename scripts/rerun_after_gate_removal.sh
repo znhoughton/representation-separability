@@ -250,24 +250,50 @@ if [ "$SKIP_MODELS" != "1" ]; then
     fi
   fi
 
+  # PER-ARM SAMPLING BUDGET. The two activations do not need the same one, and the committed
+  # diagnostics say so: at 36,000 draws every ReLU fit converged, while two of three linear
+  # component fits and the linear int_margins overlap did not, and the one linear fit that did
+  # converge is the one given 108,000 (toy_overlap_diagnostics_linear.csv). linear_long.log
+  # records that arm being refit at 12 x 18000 for exactly this reason. Running the linear arm at
+  # the ReLU budget would repeat a budget already known to be too small for it.
+  #
+  # These are starting points carried over from what converged before, not guarantees: the overlap
+  # models now fit every row the gate used to suppress, so their posteriors are not the ones these
+  # budgets were chosen against. Check converged in the diagnostics when the run lands and raise
+  # the arm that needs it.
+  RELU_ITER="${RELU_ITER:-6000}";     RELU_WARMUP="${RELU_WARMUP:-3000}"
+  LIN_ITER="${LIN_ITER:-18000}";      LIN_WARMUP="${LIN_WARMUP:-9000}"
+
   if [ "$SKIP_COMPONENTS" != "1" ]; then
     echo
-    echo "[models] component models, both arms"
-    step_begin fit-components
-    bash scripts/toy/run_component_models.sh 2>&1 | tee "$LOGDIR/fit-components.log"
-    rc="${PIPESTATUS[0]}"; step_end fit-components
-    [ "$rc" -eq 0 ] || { echo "[models] component fits FAILED (exit $rc)" >&2; rc_all=1; }
+    echo "[models] component models, relu arm ($RELU_ITER iter)"
+    step_begin fit-components-relu
+    ARMS=relu ITER="$RELU_ITER" WARMUP="$RELU_WARMUP" \
+      bash scripts/toy/run_component_models.sh 2>&1 | tee "$LOGDIR/fit-components-relu.log"
+    rc="${PIPESTATUS[0]}"; step_end fit-components-relu
+    [ "$rc" -eq 0 ] || { echo "[models] relu component fits FAILED (exit $rc)" >&2; rc_all=1; }
+
+    echo
+    echo "[models] component models, identity arm ($LIN_ITER iter)"
+    step_begin fit-components-identity
+    ARMS=identity ITER="$LIN_ITER" WARMUP="$LIN_WARMUP" \
+      bash scripts/toy/run_component_models.sh 2>&1 | tee "$LOGDIR/fit-components-identity.log"
+    rc="${PIPESTATUS[0]}"; step_end fit-components-identity
+    [ "$rc" -eq 0 ] || { echo "[models] identity component fits FAILED (exit $rc)" >&2; rc_all=1; }
   else
     echo "  [skip]   component models (SKIP_COMPONENTS=1); their cached fits were retired, so"
     echo "           prepare_results.R will fail until they are refit"
   fi
 
   for act in relu identity; do
+    if [ "$act" = "identity" ]; then it="$LIN_ITER"; wu="$LIN_WARMUP"
+    else                              it="$RELU_ITER"; wu="$RELU_WARMUP"; fi
     for meas in item_class int_margins; do
       echo
-      echo "[models] overlap: ACT=$act MEASURE=$meas"
+      echo "[models] overlap: ACT=$act MEASURE=$meas ($it iter)"
       step_begin "fit-overlap-$act-$meas"
-      ACT="$act" MEASURE="$meas" "$RSCRIPT" scripts/toy/fit_overlap_models.R 2>&1 \
+      ACT="$act" MEASURE="$meas" ITER="$it" WARMUP="$wu" \
+        "$RSCRIPT" scripts/toy/fit_overlap_models.R 2>&1 \
         | tee "$LOGDIR/fit-overlap-$act-$meas.log"
       rc="${PIPESTATUS[0]}"; step_end "fit-overlap-$act-$meas"
       [ "$rc" -eq 0 ] || { echo "[models] overlap $act/$meas FAILED (exit $rc)" >&2; rc_all=1; }
