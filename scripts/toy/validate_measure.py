@@ -296,8 +296,7 @@ def main():
                 print(f"{130:>7}{2048:>6}{n_obs:>6}{noise:>7.0f} | "
                       f"{shares[0]:>5.3f}/{shares[1]:>5.3f}/{shares[2]:>5.3f} | "
                       f"{r['size_item']:>6.3f}/{r['size_class']:>6.3f}/{r['size_interaction']:>6.3f} | "
-                      f"{('--' if lk in (None, '') else format(lk, '.4f')):>8} "
-                      f"{str(r['sig_interaction'])[:1]:>6}")
+                      f"{('--' if lk in (None, '') else format(lk, '.4f')):>8}")
         return
 
     import multiprocessing as mp

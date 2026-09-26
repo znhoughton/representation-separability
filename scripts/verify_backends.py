@@ -36,8 +36,7 @@ TIGHT = ["overlap_item_class", "overlap_item_int", "overlap_class_int",
          "k_item", "k_class", "k_int", "k_margin"]
 LOOSE = ["size_item", "size_class", "size_interaction",
          "leak_item_into_class_null_med", "leak_int_into_margins_null_med"]
-FLAGS = ["sig_item", "sig_class", "sig_interaction",
-         "size_item_excludes_zero", "size_class_excludes_zero", "size_interaction_excludes_zero",
+FLAGS = ["size_item_excludes_zero", "size_class_excludes_zero", "size_interaction_excludes_zero",
          "leak_item_into_class_outside", "leak_int_into_margins_outside"]
 
 # (label, L, C, d, n_obs, shares, overlap)

@@ -51,12 +51,9 @@ ACT         <- Sys.getenv("ACT", "relu")
 # interaction projected onto the span of both margins, which is the "is there a third component
 # that is neither" question the separability claim rests on.
 #
-# MIN_WIDTH. Overlap exists only where a component is large enough to orient, and that tracks
-# width. For item_class, coverage runs 39% at width 8 to 91% at 256. For int_margins under ReLU
-# it runs 7% to 82%, and under the linear learner 0% at width 16, because a linear learner's
-# interaction stays under the floor at which an orientation is reported at all. Default is no
-# floor: the selection is reported rather than silently cut, since a floor applied to one measure
-# and not another is a choice a reader cannot check.
+# MIN_WIDTH. A width floor, off by default (1 = keep every width). It exists only so a width
+# range can be excluded deliberately and visibly; no analysis in the paper sets it. Nothing is
+# cut silently: the coverage line below reports what each width contributes.
 #
 # FAMILY. gaussian by default so every overlap model matches. The logged ratio is close to
 # symmetric for item_class (skew 0.77 under ReLU, 0.39 linear) but less so for int_margins
@@ -79,10 +76,24 @@ SUFFIX <- paste0(TAG, ARM, if (DEMO) "_demo" else "")
 CACHE  <- file.path(".", "model_cache", "toy"); dir.create(CACHE, recursive = TRUE, showWarnings = FALSE)
 OUT    <- file.path(".", "data")
 
-d <- read_csv(file.path(OUT, "artificial_language_grid.csv"), show_col_types = FALSE) |>
-  filter(activation == ACT, converged %in% c(TRUE, "True", "TRUE"),
-         d >= MIN_WIDTH,
-         !is.na(.data[[COL]]), !is.na(.data[[NULLCOL]]),
+d_raw <- read_csv(file.path(OUT, "artificial_language_grid.csv"), show_col_types = FALSE) |>
+  filter(activation == ACT, converged %in% c(TRUE, "True", "TRUE"), d >= MIN_WIDTH)
+
+# The outcome is a LOG ratio, so a zero overlap or a zero chance level has nowhere to go and is
+# dropped. That used to be invisible and nearly empty, because the measure suppressed exactly the
+# rows most likely to hold a zero. With the suppression gone those rows arrive here instead, so
+# what the log transform costs is counted and printed rather than left to be discovered later.
+# A zero overlap means an empty target subspace (a component with no direction to project onto);
+# a missing chance level means its null could not be drawn at that rank.
+n_kept  <- sum(!is.na(d_raw[[COL]]) & !is.na(d_raw[[NULLCOL]]) &
+               d_raw[[COL]] > 0 & d_raw[[NULLCOL]] > 0)
+n_na    <- sum(is.na(d_raw[[COL]]) | is.na(d_raw[[NULLCOL]]))
+n_zero  <- nrow(d_raw) - n_kept - n_na
+cat(sprintf("  dropped by the log transform: %d of %d rows (%d NA, %d at zero); %d kept\n",
+            nrow(d_raw) - n_kept, nrow(d_raw), n_na, n_zero, n_kept))
+
+d <- d_raw |>
+  filter(!is.na(.data[[COL]]), !is.na(.data[[NULLCOL]]),
          .data[[COL]] > 0, .data[[NULLCOL]] > 0) |>
   mutate(rank_tot  = r_item + r_class + r_int,
          log2_d    = log2(d)        - mean(log2(d)),

@@ -189,7 +189,7 @@ def _between_share(X, cells, items, classes):
 
 
 def unified_split(X, item_of, class_of, min_cell=10, classes=None, standardize=True,
-                  n_boot=200, n_null=200, n_resplit=200, sig=0.05, seed=0, verbose=False,
+                  n_boot=200, n_null=200, n_resplit=200, seed=0, verbose=False,
                   keep_null_draws=False, device=None):
     """torch/GPU port of separability.unified_split. Same return dict; draws differ (torch RNG)."""
     if device is None:
@@ -235,34 +235,30 @@ def unified_split(X, item_of, class_of, min_cell=10, classes=None, standardize=T
     P = torch.stack([torch.randperm(L, device=device, generator=gen) for _ in range(n_boot)])
     null_item = (C * torch.einsum('ld,nld->n', aa, ab[P])).cpu().numpy()
     null_int = torch.einsum('lcd,nlcd->n', ga, gb[P]).cpu().numpy()
-    hi = lambda v: float(np.percentile(v, 100 * (1 - sig)))
     s_item = max(0.0, obs_item - float(np.mean(null_item)))
     s_int = max(0.0, obs_int - float(np.mean(null_int)))
     s_class = max(0.0, obs_class)
     total = max(1e-12, s_item + s_class + s_int)
-    FLOOR = 0.02
-    big = {"item": (obs_item > hi(null_item)) and (s_item / total >= FLOOR),
-           "int": (obs_int > hi(null_int)) and (s_int / total >= FLOOR),
-           "class": (s_class / total) >= FLOOR}
+    # See separability.py: every overlap is emitted on the same terms for all three
+    # components. The 0.02 floor was calibrated against the superseded biased estimator,
+    # and the permutation test it sat beside existed only for item and interaction. An
+    # overlap is reported against a random-subspace baseline, which is what makes a gate
+    # unnecessary. sig_* still reports the permutation result; it no longer gates.
 
     S_item = _orthobasis(al, max_rank=L - 1)
     S_class = _orthobasis(be, max_rank=C - 1)
     S_int = _orthobasis(gm.reshape(L * C, -1), max_rank=(L - 1) * (C - 1))
     S_margin = _orthobasis(torch.vstack([al, be]), max_rank=(L - 1) + (C - 1))
 
-    def gate(val, x, y):
-        return val if (big[x] and big[y]) else None
     rep = dict(
         size_item=s_item / total, size_class=s_class / total, size_interaction=s_int / total,
         obs_size_item=s_item, obs_size_class=s_class, obs_size_interaction=s_int, size_total=total,
-        sig_item=big["item"], sig_class=big["class"], sig_interaction=big["int"],
-        leak_item_into_class=gate(_leak(al, S_class), "item", "class"),
-        leak_class_into_item=gate(_leak(be, S_item), "class", "item"),
-        leak_int_into_margins=(_leak(gm.reshape(L * C, -1), S_margin)
-                               if (big["int"] and (big["item"] or big["class"])) else None),
-        overlap_item_class=gate(_angle_overlap(S_item, S_class), "item", "class"),
-        overlap_item_int=gate(_angle_overlap(S_item, S_int), "item", "int"),
-        overlap_class_int=gate(_angle_overlap(S_class, S_int), "class", "int"),
+        leak_item_into_class=_leak(al, S_class),
+        leak_class_into_item=_leak(be, S_item),
+        leak_int_into_margins=_leak(gm.reshape(L * C, -1), S_margin),
+        overlap_item_class=_angle_overlap(S_item, S_class),
+        overlap_item_int=_angle_overlap(S_item, S_int),
+        overlap_class_int=_angle_overlap(S_class, S_int),
         n_items=L, n_classes=C, k_item=S_item.shape[1], k_class=S_class.shape[1],
         k_int=S_int.shape[1], k_margin=S_margin.shape[1],
     )

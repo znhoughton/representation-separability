@@ -83,7 +83,7 @@ def _svd(V, full_matrices=False, compute_uv=True):
             return np.linalg.svd(Vj, full_matrices=full_matrices, compute_uv=compute_uv)
 
 
-def _orthobasis(vectors, rank=None, energy=0.999, max_rank=None):
+def _orthobasis(vectors, rank=None, max_rank=None):
     """Orthonormal basis (d x r) for the row-space of `vectors` (m x d) via SVD. Rank is the
     participation ratio of the singular values (rounded) unless `rank` is given, capped so we
     never claim more directions than there are non-trivial ones."""
@@ -169,7 +169,6 @@ _SIZE_CI = ["_ci_lo", "_ci_med", "_ci_hi", "_excludes_zero", "_n_resplit"]
 REPORT_FIELDS = (
     ["size_item", "size_class", "size_interaction",
      "obs_size_item", "obs_size_class", "obs_size_interaction", "size_total",
-     "sig_item", "sig_class", "sig_interaction",
      "leak_item_into_class", "leak_class_into_item", "leak_int_into_margins",
      "overlap_item_class", "overlap_item_int", "overlap_class_int",
      "n_items", "n_classes", "k_item", "k_class", "k_int", "k_margin"]
@@ -350,15 +349,16 @@ def _decompose(M):
     return mu, alpha, beta, gamma
 
 
-def _gated_report(aa, ba, ga, ab, bb, gb, al, be, gm, L, C, rng, n_boot, sig):
+def _gated_report(aa, ba, ga, ab, bb, gb, al, be, gm, L, C, rng, n_boot):
     """Shared gating + reporting from TWO estimates of the item(alpha), class(beta) and
     interaction(gamma) effects -- (aa,ba,ga) and (ab,bb,gb), already in a common frame (toy:
     cross-fit aligned; LLM: two same-model context halves) -- plus the AVERAGED decomposition
     (al,be,gm) for directions.
-    Cross-denoises each size via <A,B>; tests each component by an item-permutation null on that
-    SIGNED cross-product; a leak/angle is reported only if BOTH components it relates are
-    SIGNIFICANT (permutation) AND SUBSTANTIAL (denoised size >= floor). One rule NAs both
-    degenerate ends (additive: no interaction; pure interaction: no marginals). See NOTES.md."""
+    Cross-denoises each size via <A,B>, using an item-permutation null on that SIGNED
+    cross-product to remove its bias. Every size and every overlap is reported for every cell:
+    nothing is gated out, and each overlap carries its own random-subspace baseline so that a
+    component made of noise reads AT chance rather than as a finding. Whether an effect is
+    meaningful is left to the models that consume these columns."""
     def cross(Pa, Pb, mult):
         return mult * float((Pa * Pb).sum())
     obs_item, obs_int = cross(aa, ab, C), cross(ga, gb, 1)
@@ -366,40 +366,41 @@ def _gated_report(aa, ba, ga, ab, bb, gb, al, be, gm, L, C, rng, n_boot, sig):
     # negative and is almost never zero, so it cannot be tested against a zero null. The dot
     # product of the two half-estimates of beta is unbiased and zero in expectation when the class
     # effect is absent, so it shares the same zero null and the same re-split interval as the other
-    # two. There is no permutation null for it -- with only two classes the class index has a single
-    # non-trivial permutation -- so its significance comes from the re-split interval alone.
+    # two. There is no permutation null for it -- with only two classes the class index has a
+    # single non-trivial permutation -- so its evidence comes from the re-split interval alone.
     obs_class = cross(ba, bb, L)
     null_item, null_int = [], []
     for _ in range(n_boot):
         p = rng.permutation(L)
         null_item.append(cross(aa, ab[p], C)); null_int.append(cross(ga, gb[p], 1))
-    hi = lambda v: float(np.percentile(v, 100 * (1 - sig)))
     s_item = max(0.0, obs_item - float(np.mean(null_item)))
     s_int = max(0.0, obs_int - float(np.mean(null_int)))
     s_class = max(0.0, obs_class)                           # unbiased cross-split; 0 when absent
     total = max(1e-12, s_item + s_class + s_int)
-    FLOOR = 0.02                                            # floor on the DENOISED size ("orientable?")
-    big = {"item": (obs_item > hi(null_item)) and (s_item / total >= FLOOR),
-           "int": (obs_int > hi(null_int)) and (s_int / total >= FLOOR),
-           "class": (s_class / total) >= FLOOR}             # class vanishes only at pure interaction
+    # Every overlap is emitted, on the same terms for all three components. The 0.02 share floor
+    # that used to gate them was calibrated against the positively-biased magnitude estimator this
+    # measure replaced, and the permutation test beside it existed only for item and interaction,
+    # since two classes admit one non-trivial permutation. Neither is needed: an overlap is
+    # reported against a random-subspace baseline, so a component made of noise lands AT that
+    # baseline rather than producing a spurious reading, and the models carry the sizes as
+    # covariates. The permutation draws are still used to denoise the sizes above and are still
+    # emitted as draws_size_*; they no longer produce a per-run flag, since whether an effect is
+    # meaningful is what the statistical models answer.
 
     S_item = _orthobasis(al, max_rank=L - 1)
     S_class = _orthobasis(be, max_rank=C - 1)
     S_int = _orthobasis(gm.reshape(L * C, -1), max_rank=(L - 1) * (C - 1))
     S_margin = _orthobasis(np.vstack([al, be]), max_rank=(L - 1) + (C - 1))
 
-    def gate(val, x, y):
-        return val if (big[x] and big[y]) else None
     leaks = dict(
-        leak_item_into_class=gate(_leak(al, S_class), "item", "class"),
-        leak_class_into_item=gate(_leak(be, S_item), "class", "item"),
-        leak_int_into_margins=(_leak(gm.reshape(L * C, -1), S_margin)
-                               if (big["int"] and (big["item"] or big["class"])) else None),
+        leak_item_into_class=_leak(al, S_class),
+        leak_class_into_item=_leak(be, S_item),
+        leak_int_into_margins=_leak(gm.reshape(L * C, -1), S_margin),
     )
     angles = dict(
-        overlap_item_class=gate(_principal_angle_overlap(S_item, S_class), "item", "class"),
-        overlap_item_int=gate(_principal_angle_overlap(S_item, S_int), "item", "int"),
-        overlap_class_int=gate(_principal_angle_overlap(S_class, S_int), "class", "int"),
+        overlap_item_class=_principal_angle_overlap(S_item, S_class),
+        overlap_item_int=_principal_angle_overlap(S_item, S_int),
+        overlap_class_int=_principal_angle_overlap(S_class, S_int),
     )
     return dict(
         # raw cross-products and their permutation nulls, so unified_split can report each size
@@ -412,7 +413,6 @@ def _gated_report(aa, ba, ga, ab, bb, gb, al, be, gm, L, C, rng, n_boot, sig):
         # only the shares makes every flag below impossible to recompute without measuring again.
         obs_size_item=s_item, obs_size_class=s_class, obs_size_interaction=s_int,
         size_total=total,
-        sig_item=big["item"], sig_class=big["class"], sig_interaction=big["int"],
         **leaks, **angles,
         n_items=L, n_classes=C, k_item=S_item.shape[1], k_class=S_class.shape[1], k_int=S_int.shape[1],
         k_margin=S_margin.shape[1],
@@ -494,7 +494,7 @@ def _resplit_intervals(X, cells, items, classes, n_resplit, seed):
 
 
 def unified_split(X, item_of, class_of, min_cell=10, classes=None, standardize=True,
-                  n_boot=200, n_null=200, n_resplit=200, sig=0.05, seed=0, verbose=False,
+                  n_boot=200, n_null=200, n_resplit=200, seed=0, verbose=False,
                   keep_null_draws=False):
     """The measure. Both experiments call this, with the same arguments.
 
@@ -503,8 +503,9 @@ def unified_split(X, item_of, class_of, min_cell=10, classes=None, standardize=T
     one model, so they share a frame and no gauge alignment is needed. That is what let the two
     experiments converge on a single measurement path.
 
-    Removes context noise via the cross-split product, gates the orientations on both components
-    being present, and reports every size and overlap against its own permutation distribution.
+    Removes context noise via the cross-split product, and reports every size and overlap for
+    every cell: sizes denoised against their permutation null, overlaps against the random
+    subspaces of equal rank that give their chance level.
     """
     X = np.asarray(X, np.float64)
     if standardize:
@@ -520,7 +521,7 @@ def unified_split(X, item_of, class_of, min_cell=10, classes=None, standardize=T
     _, aa, ba, ga = _decompose(MA)                          # half A (same frame as B)
     _, ab, bb, gb = _decompose(MB)                          # half B
     _, al, be, gm = _decompose(M)                           # full grid -> best directions
-    rep = _gated_report(aa, ba, ga, ab, bb, gb, al, be, gm, L, C, rng, n_boot, sig)
+    rep = _gated_report(aa, ba, ga, ab, bb, gb, al, be, gm, L, C, rng, n_boot)
 
     # An overlap is only evidence of shared directions if it beats what arbitrary orientation
     # gives, and r/d is just that null's mean. Draw the null and report its upper tail.

@@ -147,7 +147,7 @@ def measure_pos(path, args, layers):
         r = rows[-1]
         f = lambda v: "NA" if v in ("", None) else (f"{v:.3f}" if isinstance(v, float) else v)
         print(f"  layer {li:>2}: n_items={r['std_n_items']:>3}  STD sz_int={r['std_size_interaction']:.3f} "
-              f"sig={r['std_sig_interaction']} leak_i>c={f(r['std_leak_item_into_class'])} "
+              f"leak_i>c={f(r['std_leak_item_into_class'])} "
               f"leak_int>m={f(r['std_leak_int_into_margins'])}  |  RAW leak_i>c={f(r['raw_leak_item_into_class'])}",
               flush=True)
     _write_draws(args, model, init, "pos", draws)

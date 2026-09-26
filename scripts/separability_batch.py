@@ -121,7 +121,7 @@ def _angle(A, Ar, Bb, Br):
     return (s ** 2).sum(1) / denom                            # mean over the meaningful cosines
 
 
-def measure_batch(Xb, L, C, n_obs, n_boot=200, n_null=200, n_resplit=200, sig=0.05,
+def measure_batch(Xb, L, C, n_obs, n_boot=200, n_null=200, n_resplit=200,
                   seed=0, standardize=True):
     """B same-shape planted specs at once. Xb is (B, N, d) with N = L*C*n_obs in item-major cell
     order. Returns a list of B dicts with the same fields as the per-spec measure."""
@@ -160,16 +160,15 @@ def measure_batch(Xb, L, C, n_obs, n_boot=200, n_null=200, n_resplit=200, sig=0.
     idx = perms.t().unsqueeze(0).expand(B, L, n_boot)         # idx[b,l,n] = perms[n,l]
     null_item = C * G_item.gather(2, idx).sum(1)              # (B, n_boot)
     null_int = G_int.gather(2, idx).sum(1)
-    hi_item = torch.quantile(null_item, 1 - sig, dim=1)
-    hi_int = torch.quantile(null_int, 1 - sig, dim=1)
     s_item = (obs_item - null_item.mean(1)).clamp(min=0)
     s_int = (obs_int - null_int.mean(1)).clamp(min=0)
     s_class = obs_class.clamp(min=0)
     total = (s_item + s_class + s_int).clamp(min=1e-12)
-    FLOOR = 0.02
-    big_item = (obs_item > hi_item) & (s_item / total >= FLOOR)
-    big_int = (obs_int > hi_int) & (s_int / total >= FLOOR)
-    big_class = (s_class / total) >= FLOOR
+    # See separability.py: every overlap is emitted on the same terms for all three
+    # components. The 0.02 floor was calibrated against the superseded biased estimator,
+    # and the permutation test it sat beside existed only for item and interaction. An
+    # overlap is reported against a random-subspace baseline, which is what makes a gate
+    # unnecessary. sig_* still reports the permutation result; it no longer gates.
 
     S_item, r_item = _ranks(al)
     S_class, r_class = _ranks(be)
@@ -233,7 +232,6 @@ def measure_batch(Xb, L, C, n_obs, n_boot=200, n_null=200, n_resplit=200, sig=0.
     rows = []
     (obs_item, obs_int, obs_class, s_item, s_int, s_class, total) = map(
         tolist, (obs_item, obs_int, obs_class, s_item, s_int, s_class, total))
-    big_item, big_int, big_class = (t.detach().cpu().tolist() for t in (big_item, big_int, big_class))
     leak_ic, leak_ci, leak_im = map(tolist, (leak_ic, leak_ci, leak_im))
     ov_ic, ov_ii, ov_ci = map(tolist, (ov_ic, ov_ii, ov_ci))
     r_item, r_class, r_int, r_margin = (t.detach().cpu().tolist() for t in (r_item, r_class, r_int, r_margin))
@@ -250,7 +248,6 @@ def measure_batch(Xb, L, C, n_obs, n_boot=200, n_null=200, n_resplit=200, sig=0.
             size_interaction=s_int[b] / total[b],
             obs_size_item=s_item[b], obs_size_class=s_class[b], obs_size_interaction=s_int[b],
             size_total=total[b],
-            sig_item=bool(big_item[b]), sig_class=bool(big_class[b]), sig_interaction=bool(big_int[b]),
             n_items=L, n_classes=C, k_item=int(r_item[b]), k_class=int(r_class[b]),
             k_int=int(r_int[b]), k_margin=int(r_margin[b]),
             between_share=between_share[b], between_share_adj=between_share_adj[b],
@@ -258,13 +255,12 @@ def measure_batch(Xb, L, C, n_obs, n_boot=200, n_null=200, n_resplit=200, sig=0.
             between_n_groups=int(G), between_n0=float(n_obs),
             between_var=var_between_l[b], within_var=ms_within_l[b],
         )
-        gate = lambda val, x, y: val if (x and y) else None
-        rep["leak_item_into_class"] = gate(leak_ic[b], big_item[b], big_class[b])
-        rep["leak_class_into_item"] = gate(leak_ci[b], big_class[b], big_item[b])
-        rep["leak_int_into_margins"] = (leak_im[b] if (big_int[b] and (big_item[b] or big_class[b])) else None)
-        rep["overlap_item_class"] = gate(ov_ic[b], big_item[b], big_class[b])
-        rep["overlap_item_int"] = gate(ov_ii[b], big_item[b], big_int[b])
-        rep["overlap_class_int"] = gate(ov_ci[b], big_class[b], big_int[b])
+        rep["leak_item_into_class"] = leak_ic[b]
+        rep["leak_class_into_item"] = leak_ci[b]
+        rep["leak_int_into_margins"] = leak_im[b]
+        rep["overlap_item_class"] = ov_ic[b]
+        rep["overlap_item_int"] = ov_ii[b]
+        rep["overlap_class_int"] = ov_ci[b]
         for name, v in ci_np.items():
             lo, med, hi = float(v[0, b]), float(v[1, b]), float(v[2, b])
             rep[name + "_ci_lo"], rep[name + "_ci_med"], rep[name + "_ci_hi"] = lo, med, hi

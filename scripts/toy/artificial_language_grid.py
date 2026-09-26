@@ -448,7 +448,6 @@ def main():
                 print(f"{str(w):>16} {act:>8} {r['fit_gap']:>6.2f} | "
                       f"{r['ach_item']:>5.2f}/{r['ach_class']:>5.2f}/{r['ach_int']:>5.2f} | "
                       f"{r['size_item']:>5.2f}/{r['size_class']:>5.2f}/{r['size_interaction']:>5.2f} | "
-                      f"{str(r['sig_interaction'])[:1]:>5} "
                       f"{'' if r['leak_item_into_class'] is None else format(r['leak_item_into_class'], '.4f'):>7}")
         return
 
