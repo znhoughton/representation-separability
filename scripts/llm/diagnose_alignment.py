@@ -81,6 +81,25 @@ def main():
                 print(f"{seed:>5} {bs:>6} {ml:>8} {u:>12.4f} {l:>12.4f}{flag}")
                 if u > best[0]:
                     best = (u, (seed, bs, ml))
+    # WHERE it diverges, not just how much. A mean match rate cannot distinguish "wrong
+    # everywhere" from "right for a while, then shifted by one" -- the second reads as the prefix
+    # plus chance agreement over the rest, which is easy to misread as partial corruption. The
+    # first mismatching index is the actual signal, and a round number there names the cause.
+    if best[1] is not None and best[0] < 1.0:
+        seed, bs, ml = best[1]
+        lab = derive_labels(model, sents, seed=seed, max_length=ml, batch_size=bs)
+        eq = lab["upos"][:n] == upos
+        first_bad = int(np.argmin(eq)) if not eq.all() else n
+        print(f"\nbest config seed={seed} batch_size={bs} max_length={ml}:")
+        print(f"  matches exactly for the first {first_bad:,} of {n:,} tokens, then diverges")
+        after = float(eq[first_bad:].mean()) if first_bad < n else 1.0
+        print(f"  agreement after that point: {after:.4f} "
+              f"({'chance -- the order shifted' if after < 0.2 else 'still structured'})")
+        for k, v in (("upos", upos), ("lemma", lemma)):
+            print(f"  stored {k} around the break: {list(v[max(0, first_bad-3):first_bad+3])}")
+        print(f"  derived upos around the break: "
+              f"{list(lab['upos'][max(0, first_bad-3):first_bad+3])}")
+
     print()
     if best[0] == 1.0:
         s, b, m = best[1]
