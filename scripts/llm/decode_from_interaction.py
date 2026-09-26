@@ -103,7 +103,9 @@ def _balance(y, rng):
 def _peritem_class_decode(Xb, ib, cb, pos_label, rng, shuffle=False):
     """CLEAN gamma read: hold item fixed (removes alpha), remove the shared class axis beta, then
     decode class WITHIN each item from the residual -> the item-specific class signal = interaction.
-    Averaged over items (>=8/class). `shuffle` permutes labels within item for the null."""
+    Averaged over items. The per-item guard below is a floor for StratifiedKFold(5), which
+    needs five per class; build_balanced_grid has already applied min_cell (10 by default) to
+    the same items, so in every configuration the paper reports it never fires."""
     from sklearn.linear_model import LogisticRegression
     from sklearn.model_selection import StratifiedKFold
     from sklearn.metrics import balanced_accuracy_score
@@ -131,9 +133,9 @@ def _peritem_class_decode(Xb, ib, cb, pos_label, rng, shuffle=False):
 
 def _boot_ci(vals, rng, n_boot=2000, sig=0.05):
     """Percentile bootstrap CI over ITEMS for a per-item mean. The per-item accuracies are averaged
-    unweighted and some items contribute as few as 8 tokens per class, so the point estimate alone
-    understates the uncertainty -- and the graded ordering across constructions is a comparison of
-    exactly these means."""
+    unweighted and the thinnest items contribute only min_cell tokens per class (10 as the paper
+    runs it), so the point estimate alone understates the uncertainty -- and the graded ordering
+    across constructions is a comparison of exactly these means."""
     v = np.asarray(vals, float)
     v = v[np.isfinite(v)]
     if len(v) < 2:
