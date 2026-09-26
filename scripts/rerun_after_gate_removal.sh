@@ -64,7 +64,13 @@ SKIP_COMPONENTS="${SKIP_COMPONENTS:-0}"
 SEP_DEVICE="${SEP_DEVICE:-cuda}"
 export SEP_DEVICE
 
-if [ "$SEP_DEVICE" = "cuda" ]; then REMEASURE_WORKERS=1; else REMEASURE_WORKERS="${TOY_WORKERS:-8}"; fi
+# The toy re-measure is single-process on the GPU by default, because the per-spec measure keeps
+# one CUDA context busy. The cells are small, though, so the numpy path across many cores can beat
+# it: set REMEASURE_WORKERS explicitly to override, e.g.
+#   SEP_DEVICE=cpu REMEASURE_WORKERS=32 bash scripts/rerun_after_gate_removal.sh
+if [ -z "${REMEASURE_WORKERS:-}" ]; then
+  if [ "$SEP_DEVICE" = "cuda" ]; then REMEASURE_WORKERS=1; else REMEASURE_WORKERS="${TOY_WORKERS:-8}"; fi
+fi
 
 mkdir -p "$LOGDIR" "$OLDDIR" data
 stamp="$(date +%Y%m%d-%H%M%S)"

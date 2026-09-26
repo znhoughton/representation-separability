@@ -100,23 +100,35 @@ def main():
         print(f"FATAL: {len(raw)} rows collapse to {len(rows)} keys on {KEY_COLS}. Writing would "
               f"drop {len(raw) - len(rows)} rows; nothing has been changed.", file=sys.stderr)
         return 1
-    print(f"{len(runs)} saved cells, {len(rows)} rows in {Path(args.csv).name}", flush=True)
+    # Match BEFORE measuring, not after. The runs directory accumulates every generation of the
+    # grid, and a file from a superseded one costs a full measurement before its tag is checked
+    # and the result dropped. On the current tree that was ~7,500 of 45,000 files, about an hour.
+    matched, missing = [], 0
+    for path in runs:
+        tag = _parse_tag(path.stem)
+        if tag is None or tag not in rows:
+            missing += 1
+            continue
+        matched.append((path, tag))
+    print(f"{len(runs)} saved cells, {len(rows)} rows in {Path(args.csv).name}; "
+          f"{len(matched)} match a row, {missing} do not and are skipped unmeasured", flush=True)
+    if not matched:
+        print("FATAL: no saved cell matches any row. Either the runs directory holds only "
+              "superseded generations, or the filename format has changed again; nothing has "
+              "been written.", file=sys.stderr)
+        return 1
 
     from concurrent.futures import ProcessPoolExecutor, as_completed
-    done = missing = failed = 0
+    done = failed = 0
     t0 = time.time()
     with ProcessPoolExecutor(max_workers=args.workers) as ex:
-        futs = {ex.submit(remeasure, p, args.n_resplit): p for p in runs}
+        futs = {ex.submit(remeasure, path, args.n_resplit): tag for path, tag in matched}
         for i, fut in enumerate(as_completed(futs), 1):
-            p = futs[fut]
-            tag = _parse_tag(p.stem)
-            if tag is None or tag not in rows:
-                missing += 1
-                continue
+            tag = futs[fut]
             try:
                 r = fut.result()
             except Exception as e:                       # a corrupt npz should not stop the run
-                print(f"  {p.name}: {e}", file=sys.stderr)
+                print(f"  {tag}: {e}", file=sys.stderr)
                 failed += 1
                 continue
             if r is None or "error" in r:
@@ -127,7 +139,7 @@ def main():
                 if k not in KEY_COLS and k in r:
                     row[k] = r[k]
             done += 1
-            bar(i, len(runs), t0, fails=failed, label="re-measure ")
+            bar(i, len(matched), t0, fails=failed, label="re-measure ")
 
     tmp = Path(args.csv).with_suffix(".csv.tmp")
     with open(tmp, "w", newline="") as fh:
