@@ -167,18 +167,32 @@ def _run_chunk_with_backoff(chunk, ni, nc, d, nb, n_resplit, dev):
     import torch, gc
     from separability_batch import measure_batch
     oom = False
+    Xb = None
     try:
-        Xs, metas = [], []
-        for t in chunk:
+        # Stream each spec straight into a device tensor. Building the list first and then
+        # np.stack-ing it held the whole batch in HOST memory twice over -- at the default budget
+        # the heaviest shape (180x4 d=2048 n=100) batches 38 specs of 1.18 GB each, so 45 GB in the
+        # list and 45 GB more in the copy, ~90 GB before anything reached the card. Nothing caught
+        # that: the handler below is for torch.cuda.OutOfMemoryError, while exhausting host RAM
+        # just swaps, which looks like a hang with an idle GPU rather than like a failure.
+        # Allocating on the device first means an oversized batch raises CUDA OOM, which the
+        # backoff already knows how to halve, and only one X is resident on the host at a time.
+        metas = []
+        Xb = torch.empty((len(chunk), ni * nc * nb, d), dtype=torch.float64, device=dev)
+        for i, t in enumerate(chunk):
             rng = np.random.default_rng(t[5])
             X, _, _, planted = build_planted(rng, t[0], t[1], t[2], t[6][0], t[6][1], t[6][2],
                                              t[3], t[4], t[7])
-            Xs.append(X); metas.append((t, planted))
-        Xb = torch.as_tensor(np.stack(Xs), dtype=torch.float64, device=dev)
+            Xb[i] = torch.as_tensor(X, dtype=torch.float64, device=dev)
+            metas.append((t, planted))
+            del X
         reps = measure_batch(Xb, ni, nc, nb, n_resplit=n_resplit, seed=0)
         del Xb
+        Xb = None
     except torch.cuda.OutOfMemoryError:
         oom = True
+        del Xb
+        Xb = None
     if not oom:
         return metas, reps, len(chunk)
     # Everything below runs OUTSIDE the try/except -- the failed frame and its exception
@@ -201,9 +215,21 @@ def run_batched(specs, w, fh, n_resplit=200, vram_gb=None):
     sub-batch at once. SEP_VRAM_GB (default 80) sets the budget; the OOM backoff guards the rest."""
     import torch
     from collections import defaultdict
-    if vram_gb is None:
-        vram_gb = float(os.environ.get("SEP_VRAM_GB", "80"))
     dev = "cuda" if torch.cuda.is_available() else "cpu"
+    if vram_gb is None:
+        env = os.environ.get("SEP_VRAM_GB")
+        if env:
+            vram_gb = float(env)
+        elif dev == "cuda":
+            # Ask the card rather than assuming 80 GB. An over-estimate does not fail cleanly: it
+            # sizes a batch the card cannot hold, and every shape then pays an OOM-and-halve cycle
+            # to rediscover the same ceiling.
+            vram_gb = torch.cuda.get_device_properties(0).total_memory / 1e9
+        else:
+            vram_gb = 16.0
+    print(f"  batching against {vram_gb:.0f} GB on {dev}"
+          f"{' (detected)' if not os.environ.get('SEP_VRAM_GB') and dev == 'cuda' else ''}"
+          f"; override with SEP_VRAM_GB", flush=True)
     groups = defaultdict(list)
     for t in specs:
         groups[(t[0], t[1], t[2], t[3])].append(t)

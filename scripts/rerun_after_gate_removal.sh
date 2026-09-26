@@ -36,6 +36,15 @@
 #   SKIP_COMPONENTS=1 bash scripts/rerun_after_gate_removal.sh   # skip the component refits
 #   SEP_DEVICE=cpu    bash scripts/rerun_after_gate_removal.sh   # force the numpy backend
 #
+# Per-step skips, so a restart does not redo what already landed:
+#   SKIP_TOY=1        the repair/retrain/re-measure of the toy grid
+#   SKIP_VALIDATE=1   the estimator-validation grid
+#   SKIP_LLM=1        the four LLM measurements
+#
+# SEP_VRAM_GB sizes the validation batch. It is detected from the card now; set it only to hold
+# the batch below what the card reports, which is also what bounds the host-side cost of building
+# it.
+#
 # Typical server launch:
 #   mkdir -p logs
 #   nohup setsid bash scripts/rerun_after_gate_removal.sh > logs/rerun.out 2>&1 &
@@ -59,6 +68,9 @@ N_RESPLIT="${N_RESPLIT:-200}"
 LLM_WORKERS="${LLM_WORKERS:-4}"
 VAL_WORKERS="${VAL_WORKERS:-8}"
 SKIP_MEASURE="${SKIP_MEASURE:-0}"
+SKIP_TOY="${SKIP_TOY:-0}"            # the toy repair/retrain/re-measure only
+SKIP_VALIDATE="${SKIP_VALIDATE:-0}"  # the estimator-validation grid only
+SKIP_LLM="${SKIP_LLM:-0}"            # the four LLM measurements only
 SKIP_MODELS="${SKIP_MODELS:-0}"
 SKIP_COMPONENTS="${SKIP_COMPONENTS:-0}"
 SEP_DEVICE="${SEP_DEVICE:-cuda}"
@@ -164,6 +176,7 @@ if [ "$SKIP_MEASURE" != "1" ]; then
   # made by the old code, leaving the grid mixed. Drop those rows so the grid retrains exactly
   # them; the guard inside refuses if more than a handful are missing, since that means the runs
   # directory or the naming is wrong rather than a training run having been killed mid-write.
+  if [ "$SKIP_TOY" != "1" ]; then
   echo
   echo "[repair] rows whose saved run is missing"
   step_begin repair
@@ -196,7 +209,11 @@ if [ "$SKIP_MEASURE" != "1" ]; then
         --workers "$REMEASURE_WORKERS" 2>&1 | tee "$LOGDIR/toy-remeasure.log"
   rc="${PIPESTATUS[0]}"; step_end toy-remeasure
   [ "$rc" -eq 0 ] || { echo "[toy] FAILED (exit $rc)" >&2; rc_all=1; }
+  else
+    echo "  [skip]   toy repair/retrain/re-measure (SKIP_TOY=1)"
+  fi
 
+  if [ "$SKIP_VALIDATE" != "1" ]; then
   echo
   echo "[validate] rebuilding the estimator-validation grid -> data/validate_measure.csv"
   step_begin validate
@@ -204,6 +221,9 @@ if [ "$SKIP_MEASURE" != "1" ]; then
         2>&1 | tee "$LOGDIR/validate.log"
   rc="${PIPESTATUS[0]}"; step_end validate
   [ "$rc" -eq 0 ] || { echo "[validate] FAILED (exit $rc)" >&2; rc_all=1; }
+  else
+    echo "  [skip]   validation grid (SKIP_VALIDATE=1)"
+  fi
 
   run_llm() {
     local name="$1" out="$2"; shift 2
@@ -220,10 +240,14 @@ if [ "$SKIP_MEASURE" != "1" ]; then
     return 0
   }
 
+  if [ "$SKIP_LLM" = "1" ]; then
+    echo "  [skip]   LLM measurements (SKIP_LLM=1)"
+  else
   run_llm pos        data/llm_unified_form.csv --reps-dir "$REPS_DIR" --conllu "$CONLLU" --item-key form || rc_all=1
   run_llm role       data/llm_role.csv         --reps-dir "$REPS_DIR" --conllu "$CONLLU"                 || rc_all=1
   run_llm metaphor   data/llm_metaphor.csv     --reps-dir "$VUA_DIR"                                     || rc_all=1
   run_llm morphology data/llm_morph.csv        --reps-dir "$REPS_DIR" --conllu "$CONLLU"                 || rc_all=1
+  fi
 fi
 
 # ---------------------------------------------------------------- models
