@@ -8,7 +8,7 @@
 #   tail -f logs/all.out
 #
 # WHAT IT PRODUCES -- every data file the paper reads, in dependency order.
-#   data/artificial_language_grid.csv   Experiment 1, 7,560 cells        (toy, GPU)
+#   data/artificial_language_grid.csv   Experiment 1, 37,800 cells       (toy, GPU)
 #   data/validate_measure.csv           Appendix: the measure on planted representations
 #                                       (committed gzipped; resume expands the .gz)
 #   data/llm_unified_form.csv           Experiment 2, part of speech
@@ -238,7 +238,7 @@ if [ ! -d "$RUNS_DIR" ] || [ -z "$(ls -A "$RUNS_DIR" 2>/dev/null)" ]; then
 fi
 if [ "$toy_needs_retrain" = "1" ] && [ "${ALLOW_RETRAIN:-0}" != "1" ]; then
   echo "  [STOP]  data/artificial_language_grid.csv is stale and $RUNS_DIR is empty." >&2
-  echo "          Bringing it current would retrain all 7,560 cells, so nothing has been moved." >&2
+  echo "          Bringing it current would retrain all 37,800 cells, so nothing has been moved." >&2
   echo "          Either restore the saved runs so it can be re-measured from disk, or re-run" >&2
   echo "          with ALLOW_RETRAIN=1." >&2
   exit 1
@@ -270,7 +270,7 @@ rc_all=0
 # ---------------------------------------------------------------- Experiment 1
 if [ "$SKIP_TOY" != "1" ]; then
   echo
-  echo "[toy] 7,560 cells -> data/artificial_language_grid.csv"
+  echo "[toy] 37,800 cells -> data/artificial_language_grid.csv"
   step_begin toy
   "$PY" scripts/toy/artificial_language_grid.py --n-resplit "$N_RESPLIT" \
         --device "$TOY_DEVICE" --workers "$TOY_WORKERS" --runs-dir "$RUNS_DIR" \
