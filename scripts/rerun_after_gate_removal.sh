@@ -116,12 +116,14 @@ rc_all=0
 fail=0
 command -v "$PY" >/dev/null || { echo "no python on PATH as $PY" >&2; fail=1; }
 [ -f scripts/separability.py ] || { echo "run me from the repo root" >&2; fail=1; }
-if [ "$SKIP_MEASURE" != "1" ]; then
+if [ "$SKIP_MEASURE" != "1" ] && [ "$SKIP_TOY" != "1" ]; then
   if [ ! -d "$RUNS_DIR" ] || [ -z "$(ls -A "$RUNS_DIR" 2>/dev/null)" ]; then
     echo "FATAL: $RUNS_DIR is empty; the toy grid can only be re-measured from saved runs." >&2
     echo "       Run this where the runs live, or point RUNS_DIR at them." >&2
     fail=1
   fi
+fi
+if [ "$SKIP_MEASURE" != "1" ] && [ "$SKIP_LLM" != "1" ]; then
   [ -d "$REPS_DIR" ] || { echo "missing reps dir: $REPS_DIR" >&2; fail=1; }
   [ -d "$VUA_DIR" ]  || { echo "missing VUA reps dir: $VUA_DIR" >&2; fail=1; }
   [ -f "$CONLLU" ]   || { echo "missing conllu: $CONLLU" >&2; fail=1; }
@@ -160,8 +162,16 @@ echo "=================================================================="
 # ---------------------------------------------------------------- measurements
 if [ "$SKIP_MEASURE" != "1" ]; then
 
-  for f in data/llm_unified_form.csv data/llm_role.csv data/llm_metaphor.csv \
-           data/llm_morph.csv data/validate_measure.csv data/validate_measure.csv.gz; do
+  # Retire ONLY what this run will rebuild. Retiring a CSV that a skip flag then stops from being
+  # remeasured leaves the tree without it, which reads as data loss rather than as a skip.
+  retire_list=""
+  if [ "$SKIP_LLM" != "1" ]; then
+    retire_list="data/llm_unified_form.csv data/llm_role.csv data/llm_metaphor.csv data/llm_morph.csv"
+  fi
+  if [ "$SKIP_VALIDATE" != "1" ]; then
+    retire_list="$retire_list data/validate_measure.csv data/validate_measure.csv.gz"
+  fi
+  for f in $retire_list; do
     [ -s "$f" ] || continue
     case "$f" in
       *.csv.gz) dest="$OLDDIR/$(basename "$f" .csv.gz).$stamp.csv.gz" ;;
