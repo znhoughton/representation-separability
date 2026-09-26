@@ -308,6 +308,10 @@ def main():
     ap.add_argument("--out", default=str(REPO_ROOT / "data" / "validate_measure.csv"))
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--seeds", type=int, default=N_SEEDS)
+    ap.add_argument("--shards", type=int, default=1,
+                    help="split the grid across this many processes, one per GPU")
+    ap.add_argument("--shard", type=int, default=0,
+                    help="which shard this process runs (0-based)")
     ap.add_argument("--n-resplit", type=int, default=200,
                     help="re-splits behind each size interval; 200 is where the false-positive rate settles at ~5%% on planted zeros")
     args = ap.parse_args()
@@ -335,6 +339,14 @@ def main():
     # flight, so if the worker count is too high for the machine it fails immediately rather
     # than eleven hours in, and the long tail of cheap small-d runs packs in behind them.
     specs.sort(key=lambda t: -(t[0] * t[1] * t[3] * t[2]))
+    # SHARDING. Every spec is independent and carries its own seed, so splitting the list across
+    # processes changes no number; it is only a way to use more than one card. Taking every Nth
+    # spec from the cost-sorted list, rather than a contiguous slice, gives each shard the same
+    # mix of expensive and cheap shapes -- a contiguous split would hand one shard all the d=2048
+    # work, which is half the grid's cost on its own.
+    if args.shards > 1:
+        specs = specs[args.shard::args.shards]
+        print(f"shard {args.shard} of {args.shards}: {len(specs):,} specs", flush=True)
     # The observation matrix, plus the re-split working set. The latter is capped by
     # separability._RESPLIT_CHUNK_BYTES rather than growing with n_resplit, which is what stops a
     # large spec from taking gigabytes per worker; the gamma-free re-split holds about four arrays
