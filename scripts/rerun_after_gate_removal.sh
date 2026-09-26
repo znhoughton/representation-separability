@@ -76,16 +76,21 @@ export SEP_DEVICE
 # float64, about 12 MB, and the re-split working set is capped at 64 MB by _RESPLIT_CHUNK_BYTES
 # regardless of width. Per worker that is a context plus tens of megabytes.
 #
-# The default of 4 is the worker count this repo already runs GPU-side and knows to be safe, not a
-# measured ceiling for this step; the footprint here is orders of magnitude smaller, so raise it.
-# REMEASURE_DEVICE=cpu switches to the numpy path, where a worker costs ~230 MB and measures the
-# widest cell in ~0.8 s. Which wins is hardware, so measure before assuming: the progress bar
-# prints a per-minute rate within seconds, and the CSV is not written until the end, so comparing
-# the two by starting each and interrupting it is free.
+# The default of 8 is measured, not assumed (scripts/toy/bench_remeasure.py, 200 real cells per
+# configuration, one A100-class card):
+#
+#     workers     1      4      8     16     24
+#     cells/min 105    637    862    495    368
+#
+# It scales to 8 and falls off after, which is contention for a single card rather than a memory
+# limit: more processes than the card can keep busy just queue. 8 turns the toy re-measure from
+# about six hours into about three quarters of an hour. Re-run the benchmark on different hardware
+# rather than carrying this number over to it. REMEASURE_DEVICE=cpu switches to the numpy path,
+# where a worker costs ~230 MB and measures the widest cell in ~0.8 s.
 REMEASURE_DEVICE="${REMEASURE_DEVICE:-cuda}"
 if [ -z "${REMEASURE_WORKERS:-}" ]; then
   if [ "$REMEASURE_DEVICE" = "cuda" ]; then
-    REMEASURE_WORKERS=4
+    REMEASURE_WORKERS=8
   else
     REMEASURE_WORKERS="${TOY_WORKERS:-$(nproc 2>/dev/null || echo 8)}"
   fi
