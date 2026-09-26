@@ -32,7 +32,22 @@ from pathlib import Path
 
 import numpy as np
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+def _find_repo():
+    """The repo root, whether this file sits in it or was copied somewhere else to be run.
+
+    Fetching a check out of git and running it from /tmp is the normal way to use it while a long
+    job holds the working tree, and there parents[2] does not exist at all.
+    """
+    here = Path(__file__).resolve()
+    cwd = Path.cwd().resolve()
+    for base in [*here.parents, cwd, *cwd.parents]:
+        if (base / "scripts" / "separability.py").is_file():
+            return base
+    raise SystemExit("cannot find the repo: run this from the repo root, or put it back under "
+                     "scripts/toy/")
+
+
+REPO_ROOT = _find_repo()
 sys.path[:0] = [str(REPO_ROOT / "scripts"), str(REPO_ROOT / "scripts" / "toy")]
 
 from remeasure_from_runs import _parse_tag, KEY_COLS          # noqa: E402

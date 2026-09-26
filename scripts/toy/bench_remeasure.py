@@ -24,7 +24,22 @@ import sys
 import time
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+def _find_repo():
+    """The repo root, whether this file sits in it or was copied elsewhere to be run.
+
+    Fetching a script out of git and running it from /tmp is the normal way to use one while
+    a long job holds the working tree, and there parents[2] does not exist at all.
+    """
+    here = Path(__file__).resolve()
+    cwd = Path.cwd().resolve()
+    for base in [*here.parents, cwd, *cwd.parents]:
+        if (base / "scripts" / "separability.py").is_file():
+            return base
+    raise SystemExit("cannot find the repo: run this from the repo root, or put it back "
+                     "under scripts/toy/")
+
+
+REPO_ROOT = _find_repo()
 
 
 def _sample(runs_dir, n, seed):
