@@ -87,6 +87,16 @@ if [ "$SKIP_EXTRACT" != "1" ]; then
         for m in $MODELS; do case "$(basename "$f")" in *"$m"*) keep=0 ;; esac; done
         [ "$keep" -eq 1 ] && continue
       fi
+      # Never delete what this run will not rebuild. With ABLATION=0 the extract step produces
+      # pretrained and random only, so removing the _noposemb files would leave the position
+      # ablation with no representations and no way to regenerate them.
+      if [ "$ABLATION" != "1" ]; then
+        case "$(basename "$f")" in
+          *_noposemb.npz)
+            echo "  keep $f  (ABLATION=0; this run will not rebuild it)"
+            continue ;;
+        esac
+      fi
       echo "  rm $f"
       run rm -f "$f"
     done
