@@ -64,12 +64,21 @@ SKIP_COMPONENTS="${SKIP_COMPONENTS:-0}"
 SEP_DEVICE="${SEP_DEVICE:-cuda}"
 export SEP_DEVICE
 
-# The toy re-measure is single-process on the GPU by default, because the per-spec measure keeps
-# one CUDA context busy. The cells are small, though, so the numpy path across many cores can beat
-# it: set REMEASURE_WORKERS explicitly to override, e.g.
-#   SEP_DEVICE=cpu REMEASURE_WORKERS=32 bash scripts/rerun_after_gate_removal.sh
+# THE TOY RE-MEASURE RUNS ON CPU, ACROSS CORES. It used to be pinned to one process because
+# SEP_DEVICE=cuda routes the measure through torch and each worker would open its own ~10 GB CUDA
+# context, so more than one did not fit. That reasoning is about the GPU, not about the work: the
+# toy cells are small (d <= 256, 24 observations), and one GPU process measured ~150/min where the
+# numpy path has a core per cell. Switching the backend changes no reported number -- the three
+# backends are checked component by component in scripts/verify_backends.py -- and the whole grid
+# is measured in this single pass, so it stays internally consistent. SEP_DEVICE is left alone for
+# the LLM and validation steps, which is where the GPU earns its place.
+REMEASURE_DEVICE="${REMEASURE_DEVICE:-cpu}"
 if [ -z "${REMEASURE_WORKERS:-}" ]; then
-  if [ "$SEP_DEVICE" = "cuda" ]; then REMEASURE_WORKERS=1; else REMEASURE_WORKERS="${TOY_WORKERS:-8}"; fi
+  if [ "$REMEASURE_DEVICE" = "cuda" ]; then
+    REMEASURE_WORKERS=1
+  else
+    REMEASURE_WORKERS="${TOY_WORKERS:-$(nproc 2>/dev/null || echo 8)}"
+  fi
 fi
 
 mkdir -p "$LOGDIR" "$OLDDIR" data
@@ -136,9 +145,38 @@ if [ "$SKIP_MEASURE" != "1" ]; then
   done
   echo "  [keep]   data/artificial_language_grid.csv -> re-measured in place from $RUNS_DIR"
 
+  # A row whose saved run is missing cannot be re-measured and would silently keep a measurement
+  # made by the old code, leaving the grid mixed. Drop those rows so the grid retrains exactly
+  # them; the guard inside refuses if more than a handful are missing, since that means the runs
+  # directory or the naming is wrong rather than a training run having been killed mid-write.
+  echo
+  echo "[repair] rows whose saved run is missing"
+  step_begin repair
+  "$PY" scripts/toy/repair_missing_runs.py --runs-dir "$RUNS_DIR" --apply \
+        --max "${REPAIR_MAX:-100}" 2>&1 | tee "$LOGDIR/repair.log"
+  rc="${PIPESTATUS[0]}"; step_end repair
+  if [ "$rc" -ne 0 ]; then
+    echo "[repair] FAILED (exit $rc); not retraining or re-measuring on an unclear grid" >&2
+    exit 1
+  fi
+  if grep -q "^  dropped " "$LOGDIR/repair.log"; then
+    echo
+    echo "[retrain] training the cells whose runs were missing"
+    step_begin retrain
+    "$PY" scripts/toy/artificial_language_grid.py --n-resplit "$N_RESPLIT" \
+          --device "${TOY_DEVICE:-cuda}" --workers "${TOY_WORKERS:-8}" --runs-dir "$RUNS_DIR" \
+          2>&1 | tee "$LOGDIR/retrain.log"
+    rc="${PIPESTATUS[0]}"; step_end retrain
+    [ "$rc" -eq 0 ] || { echo "[retrain] FAILED (exit $rc)" >&2; rc_all=1; }
+  else
+    echo "  [skip]   no rows dropped; every row has a saved run"
+  fi
+
   echo
   echo "[toy] re-measuring every saved cell -> data/artificial_language_grid.csv"
+  echo "      device=$REMEASURE_DEVICE workers=$REMEASURE_WORKERS"
   step_begin toy-remeasure
+  SEP_DEVICE="$REMEASURE_DEVICE" \
   "$PY" scripts/toy/remeasure_from_runs.py --n-resplit "$N_RESPLIT" --runs-dir "$RUNS_DIR" \
         --workers "$REMEASURE_WORKERS" 2>&1 | tee "$LOGDIR/toy-remeasure.log"
   rc="${PIPESTATUS[0]}"; step_end toy-remeasure
