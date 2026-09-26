@@ -35,19 +35,26 @@ else:
 from csv_repair import repair               # noqa: E402
 from artificial_language_grid import FIELDS, CONFIG  # noqa: E402
 
-KEY_COLS = ["key", "d", "activation", "seed"]
+# r_int is part of a cell's identity: the grid crosses four interaction ranks, so keying
+# without it collapses four distinct cells onto one key, and the dict comprehension below
+# would keep only the last of them. That silently rewrote a 37,800-row grid as 9,450 rows.
+KEY_COLS = ["key", "d", "activation", "seed", "r_int"]
 
 
 def _parse_tag(stem):
-    """'0.5_0_1_6.0__d16__relu__s3' -> ('0.5_0_1_6.0', '16', 'relu', '3'). The key itself
-    contains underscores, so split on the double underscore the writer used."""
+    """'0.5_0_1_6.0__d16__relu__s3__R64' -> ('0.5_0_1_6.0', '16', 'relu', '3', '64'), in KEY_COLS
+    order. The key itself contains underscores, so split on the double underscore the writer used.
+
+    Files written before the interaction rank was crossed have no R field and match no row in the
+    current grid. They return None and are counted as unmatched, which is the honest outcome: the
+    alternative is folding four ranks onto one key and losing three of them."""
     parts = stem.split("__")
-    if len(parts) != 4:
+    if len(parts) != 5:
         return None
-    key, d, act, seed = parts
-    if not d.startswith("d") or not seed.startswith("s"):
+    key, d, act, seed, r = parts
+    if not (d.startswith("d") and seed.startswith("s") and r.startswith("R")):
         return None
-    return key, d[1:], act, seed[1:]
+    return key, d[1:], act, seed[1:], r[1:]
 
 
 def remeasure(path, n_resplit=200):
@@ -85,7 +92,14 @@ def main():
     check_emits(FIELDS, ("",), "toy re-measure")
     repair(args.csv, KEY_COLS)
     with open(args.csv, newline="") as fh:
-        rows = {tuple(r[c] for c in KEY_COLS): r for r in csv.DictReader(fh)}
+        raw = list(csv.DictReader(fh))
+    rows = {tuple(r[c] for c in KEY_COLS): r for r in raw}
+    # The CSV is rewritten from rows.values() at the end, so a key that fails to identify a cell
+    # does not error, it DELETES rows. Refuse rather than write a grid smaller than the one read.
+    if len(rows) != len(raw):
+        print(f"FATAL: {len(raw)} rows collapse to {len(rows)} keys on {KEY_COLS}. Writing would "
+              f"drop {len(raw) - len(rows)} rows; nothing has been changed.", file=sys.stderr)
+        return 1
     print(f"{len(runs)} saved cells, {len(rows)} rows in {Path(args.csv).name}", flush=True)
 
     from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -125,6 +139,13 @@ def main():
 
     print(f"re-measured {done}, no matching row {missing}, failed {failed}, "
           f"{time.time() - t0:.0f}s -> {args.csv}")
+    # Every row keeps its language and training columns whether or not it was re-measured, so a
+    # large unmatched count is not data loss -- but it does mean the CSV now mixes rows measured
+    # by this version with rows measured by whatever wrote them, which is the confusion this
+    # script exists to prevent. Say so loudly rather than exiting 0 on a half-current file.
+    if done < len(rows):
+        print(f"WARNING: {len(rows) - done} of {len(rows)} rows were not re-measured and still "
+              f"hold their previous measurement.", file=sys.stderr)
     return 0 if failed == 0 else 1
 
 
