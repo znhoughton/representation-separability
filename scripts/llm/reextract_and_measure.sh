@@ -123,12 +123,24 @@ if [ "$SKIP_EXTRACT" != "1" ]; then
   [ "${PIPESTATUS[0]}" -eq 0 ] || { echo "[extract] UD FAILED" >&2; exit 1; }
 
   if [ "$ABLATION" = "1" ]; then
+    # OPT-BabyLM ONLY. The ablation zeroes a learned absolute position embedding added at the
+    # input, and Pythia has no such module -- it uses rotary embeddings applied inside attention,
+    # which is the asymmetry the appendix's argument rests on. Running it over Pythia anyway would
+    # print zeroed=NONE and extract six files identical to the un-ablated ones: about eleven GPU
+    # hours for representations that should not exist. The existing reps have _noposemb for the
+    # three BabyLMs and nothing else, which is the shape to reproduce.
+    abl_mflag="--models ${MODELS:-opt-babylm}"
     echo
-    echo "[extract] UD representations with positions zeroed (_noposemb)"
+    echo "[extract] UD representations with positions zeroed (_noposemb): ${MODELS:-opt-babylm}"
     run "$PY" scripts/llm/extract_ud.py --conllu "$CONLLU" --reps-dir "$REPS_DIR" \
-        --max-tokens "$MAX_TOKENS" --inits pretrained random --ablate-positions $mflag \
+        --max-tokens "$MAX_TOKENS" --inits pretrained random --ablate-positions $abl_mflag \
         2>&1 | tee "$LOGDIR/extract_ud_noposemb.log"
     [ "${PIPESTATUS[0]}" -eq 0 ] || { echo "[extract] UD ablation FAILED" >&2; exit 1; }
+    # The POSABL lines are the appendix's per-model verification that the embedding really was
+    # zeroed (drift 0.0 to machine precision). The representations get deleted eventually; this
+    # evidence should not go with them.
+    grep "^POSABL" "$LOGDIR/extract_ud_noposemb.log" > "$LOGDIR/position_ablation_check.tsv" 2>/dev/null \
+      && echo "  verification lines -> $LOGDIR/position_ablation_check.tsv"
   fi
 
   # extract_vua.py's --models REPLACES its default list with literal ids, it does not filter by
