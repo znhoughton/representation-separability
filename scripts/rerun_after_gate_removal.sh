@@ -64,18 +64,28 @@ SKIP_COMPONENTS="${SKIP_COMPONENTS:-0}"
 SEP_DEVICE="${SEP_DEVICE:-cuda}"
 export SEP_DEVICE
 
-# THE TOY RE-MEASURE RUNS ON CPU, ACROSS CORES. It used to be pinned to one process because
-# SEP_DEVICE=cuda routes the measure through torch and each worker would open its own ~10 GB CUDA
-# context, so more than one did not fit. That reasoning is about the GPU, not about the work: the
-# toy cells are small (d <= 256, 24 observations), and one GPU process measured ~150/min where the
-# numpy path has a core per cell. Switching the backend changes no reported number -- the three
-# backends are checked component by component in scripts/verify_backends.py -- and the whole grid
-# is measured in this single pass, so it stays internally consistent. SEP_DEVICE is left alone for
-# the LLM and validation steps, which is where the GPU earns its place.
-REMEASURE_DEVICE="${REMEASURE_DEVICE:-cpu}"
+# THE TOY RE-MEASURE RUNS ON THE GPU, ACROSS SEVERAL WORKERS. It was previously pinned to one
+# process on the strength of a comment in run_all_measurements.sh saying so, with no reason given.
+# There is no constraint behind it: remeasure_from_runs.py picks its backend from SEP_DEVICE at
+# import, so each spawned worker opens its own context independently, exactly as the LLM measure's
+# LLM_WORKERS GPU workers already do in the same pipeline.
+#
+# The "~10 GB per CUDA context" figure quoted there belongs to those LLM workers, each of which
+# also holds a 1.4B model's representations -- the same comment says CPU RAM at ~12 GB/worker is
+# the tighter limit, which is the giveaway. A toy cell is nothing like that: H is 5760 x 256
+# float64, about 12 MB, and the re-split working set is capped at 64 MB by _RESPLIT_CHUNK_BYTES
+# regardless of width. Per worker that is a context plus tens of megabytes.
+#
+# The default of 4 is the worker count this repo already runs GPU-side and knows to be safe, not a
+# measured ceiling for this step; the footprint here is orders of magnitude smaller, so raise it.
+# REMEASURE_DEVICE=cpu switches to the numpy path, where a worker costs ~230 MB and measures the
+# widest cell in ~0.8 s. Which wins is hardware, so measure before assuming: the progress bar
+# prints a per-minute rate within seconds, and the CSV is not written until the end, so comparing
+# the two by starting each and interrupting it is free.
+REMEASURE_DEVICE="${REMEASURE_DEVICE:-cuda}"
 if [ -z "${REMEASURE_WORKERS:-}" ]; then
   if [ "$REMEASURE_DEVICE" = "cuda" ]; then
-    REMEASURE_WORKERS=1
+    REMEASURE_WORKERS=4
   else
     REMEASURE_WORKERS="${TOY_WORKERS:-$(nproc 2>/dev/null || echo 8)}"
   fi

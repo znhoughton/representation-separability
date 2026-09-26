@@ -78,7 +78,11 @@ export SEP_DEVICE
 # measure is per-spec on ragged cells, so a single process underuses the card; it runs several
 # workers instead (the pool is spawned, so each worker is a fresh CUDA context of ~10 GB -- keep
 # LLM_WORKERS * 10 GB under VRAM, and note CPU RAM at ~12 GB/worker is the tighter limit of the two).
-# The toy re-measure stays single-process on the GPU. The numpy path keeps the old CPU worker counts.
+# The ~10 GB is these LLM workers, each also holding a model's representations -- see the CPU
+# RAM figure beside it. It is not what a CUDA context costs, and it does not carry over to the
+# toy re-measure, whose cells are ~12 MB with a 64 MB cap on the re-split working set; that
+# step runs several GPU workers too (REMEASURE_WORKERS in rerun_after_gate_removal.sh).
+# The numpy path keeps the old CPU worker counts.
 if [ "$SEP_DEVICE" = "cuda" ]; then
   REMEASURE_WORKERS=1
 else
