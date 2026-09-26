@@ -59,6 +59,30 @@ SKIP_DERIVED="${SKIP_DERIVED:-0}"   # dataset counts and Experiment 3 decoding
 MIN_CELL="${MIN_CELL:-10}"
 rc_derived=0
 
+# THROUGHPUT. Extraction is the whole cost of this script, and both knobs below were left at
+# defaults sized for a small card.
+#
+# EXTRACT_BATCH. extract_ud.py defaults to 32; its own help says 128-256 is comfortable on a large
+# card and cuts the number of forward passes proportionally. VRAM is about
+# batch x seqlen x width x layers x 4 bytes, so the 1.3B at 128 costs ~7 GB of an 80 GB card.
+# NOTE: batch size changes the ORDER tokens are extracted in, because batches are length-sorted
+# internally, so it changes WHICH 300,000 tokens land in the sample. That is fine here -- every
+# model is being re-extracted together, so the sample stays internally consistent, and the value
+# is recorded in the npz so alignment stays exact -- but it does mean these reps are not
+# token-identical to the ones the committed results came from. They already were not: the 350M is
+# a different model now.
+#
+# EXTRACT_JOBS. Extraction runs one model at a time, so a single invocation leaves a big card
+# mostly idle. Splitting the six models across concurrent invocations is what the --models flag
+# is for. Three groups pairs each BabyLM with its matched Pythia, so the heavy 1.3B/1.4b pair
+# runs alongside the light ones rather than after them.
+EXTRACT_BATCH="${EXTRACT_BATCH:-128}"
+VUA_BATCH="${VUA_BATCH:-64}"
+EXTRACT_JOBS="${EXTRACT_JOBS:-3}"
+# Passed through to the measurement runner. measure.py peaks near 12 GB of HOST RAM per worker,
+# so this is bounded by RAM rather than by cores or VRAM.
+export LLM_WORKERS="${LLM_WORKERS:-8}"
+
 [ -f scripts/llm/extract_ud.py ] || { echo "run me from the repo root" >&2; exit 1; }
 [ -f "$CONLLU" ] || { echo "missing conllu: $CONLLU" >&2; exit 1; }
 mkdir -p "$LOGDIR" "$OLDDIR"
@@ -70,6 +94,8 @@ run() {
 
 echo "=== re-extract and re-measure ===================================="
 echo "  max-tokens : $MAX_TOKENS  (the default of 100000 would give a third of the data)"
+echo "  batch      : $EXTRACT_BATCH UD / $VUA_BATCH VUA   (script defaults are 32 / 16)"
+echo "  extract    : $EXTRACT_JOBS concurrent job(s); measure workers: $LLM_WORKERS"
 echo "  models     : ${MODELS:-all six}"
 echo "  ablation   : $ABLATION"
 echo "  dry run    : $DRY_RUN"
@@ -119,12 +145,36 @@ if [ "$SKIP_EXTRACT" != "1" ]; then
   mflag=""
   [ -n "$MODELS" ] && mflag="--models $MODELS"
 
+  # One invocation per group, concurrently. Groups pair each BabyLM with its matched Pythia so the
+  # heavy 1.3B/1.4b pair overlaps the light ones instead of running after them. MODELS overrides
+  # the split entirely and falls back to a single job.
+  if [ -n "$MODELS" ] || [ "$EXTRACT_JOBS" -le 1 ]; then
+    MODEL_GROUPS=("${MODELS:-}")
+  else
+    MODEL_GROUPS=("opt-babylm-1.3B pythia-1.4b" "opt-babylm-350m pythia-410m" "opt-babylm-125m pythia-160m")
+  fi
+
   echo
   echo "[extract] UD representations, pretrained + random"
-  run "$PY" scripts/llm/extract_ud.py --conllu "$CONLLU" --reps-dir "$REPS_DIR" \
-      --max-tokens "$MAX_TOKENS" --inits pretrained random $mflag \
-      2>&1 | tee "$LOGDIR/extract_ud.log"
-  [ "${PIPESTATUS[0]}" -eq 0 ] || { echo "[extract] UD FAILED" >&2; exit 1; }
+  echo "          batch=$EXTRACT_BATCH  jobs=${#MODEL_GROUPS[@]}"
+  pids=""; i=0
+  for g in "${MODEL_GROUPS[@]}"; do
+    gflag=""; [ -n "$g" ] && gflag="--models $g"
+    echo "  [job $i] ${g:-all six}"
+    if [ "$DRY_RUN" = "1" ]; then
+      echo "  [dry] $PY scripts/llm/extract_ud.py --conllu $CONLLU --reps-dir $REPS_DIR --max-tokens $MAX_TOKENS --batch-size $EXTRACT_BATCH --inits pretrained random $gflag"
+    else
+      "$PY" scripts/llm/extract_ud.py --conllu "$CONLLU" --reps-dir "$REPS_DIR" \
+          --max-tokens "$MAX_TOKENS" --batch-size "$EXTRACT_BATCH" \
+          --inits pretrained random $gflag > "$LOGDIR/extract_ud.job$i.log" 2>&1 &
+      pids="$pids $!"
+    fi
+    i=$((i + 1))
+  done
+  for p in $pids; do
+    wait "$p" || { echo "[extract] UD FAILED (see $LOGDIR/extract_ud.job*.log)" >&2; exit 1; }
+  done
+  cat "$LOGDIR"/extract_ud.job*.log > "$LOGDIR/extract_ud.log" 2>/dev/null
 
   if [ "$ABLATION" = "1" ]; then
     # OPT-BabyLM ONLY. The ablation zeroes a learned absolute position embedding added at the
@@ -137,7 +187,8 @@ if [ "$SKIP_EXTRACT" != "1" ]; then
     echo
     echo "[extract] UD representations with positions zeroed (_noposemb): ${MODELS:-opt-babylm}"
     run "$PY" scripts/llm/extract_ud.py --conllu "$CONLLU" --reps-dir "$REPS_DIR" \
-        --max-tokens "$MAX_TOKENS" --inits pretrained random --ablate-positions $abl_mflag \
+        --max-tokens "$MAX_TOKENS" --batch-size "$EXTRACT_BATCH" \
+        --inits pretrained random --ablate-positions $abl_mflag \
         2>&1 | tee "$LOGDIR/extract_ud_noposemb.log"
     [ "${PIPESTATUS[0]}" -eq 0 ] || { echo "[extract] UD ablation FAILED" >&2; exit 1; }
     # The POSABL lines are the appendix's per-model verification that the embedding really was
@@ -152,7 +203,7 @@ if [ "$SKIP_EXTRACT" != "1" ]; then
   # not exist and 404. So it is only passed through when the caller gave full ids.
   echo
   echo "[extract] VUA representations (metaphor)"
-  run "$PY" scripts/llm/extract_vua.py --out-dir "$VUA_DIR" \
+  run "$PY" scripts/llm/extract_vua.py --out-dir "$VUA_DIR" --batch-size "$VUA_BATCH" \
       2>&1 | tee "$LOGDIR/extract_vua.log"
   [ "${PIPESTATUS[0]}" -eq 0 ] || { echo "[extract] VUA FAILED" >&2; exit 1; }
 fi
