@@ -38,6 +38,7 @@
 #   ABLATION=1 bash scripts/llm/reextract_and_measure.sh   # also the _noposemb variants
 #   MODELS="opt-babylm-1.3B opt-babylm-350m" bash ...      # substring filters, subset only
 #   SKIP_EXTRACT=1 bash ...                                # measurements only
+#   SKIP_EXTRACT=1 SKIP_MEASURE=1 bash ...                 # only the derived outputs
 #
 #   nohup setsid bash scripts/llm/reextract_and_measure.sh > logs/reextract.out 2>&1 &
 set -uo pipefail
@@ -54,6 +55,9 @@ ABLATION="${ABLATION:-0}"
 DRY_RUN="${DRY_RUN:-0}"
 SKIP_EXTRACT="${SKIP_EXTRACT:-0}"
 SKIP_MEASURE="${SKIP_MEASURE:-0}"
+SKIP_DERIVED="${SKIP_DERIVED:-0}"   # dataset counts and Experiment 3 decoding
+MIN_CELL="${MIN_CELL:-10}"
+rc_derived=0
 
 [ -f scripts/llm/extract_ud.py ] || { echo "run me from the repo root" >&2; exit 1; }
 [ -f "$CONLLU" ] || { echo "missing conllu: $CONLLU" >&2; exit 1; }
@@ -171,7 +175,45 @@ if [ "$SKIP_MEASURE" != "1" ]; then
       2>&1 | tee "$LOGDIR/measure.log"
 fi
 
+# ---------------------------------------------------------------- derived from the reps
+# Four files the paper reads that are NOT produced by the measurement runner, and that every
+# re-extraction invalidates because they are computed from the representations:
+#   methods_grid_stats.csv, stimuli_items.csv   dataset_stats.py  (the counts quoted in Methods)
+#   llm_decode_pos_form.csv, llm_decode_interaction.csv   Experiment 3's probe
+# Missing these was how a re-extraction would have left the paper reading counts and decoding
+# results from representations that no longer exist.
+if [ "$SKIP_DERIVED" != "1" ]; then
+  echo
+  echo "[stats] dataset counts -> data/methods_grid_stats.csv, data/stimuli_items.csv"
+  run "$PY" scripts/llm/dataset_stats.py --reps-dir "$REPS_DIR" --vua-dir "$VUA_DIR" \
+      --conllu "$CONLLU" --min-cell "${MIN_CELL:-10}" 2>&1 | tee "$LOGDIR/stats.log"
+  [ "${PIPESTATUS[0]}" -eq 0 ] || { echo "[stats] FAILED" >&2; rc_derived=1; }
+
+  # decode APPENDS rather than resuming, so a rerun over an existing file duplicates every row.
+  # Retire both outputs first. run_all_measurements.sh notes that decode writes a header and no
+  # rows, then exits 0, when the reps it wants are absent -- which is how two committed result
+  # files were once replaced by bare headers. Retiring rather than deleting keeps that recoverable.
+  echo
+  echo "[decode] Experiment 3 -> data/llm_decode_pos_form.csv, data/llm_decode_interaction.csv"
+  for f in data/llm_decode_pos_form.csv data/llm_decode_interaction.csv; do
+    [ -s "$f" ] || continue
+    echo "  [retire] $f (decode appends; rebuilt to avoid duplicate rows)"
+    run mv "$f" "$OLDDIR/$(basename "$f" .csv).$(date +%Y%m%d-%H%M%S).csv"
+  done
+  run "$PY" scripts/llm/decode_from_interaction.py --construction pos \
+      --reps-dir "$REPS_DIR" --conllu "$CONLLU" 2>&1 | tee "$LOGDIR/decode_pos.log"
+  run "$PY" scripts/llm/decode_from_interaction.py --construction role \
+      --reps-dir "$REPS_DIR" --conllu "$CONLLU" 2>&1 | tee "$LOGDIR/decode_role.log"
+  for f in data/llm_decode_pos_form.csv data/llm_decode_interaction.csv; do
+    if [ "$DRY_RUN" != "1" ] && [ "$(wc -l < "$f" 2>/dev/null || echo 0)" -lt 2 ]; then
+      echo "  [decode] WARNING: $f has no rows -- the reps it wanted were not found" >&2
+      rc_derived=1
+    fi
+  done
+fi
+
 echo
 echo "=== done ========================================================="
 echo "  Experiment 1 is untouched: the artificial-language grid is model-independent."
 echo "  The validation grid is untouched: run it with run_validate_sharded.sh."
+[ "${rc_derived:-0}" -eq 0 ] || echo "  SOME DERIVED OUTPUTS FAILED -- see $LOGDIR" >&2
