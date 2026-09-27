@@ -216,14 +216,23 @@ if [ "$SKIP_EXTRACT" != "1" ]; then
       # Loop while ANY job is alive. `kill -0 $pids` passes them all at once and fails if any one
       # is gone, so it stopped reporting the moment the fastest job finished -- which is the point
       # at which the remaining jobs are the only thing left to watch.
+      declare -A seen_line
       while :; do
         sleep "${PROGRESS_EVERY:-60}"
         alive=0
         for p in $pids; do kill -0 "$p" 2>/dev/null && alive=1; done
         for l in "$LOGDIR"/extract_ud.job*.log; do
           [ -s "$l" ] || continue
-          last=$(grep -E "tokens|streamed|auto-batch|OUT OF MEMORY|FAILED|skipping" "$l" | tail -1)
-          [ -n "$last" ] && echo "  [$(basename "$l" .log | sed 's/extract_ud\.//')] $last"
+          # "writing ... GB" and "compressed in" matter as much as the progress lines: after a
+          # model hits 100% it spends many minutes single-threaded writing the npz, and without
+          # those the newest matching line stays at 100% and the job looks hung.
+          last=$(grep -E "tokens|streamed|auto-batch|writing .* GB|compressed in|OUT OF MEMORY|FAILED|skipping" "$l" | tail -1)
+          # Only when it CHANGES. A finished job otherwise re-prints its last line every cycle
+          # forever, which buries the jobs that are still moving.
+          if [ -n "$last" ] && [ "$last" != "${seen_line[$l]:-}" ]; then
+            echo "  [$(basename "$l" .log | sed 's/extract_ud\.//')] $last"
+            seen_line[$l]="$last"
+          fi
         done
         [ "$alive" -eq 1 ] || break
       done
