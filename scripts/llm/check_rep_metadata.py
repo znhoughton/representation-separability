@@ -32,7 +32,10 @@ def _find_repo():
 REPO_ROOT = _find_repo()
 
 # The parameters that decide extraction ORDER, which is what aligned_labels has to reproduce.
-ORDER_KEYS = ["batch_size", "max_length", "max_tokens", "seed"]
+# max_tokens is deliberately NOT here: the extractor does not record it, so it reads MISSING on
+# every file including good ones, which is alarming and meaningless. It is also recoverable --
+# it is just the row count, which n_tok already shows.
+ORDER_KEYS = ["batch_size", "max_length", "seed"]
 
 
 def main():
