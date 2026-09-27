@@ -171,10 +171,47 @@ if [ "$SKIP_EXTRACT" != "1" ]; then
     fi
     i=$((i + 1))
   done
+  # PROGRESS INTO THE MAIN LOG. The jobs write to their own files, so whoever is tailing the run
+  # sees nothing at all between launch and completion -- which is how a job died of an OOM and the
+  # run appeared healthy. Every PROGRESS_EVERY seconds, echo the newest meaningful line from each
+  # job here, and any failure line immediately.
+  if [ "$DRY_RUN" != "1" ]; then
+    (
+      while kill -0 $pids 2>/dev/null; do
+        sleep "${PROGRESS_EVERY:-120}"
+        for l in "$LOGDIR"/extract_ud.job*.log; do
+          [ -s "$l" ] || continue
+          last=$(grep -E "tokens|streamed|OUT OF MEMORY|FAILED" "$l" | tail -1)
+          [ -n "$last" ] && echo "  [$(basename "$l" .log | sed 's/extract_ud\.//')] $last"
+        done
+      done
+    ) &
+    monitor=$!
+  fi
+
+  ok=1
   for p in $pids; do
-    wait "$p" || { echo "[extract] UD FAILED (see $LOGDIR/extract_ud.job*.log)" >&2; exit 1; }
+    wait "$p" || { echo "[extract] a job exited non-zero (see $LOGDIR/extract_ud.job*.log)" >&2; ok=0; }
   done
+  [ -n "${monitor:-}" ] && kill "$monitor" 2>/dev/null
   cat "$LOGDIR"/extract_ud.job*.log > "$LOGDIR/extract_ud.log" 2>/dev/null
+
+  # VERIFY BY COUNTING FILES, not by trusting exit codes. extract_ud.py used to swallow a failed
+  # model, print Done and exit 0, so the run carried on into measurement with representations that
+  # were never written. It now exits non-zero, but the files are the thing that matters, so check
+  # them directly and refuse rather than measure an incomplete set.
+  if [ "$DRY_RUN" != "1" ]; then
+    want=$(( $(printf '%s\n' "${MODEL_GROUPS[@]}" | wc -w) * 2 ))
+    [ -n "$MODELS" ] || want=12
+    got=$(ls "$REPS_DIR"/*.npz 2>/dev/null | grep -vc "_noposemb" || echo 0)
+    echo "  [extract] $got of $want expected UD rep files present"
+    if [ "$got" -lt "$want" ] || [ "$ok" -ne 1 ]; then
+      echo "[extract] INCOMPLETE -- $want expected, $got written. Not measuring." >&2
+      echo "          Re-run the missing models at a smaller batch, e.g." >&2
+      echo "          EXTRACT_BATCH=$((EXTRACT_BATCH / 2)) EXTRACT_JOBS=1 bash $0" >&2
+      exit 1
+    fi
+  fi
 
   if [ "$ABLATION" = "1" ]; then
     # OPT-BabyLM ONLY. The ablation zeroes a learned absolute position embedding added at the
