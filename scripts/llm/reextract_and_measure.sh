@@ -128,6 +128,22 @@ if [ "$SKIP_EXTRACT" != "1" ]; then
             continue ;;
         esac
       fi
+      # KEEP WHAT CURRENT CODE WROTE. The reason to clear at all is that the old files record no
+      # batch_size, seed or max_length, so their extraction order cannot be replayed and alignment
+      # has to guess. A file that records all three came from current code and is good by
+      # construction. Deleting those too made every interrupted run start from zero -- six already
+      # re-extracted files, about twelve hours, thrown away on the next attempt. FORCE_CLEAR=1 to
+      # delete regardless.
+      if [ "${FORCE_CLEAR:-0}" != "1" ] && "$PY" - "$f" <<'PYOK' 2>/dev/null
+import sys, numpy as np
+z = np.load(sys.argv[1], allow_pickle=False, mmap_mode="r")
+need = {"batch_size", "seed", "max_length", "upos", "lemma"}
+sys.exit(0 if need <= set(z.files) else 1)
+PYOK
+      then
+        echo "  keep $f  (already re-extracted by current code)"
+        continue
+      fi
       echo "  rm $f"
       run rm -f "$f"
     done
