@@ -201,7 +201,7 @@ if [ "$SKIP_EXTRACT" != "1" ]; then
       echo "  [dry] $PY scripts/llm/extract_ud.py --conllu $CONLLU --reps-dir $REPS_DIR --max-tokens $MAX_TOKENS --batch-size $EXTRACT_BATCH --max-length $MAX_LENGTH --inits pretrained random $gflag"
     else
       "$PY" scripts/llm/extract_ud.py --conllu "$CONLLU" --reps-dir "$REPS_DIR" \
-          --max-tokens "$MAX_TOKENS" --batch-size "$EXTRACT_BATCH" \
+          --max-tokens "$MAX_TOKENS" --batch-size "$EXTRACT_BATCH" --max-length "$MAX_LENGTH" \
           --inits pretrained random $gflag > "$LOGDIR/extract_ud.job$i.log" 2>&1 &
       pids="$pids $!"
     fi
@@ -248,30 +248,6 @@ if [ "$SKIP_EXTRACT" != "1" ]; then
     got=$(ls "$REPS_DIR"/*.npz 2>/dev/null | grep -vc "_noposemb" || echo 0)
     echo "  [extract] $got of $want expected UD rep files present"
 
-    # COMPARABILITY. Every file must have been written at the SAME batch size, or they hold
-    # different tokens and the pretrained-vs-random contrast is between two samples rather than
-    # two models. The OOM retry can silently produce this, so it is checked rather than assumed.
-    "$PY" - "$REPS_DIR" <<'PYBATCH'
-import sys, collections
-from pathlib import Path
-import numpy as np
-seen = collections.defaultdict(list)
-for p in sorted(Path(sys.argv[1]).glob("*.npz")):
-    try:
-        z = np.load(p, allow_pickle=False, mmap_mode="r")
-        seen[int(np.asarray(z["batch_size"]).item()) if "batch_size" in z.files else None].append(p.name)
-    except Exception:
-        seen["unreadable"].append(p.name)
-if len(seen) > 1:
-    print("  [extract] BATCH SIZES DIFFER -- these files do not hold the same tokens:")
-    for bs, names in sorted(seen.items(), key=lambda kv: str(kv[0])):
-        print(f"      batch {bs}: {len(names)} file(s)  e.g. {names[0]}")
-    print("  [extract] re-extract the odd ones out at the common batch, or pin EXTRACT_BATCH")
-    sys.exit(2)
-bs = next(iter(seen))
-print(f"  [extract] all {sum(len(v) for v in seen.values())} files written at batch {bs}")
-PYBATCH
-    [ $? -eq 0 ] || { echo "[extract] files are not comparable; not measuring." >&2; exit 1; }
 
     if [ "$got" -lt "$want" ] || [ "$ok" -ne 1 ]; then
       echo "[extract] INCOMPLETE -- $want expected, $got written. Not measuring." >&2
@@ -292,7 +268,7 @@ PYBATCH
     echo
     echo "[extract] UD representations with positions zeroed (_noposemb): ${MODELS:-opt-babylm}"
     run "$PY" scripts/llm/extract_ud.py --conllu "$CONLLU" --reps-dir "$REPS_DIR" \
-        --max-tokens "$MAX_TOKENS" --batch-size "$EXTRACT_BATCH" \
+        --max-tokens "$MAX_TOKENS" --batch-size "$EXTRACT_BATCH" --max-length "$MAX_LENGTH" \
         --inits pretrained random --ablate-positions $abl_mflag \
         2>&1 | tee "$LOGDIR/extract_ud_noposemb.log"
     [ "${PIPESTATUS[0]}" -eq 0 ] || { echo "[extract] UD ablation FAILED" >&2; exit 1; }
@@ -319,7 +295,26 @@ fi
 if [ "$DRY_RUN" != "1" ]; then
   echo
   echo "[verify] extraction parameters recorded?"
-  "$PY" scripts/llm/check_rep_metadata.py --reps-dir "$REPS_DIR" | tail -6
+  # Piping into tail discarded the exit code, so a file with MISSING parameters printed a warning
+  # and the run measured it anyway. Re-extracting was meant to stop alignment being a guess.
+  if ! "$PY" scripts/llm/check_rep_metadata.py --reps-dir "$REPS_DIR"; then
+    echo "[verify] some files do not record batch_size/max_length/seed; not measuring." >&2
+    exit 1
+  fi
+
+  # Uniform batch size, covering the _noposemb files too. This used to run BETWEEN the two
+  # extraction passes, so the six ablation files were never checked.
+  echo "[verify] one batch size across every file?"
+  if ! "$PY" scripts/llm/check_batch_uniform.py --reps-dir "$REPS_DIR"; then
+    echo "[verify] files do not hold the same words; not measuring." >&2
+    exit 1
+  fi
+
+  # And the models must actually have sampled the same words, which is what not truncating buys.
+  if [ -f scripts/llm/compare_token_samples.py ]; then
+    echo "[verify] same words across models?"
+    "$PY" scripts/llm/compare_token_samples.py --reps-dir "$REPS_DIR" | tail -14
+  fi
 fi
 
 # ---------------------------------------------------------------- measure
