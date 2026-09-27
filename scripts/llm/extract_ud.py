@@ -187,8 +187,16 @@ def main():
         from transformers import AutoConfig
         biggest = max(names, key=lambda n: (lambda c: c.hidden_size ** 2 * c.num_hidden_layers)(
             AutoConfig.from_pretrained(n)))
-        # No corpus loaded here, so cost at a length that covers typical UD sentences.
-        print(_auto_batch(biggest, int(os.environ.get('SEQ_EST', '320'))))
+        # Cost it at the SAME length the extraction will, or the two disagree and the sweep
+        # discovers it as an OOM: a guessed length that is too short gives a batch that is too
+        # large, one file retries at half, and the batch-comparability check then fails the whole
+        # run at the end. Parsing the corpus here costs seconds.
+        sents = list(L.parse_conllu(args.conllu))
+        seq_est = args.max_length if args.max_length else max(len(s_) for s_ in sents) * 2
+        print(f"  costing at {seq_est} subwords "
+              f"({'truncation limit' if args.max_length else 'longest sentence x2'})",
+              file=sys.stderr)
+        print(_auto_batch(biggest, seq_est))
         return 0
 
     sentences = list(L.parse_conllu(args.conllu))

@@ -180,7 +180,7 @@ if [ "$SKIP_EXTRACT" != "1" ]; then
   # on. So it is computed once here, for the largest model, and passed to every invocation.
   # Divided by the number of concurrent jobs, since they share the card.
   if [ "$EXTRACT_BATCH" = "0" ] && [ "$DRY_RUN" != "1" ]; then
-    EXTRACT_BATCH=$("$PY" scripts/llm/extract_ud.py --conllu "$CONLLU" --print-batch 2>/dev/null | tail -1)
+    EXTRACT_BATCH=$("$PY" scripts/llm/extract_ud.py --conllu "$CONLLU" --max-length "$MAX_LENGTH" --print-batch 2>/dev/null | tail -1)
     case "$EXTRACT_BATCH" in
       ''|*[!0-9]*) echo "  [auto-batch] could not size it; falling back to 32" >&2; EXTRACT_BATCH=32 ;;
       *) EXTRACT_BATCH=$(( EXTRACT_BATCH / ${#MODEL_GROUPS[@]} ))
