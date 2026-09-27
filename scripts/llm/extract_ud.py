@@ -10,6 +10,7 @@ Run on the pod:
       --max-tokens 100000 --device cuda --out data/llm_separability.csv
 """
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -43,7 +44,7 @@ def _reps_complete(path):
         return False
 
 
-def _auto_batch(model_name, max_length, cap=256):
+def _auto_batch(model_name, seq_len, cap=256):
     """Largest batch that should fit in the VRAM free RIGHT NOW, for this model.
 
     USE ONE VALUE FOR A WHOLE SWEEP. Batch size decides token ORDER -- batches are length-sorted
@@ -74,7 +75,9 @@ def _auto_batch(model_name, max_length, cap=256):
     layers = int(cfg.num_hidden_layers)
     free, _total = torch.cuda.mem_get_info()
     weights = 12 * layers * hidden * hidden * 4            # fp32
-    per_item = max_length * hidden * (layers + 1) * 4      # every layer retained, per sentence
+    # seq_len is the padded length a batch is costed at: the truncation limit when there is
+    # one, otherwise the longest sentence, since a batch pads to its longest member.
+    per_item = seq_len * hidden * (layers + 1) * 4         # every layer retained, per sentence
     usable = (free - weights) * 0.5                        # half of what is left, for transients
     if usable <= 0 or per_item <= 0:
         return 1
@@ -106,7 +109,7 @@ def run_one(model_name, family, size_bin, init, sentences, args):
     # The value that actually worked is what gets recorded in the npz, so a retried extraction is
     # as replayable as a first-try one; alignment reads it back rather than guessing.
     # 0 (the default) means size it from the VRAM free right now; a positive value forces it.
-    bs = args.batch_size if args.batch_size > 0 else _auto_batch(model_name, args.max_length)
+    bs = args.batch_size if args.batch_size > 0 else _auto_batch(model_name, args.seq_est)
     asked = bs
     while True:
         try:
@@ -184,7 +187,8 @@ def main():
         from transformers import AutoConfig
         biggest = max(names, key=lambda n: (lambda c: c.hidden_size ** 2 * c.num_hidden_layers)(
             AutoConfig.from_pretrained(n)))
-        print(_auto_batch(biggest, 256))
+        # No corpus loaded here, so cost at a length that covers typical UD sentences.
+        print(_auto_batch(biggest, int(os.environ.get('SEQ_EST', '320'))))
         return 0
 
     sentences = list(L.parse_conllu(args.conllu))
@@ -194,8 +198,15 @@ def main():
         # Nothing in UD comes close, but a silent overflow would be a crash mid-sweep, and a
         # silent truncation would be the very divergence this default exists to prevent.
         longest = max(len(s_) for s_ in sentences)
+        # Batches pad to their longest member, so with no truncation the memory estimate has to be
+        # costed at the longest sentence. x2 is a safe words-to-subwords upper bound. Without this
+        # the estimate was costed at max_length, which is 0 when not truncating, and every model
+        # fell through to batch 1.
+        args.seq_est = longest * 2
         print(f"  not truncating; longest sentence is {longest} words "
-              f"(subwords are more, still far below every model's position limit)", flush=True)
+              f"(costing batches at ~{args.seq_est} subwords)", flush=True)
+    else:
+        args.seq_est = args.max_length
 
     failed = []
     for bin_i, (baby, pyth) in enumerate(PAIRS):

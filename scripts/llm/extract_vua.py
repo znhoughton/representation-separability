@@ -96,7 +96,12 @@ def extract_model(model_name, out_path, sents, n_tgt, device, batch_size, max_le
             chunk = sents[start:start + batch_size]
             batch_words = [w for w, _ in chunk]
             enc = tok(batch_words, is_split_into_words=True, return_tensors="pt",
-                      padding=True, truncation=True, max_length=max_length)
+                      # max_length=0 = no truncation, matching extract_ud.py. Truncating here
+                      # drops targets whose sentence overflows, and it overflows at a
+                      # different point in every tokenizer, so the models end up measured on
+                      # different target sets rather than the same one.
+                      padding=True, truncation=bool(max_length),
+                      max_length=max_length or None)
             with torch.no_grad():
                 hs = model(**{k: v.to(device) for k, v in enc.items()}).hidden_states
 
@@ -148,7 +153,8 @@ def main():
     ap.add_argument("--out-dir", default=str(REPO_ROOT / "data" / "vua_reps"))
     ap.add_argument("--device", default="cuda")
     ap.add_argument("--batch-size", type=int, default=16)
-    ap.add_argument("--max-length", type=int, default=256)
+    ap.add_argument("--max-length", type=int, default=0,
+                    help="truncation limit in subwords; 0 (default) = do not truncate, so every model sees the same targets")
     ap.add_argument("--ablate-positions", action="store_true",
                     help="zero learned absolute position embeddings before extracting")
     ap.add_argument("--models", nargs="*", default=None, help="override; default = both families, all sizes")
