@@ -171,9 +171,26 @@ if [ "$SKIP_EXTRACT" != "1" ]; then
     MODEL_GROUPS=("opt-babylm-1.3B pythia-1.4b" "opt-babylm-350m pythia-410m" "opt-babylm-125m pythia-160m")
   fi
 
+  # ONE BATCH SIZE FOR THE WHOLE SWEEP. Batch size decides which 300,000 tokens a file holds,
+  # because batches are length-sorted and truncation lands differently. Two files at different
+  # batch sizes are two different samples -- and for pretrained vs random of the same model, which
+  # share a tokenizer and used to sample identically, that breaks the comparison the paper rests
+  # on. So it is computed once here, for the largest model, and passed to every invocation.
+  # Divided by the number of concurrent jobs, since they share the card.
+  if [ "$EXTRACT_BATCH" = "0" ] && [ "$DRY_RUN" != "1" ]; then
+    EXTRACT_BATCH=$("$PY" scripts/llm/extract_ud.py --conllu "$CONLLU" --print-batch 2>/dev/null | tail -1)
+    case "$EXTRACT_BATCH" in
+      ''|*[!0-9]*) echo "  [auto-batch] could not size it; falling back to 32" >&2; EXTRACT_BATCH=32 ;;
+      *) EXTRACT_BATCH=$(( EXTRACT_BATCH / ${#MODEL_GROUPS[@]} ))
+         [ "$EXTRACT_BATCH" -lt 1 ] && EXTRACT_BATCH=1
+         echo "  [auto-batch] one value for the whole sweep: $EXTRACT_BATCH" ;;
+    esac
+  fi
+  [ "$EXTRACT_BATCH" = "0" ] && EXTRACT_BATCH=32
+
   echo
   echo "[extract] UD representations, pretrained + random"
-  echo "          batch=$EXTRACT_BATCH  jobs=${#MODEL_GROUPS[@]}"
+  echo "          batch=$EXTRACT_BATCH (same for every model and init)  jobs=${#MODEL_GROUPS[@]}"
   pids=""; i=0
   for g in "${MODEL_GROUPS[@]}"; do
     gflag=""; [ -n "$g" ] && gflag="--models $g"
@@ -228,6 +245,32 @@ if [ "$SKIP_EXTRACT" != "1" ]; then
     [ -n "$MODELS" ] || want=12
     got=$(ls "$REPS_DIR"/*.npz 2>/dev/null | grep -vc "_noposemb" || echo 0)
     echo "  [extract] $got of $want expected UD rep files present"
+
+    # COMPARABILITY. Every file must have been written at the SAME batch size, or they hold
+    # different tokens and the pretrained-vs-random contrast is between two samples rather than
+    # two models. The OOM retry can silently produce this, so it is checked rather than assumed.
+    "$PY" - "$REPS_DIR" <<'PYBATCH'
+import sys, collections
+from pathlib import Path
+import numpy as np
+seen = collections.defaultdict(list)
+for p in sorted(Path(sys.argv[1]).glob("*.npz")):
+    try:
+        z = np.load(p, allow_pickle=False, mmap_mode="r")
+        seen[int(np.asarray(z["batch_size"]).item()) if "batch_size" in z.files else None].append(p.name)
+    except Exception:
+        seen["unreadable"].append(p.name)
+if len(seen) > 1:
+    print("  [extract] BATCH SIZES DIFFER -- these files do not hold the same tokens:")
+    for bs, names in sorted(seen.items(), key=lambda kv: str(kv[0])):
+        print(f"      batch {bs}: {len(names)} file(s)  e.g. {names[0]}")
+    print("  [extract] re-extract the odd ones out at the common batch, or pin EXTRACT_BATCH")
+    sys.exit(2)
+bs = next(iter(seen))
+print(f"  [extract] all {sum(len(v) for v in seen.values())} files written at batch {bs}")
+PYBATCH
+    [ $? -eq 0 ] || { echo "[extract] files are not comparable; not measuring." >&2; exit 1; }
+
     if [ "$got" -lt "$want" ] || [ "$ok" -ne 1 ]; then
       echo "[extract] INCOMPLETE -- $want expected, $got written. Not measuring." >&2
       echo "          Re-run the missing models at a smaller batch, e.g." >&2

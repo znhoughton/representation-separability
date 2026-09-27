@@ -46,9 +46,16 @@ def _reps_complete(path):
 def _auto_batch(model_name, max_length, cap=256):
     """Largest batch that should fit in the VRAM free RIGHT NOW, for this model.
 
-    Asked for rather than assumed, because the answer depends on what else is resident on the
-    card -- another job of this run, another project entirely. A fixed value sized on an idle card
-    is what produced a CUDA OOM that lost a whole model's extraction.
+    USE ONE VALUE FOR A WHOLE SWEEP. Batch size decides token ORDER -- batches are length-sorted
+    internally, so truncation and the max_tokens cutoff land in different places -- which means two
+    files extracted at different batch sizes hold DIFFERENT tokens. Across models some divergence
+    is unavoidable, since each tokenizer segments differently, but within a model pretrained and
+    random share a tokenizer and must share a batch size or the comparison the paper rests on is
+    between two different samples. Sizing per file, from whatever memory happened to be free,
+    produced batches from 1 to 256 in a single sweep and broke exactly that.
+
+    So the caller computes this ONCE, for the largest model it will run, and passes the result to
+    every invocation. What remains here is the estimate itself.
 
     The dominant cost is that output_hidden_states retains EVERY layer's activations for the whole
     batch: batch x max_length x hidden x (layers + 1) x 4 bytes. Weights are estimated from the
@@ -156,7 +163,21 @@ def main():
                          "which a network filesystem handles poorly -- point this at LOCAL disk if "
                          "the reps dir is on NFS. Must NOT be a tmpfs: that is RAM, and the "
                          "memmap is far larger than memory.")
+    ap.add_argument("--print-batch", action="store_true",
+                    help="print the auto-sized batch for the LARGEST requested model and exit, so "
+                         "a caller can compute it once and pass the same value to every "
+                         "invocation. Sizing per file breaks comparability between them.")
     args = ap.parse_args()
+
+    if args.print_batch:
+        names = [n for _, pair in enumerate(PAIRS) for n in pair
+                 if not args.models or any(m in n for m in args.models)]
+        # The largest model binds: a batch that fits it fits everything smaller.
+        from transformers import AutoConfig
+        biggest = max(names, key=lambda n: (lambda c: c.hidden_size ** 2 * c.num_hidden_layers)(
+            AutoConfig.from_pretrained(n)))
+        print(_auto_batch(biggest, 256))
+        return 0
 
     sentences = list(L.parse_conllu(args.conllu))
     print(f"Loaded {len(sentences)} sentences from {args.conllu}", flush=True)
