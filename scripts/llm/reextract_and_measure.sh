@@ -194,13 +194,19 @@ if [ "$SKIP_EXTRACT" != "1" ]; then
   # job here, and any failure line immediately.
   if [ "$DRY_RUN" != "1" ]; then
     (
-      while kill -0 $pids 2>/dev/null; do
-        sleep "${PROGRESS_EVERY:-120}"
+      # Loop while ANY job is alive. `kill -0 $pids` passes them all at once and fails if any one
+      # is gone, so it stopped reporting the moment the fastest job finished -- which is the point
+      # at which the remaining jobs are the only thing left to watch.
+      while :; do
+        sleep "${PROGRESS_EVERY:-60}"
+        alive=0
+        for p in $pids; do kill -0 "$p" 2>/dev/null && alive=1; done
         for l in "$LOGDIR"/extract_ud.job*.log; do
           [ -s "$l" ] || continue
-          last=$(grep -E "tokens|streamed|OUT OF MEMORY|FAILED" "$l" | tail -1)
+          last=$(grep -E "tokens|streamed|auto-batch|OUT OF MEMORY|FAILED|skipping" "$l" | tail -1)
           [ -n "$last" ] && echo "  [$(basename "$l" .log | sed 's/extract_ud\.//')] $last"
         done
+        [ "$alive" -eq 1 ] || break
       done
     ) &
     monitor=$!
