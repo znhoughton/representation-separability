@@ -43,6 +43,42 @@ def _reps_complete(path):
         return False
 
 
+def _auto_batch(model_name, max_length, cap=256):
+    """Largest batch that should fit in the VRAM free RIGHT NOW, for this model.
+
+    Asked for rather than assumed, because the answer depends on what else is resident on the
+    card -- another job of this run, another project entirely. A fixed value sized on an idle card
+    is what produced a CUDA OOM that lost a whole model's extraction.
+
+    The dominant cost is that output_hidden_states retains EVERY layer's activations for the whole
+    batch: batch x max_length x hidden x (layers + 1) x 4 bytes. Weights are estimated from the
+    usual transformer parameter count, 12 x layers x hidden^2, in fp32.
+
+    This is a starting point, not a guarantee. It is deliberately conservative (half the free
+    memory, after weights), and run_one halves from here on OOM, so an over-estimate costs one
+    failed batch rather than the model.
+    """
+    import torch
+    from transformers import AutoConfig
+    if not torch.cuda.is_available():
+        return 32
+    cfg = AutoConfig.from_pretrained(model_name)
+    hidden = int(cfg.hidden_size)
+    layers = int(cfg.num_hidden_layers)
+    free, _total = torch.cuda.mem_get_info()
+    weights = 12 * layers * hidden * hidden * 4            # fp32
+    per_item = max_length * hidden * (layers + 1) * 4      # every layer retained, per sentence
+    usable = (free - weights) * 0.5                        # half of what is left, for transients
+    if usable <= 0 or per_item <= 0:
+        return 1
+    bs = int(usable // per_item)
+    bs = max(1, min(cap, bs))
+    print(f"  [auto-batch] {model_name}: {free / 1e9:.1f} GB free, "
+          f"~{weights / 1e9:.1f} GB weights, {per_item / 1e6:.1f} MB/sentence -> batch {bs}",
+          flush=True)
+    return bs
+
+
 def run_one(model_name, family, size_bin, init, sentences, args):
     """Stream this (model, init)'s reps to a .npz (memory-flat; see extract_stream_to_npz -- the
     an in-RAM version OOM'd on the 350m/1.3b models). Measurement runs later, on CPU, from the
@@ -62,7 +98,9 @@ def run_one(model_name, family, size_bin, init, sentences, args):
     #
     # The value that actually worked is what gets recorded in the npz, so a retried extraction is
     # as replayable as a first-try one; alignment reads it back rather than guessing.
-    bs = args.batch_size
+    # 0 (the default) means size it from the VRAM free right now; a positive value forces it.
+    bs = args.batch_size if args.batch_size > 0 else _auto_batch(model_name, 256)
+    asked = bs
     while True:
         try:
             upos, lemma, n_tok = L.extract_stream_to_npz(
@@ -81,9 +119,9 @@ def run_one(model_name, family, size_bin, init, sentences, args):
             bs //= 2
             print(f"  [{init:>10}] {model_name}: OUT OF MEMORY at batch_size={bs * 2}, "
                   f"retrying at {bs}", flush=True)
-    if bs != args.batch_size:
+    if bs != asked:
         print(f"  [{init:>10}] {model_name}: completed at batch_size={bs} "
-              f"(asked for {args.batch_size})", flush=True)
+              f"(started at {asked})", flush=True)
     print(f"  [{init:>10}] {model_name} ({family}/{size_bin}): streamed {n_tok} tokens -> {p}", flush=True)
 
 
@@ -97,11 +135,12 @@ def main():
                     help="zero learned absolute position embeddings before extracting "
                          "(see extraction.zero_position_embeddings). Writes to a separate "
                          "__*_noposemb.npz so the unablated reps are untouched.")
-    ap.add_argument("--batch-size", type=int, default=32,
-                    help="sentences per forward batch. With output_hidden_states every layer's "
-                         "activations are retained, so this is the main VRAM knob: roughly "
-                         "batch * seqlen * width * layers * 4 bytes. On a large card 128-256 is "
-                         "comfortable and cuts the number of forward passes proportionally.")
+    ap.add_argument("--batch-size", type=int, default=0,
+                    help="sentences per forward batch, the main VRAM knob: roughly "
+                         "batch * seqlen * width * layers * 4 bytes, because output_hidden_states "
+                         "retains every layer. DEFAULT 0 = size it automatically from the memory "
+                         "free at the time, per model, and halve on OOM. Pass a positive value "
+                         "only to pin it.")
     ap.add_argument("--models", nargs="*", default=None,
                     help="substrings to filter the model set. Extraction runs one model at a "
                          "time, so splitting the set across several concurrent invocations is "

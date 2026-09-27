@@ -62,9 +62,10 @@ rc_derived=0
 # THROUGHPUT. Extraction is the whole cost of this script, and both knobs below were left at
 # defaults sized for a small card.
 #
-# EXTRACT_BATCH. extract_ud.py defaults to 32; its own help says 128-256 is comfortable on a large
-# card and cuts the number of forward passes proportionally. VRAM is about
-# batch x seqlen x width x layers x 4 bytes, so the 1.3B at 128 costs ~7 GB of an 80 GB card.
+# EXTRACT_BATCH. 0 means extract_ud.py sizes it per model from the VRAM free at the time and
+# halves on OOM, which is what this should have done from the start: the right value depends on
+# what else is resident on the card, so any fixed number is wrong as soon as something else runs.
+# Set a positive value only to pin it.
 # NOTE: batch size changes the ORDER tokens are extracted in, because batches are length-sorted
 # internally, so it changes WHICH 300,000 tokens land in the sample. That is fine here -- every
 # model is being re-extracted together, so the sample stays internally consistent, and the value
@@ -76,7 +77,7 @@ rc_derived=0
 # mostly idle. Splitting the six models across concurrent invocations is what the --models flag
 # is for. Three groups pairs each BabyLM with its matched Pythia, so the heavy 1.3B/1.4b pair
 # runs alongside the light ones rather than after them.
-EXTRACT_BATCH="${EXTRACT_BATCH:-128}"
+EXTRACT_BATCH="${EXTRACT_BATCH:-0}"   # 0 = auto, per model, from free VRAM
 VUA_BATCH="${VUA_BATCH:-64}"
 EXTRACT_JOBS="${EXTRACT_JOBS:-3}"
 # Passed through to the measurement runner. measure.py peaks near 12 GB of HOST RAM per worker,
@@ -94,7 +95,7 @@ run() {
 
 echo "=== re-extract and re-measure ===================================="
 echo "  max-tokens : $MAX_TOKENS  (the default of 100000 would give a third of the data)"
-echo "  batch      : $EXTRACT_BATCH UD / $VUA_BATCH VUA   (script defaults are 32 / 16)"
+echo "  batch      : UD $( [ "$EXTRACT_BATCH" = 0 ] && echo auto || echo "$EXTRACT_BATCH" ) / VUA $VUA_BATCH"
 echo "  extract    : $EXTRACT_JOBS concurrent job(s); measure workers: $LLM_WORKERS"
 echo "  models     : ${MODELS:-all six}"
 echo "  ablation   : $ABLATION"
@@ -208,7 +209,7 @@ if [ "$SKIP_EXTRACT" != "1" ]; then
     if [ "$got" -lt "$want" ] || [ "$ok" -ne 1 ]; then
       echo "[extract] INCOMPLETE -- $want expected, $got written. Not measuring." >&2
       echo "          Re-run the missing models at a smaller batch, e.g." >&2
-      echo "          EXTRACT_BATCH=$((EXTRACT_BATCH / 2)) EXTRACT_JOBS=1 bash $0" >&2
+      echo "          EXTRACT_JOBS=1 bash $0    (fewer concurrent jobs = more VRAM each)" >&2
       exit 1
     fi
   fi
