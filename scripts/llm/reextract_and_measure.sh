@@ -351,10 +351,23 @@ if [ "$SKIP_DERIVED" != "1" ]; then
     echo "  [retire] $f (decode appends; rebuilt to avoid duplicate rows)"
     run mv "$f" "$OLDDIR/$(basename "$f" .csv).$(date +%Y%m%d-%H%M%S).csv"
   done
+  # THREE constructions, and --out on every one. The default --out is llm_decode_interaction.csv,
+  # so omitting it sends pos there too: llm_decode_pos_form.csv is never written, and because
+  # decode APPENDS, pos and role rows pile into one file. The committed outputs show the shape to
+  # reproduce -- pos_form.csv holds the 2 pos rows, interaction.csv holds role AND metaphor, 4
+  # rows -- and metaphor reads the VUA reps, not the UD ones.
   run "$PY" scripts/llm/decode_from_interaction.py --construction pos \
-      --reps-dir "$REPS_DIR" --conllu "$CONLLU" 2>&1 | tee "$LOGDIR/decode_pos.log"
+      --reps-dir "$REPS_DIR" --conllu "$CONLLU" --item-key form \
+      --out data/llm_decode_pos_form.csv 2>&1 | tee "$LOGDIR/decode_pos.log"
+  [ "${PIPESTATUS[0]}" -eq 0 ] || { echo "[decode] pos FAILED" >&2; rc_derived=1; }
   run "$PY" scripts/llm/decode_from_interaction.py --construction role \
-      --reps-dir "$REPS_DIR" --conllu "$CONLLU" 2>&1 | tee "$LOGDIR/decode_role.log"
+      --reps-dir "$REPS_DIR" --conllu "$CONLLU" \
+      --out data/llm_decode_interaction.csv 2>&1 | tee "$LOGDIR/decode_role.log"
+  [ "${PIPESTATUS[0]}" -eq 0 ] || { echo "[decode] role FAILED" >&2; rc_derived=1; }
+  run "$PY" scripts/llm/decode_from_interaction.py --construction metaphor \
+      --reps-dir "$VUA_DIR" \
+      --out data/llm_decode_interaction.csv 2>&1 | tee "$LOGDIR/decode_metaphor.log"
+  [ "${PIPESTATUS[0]}" -eq 0 ] || { echo "[decode] metaphor FAILED" >&2; rc_derived=1; }
   for f in data/llm_decode_pos_form.csv data/llm_decode_interaction.csv; do
     if [ "$DRY_RUN" != "1" ] && [ "$(wc -l < "$f" 2>/dev/null || echo 0)" -lt 2 ]; then
       echo "  [decode] WARNING: $f has no rows -- the reps it wanted were not found" >&2
