@@ -80,7 +80,7 @@ def feat_value(feats, key):
     return None
 
 
-def derive_labels(model_name, sentences, seed=0, max_length=256, batch_size=32):
+def derive_labels(model_name, sentences, seed=0, max_length=0, batch_size=32):
     """Reproduce extract()/extract_stream_to_npz's per-token ORDER using the model's tokenizer only
     (NO model forward, no GPU), and return aligned label arrays for the FULL sequence: upos, lemma,
     number (Number feat), tense (Tense feat). The order is identical to extraction up to the
@@ -99,8 +99,13 @@ def derive_labels(model_name, sentences, seed=0, max_length=256, batch_size=32):
         chunk = order[start:start + batch_size]
         chunk.sort(key=lambda si: len(sentences[si]))
         batch_forms = [[w[0] for w in sentences[si]] for si in chunk]
-        enc = tok(batch_forms, is_split_into_words=True, padding=True, truncation=True,
-                  max_length=max_length)
+        # max_length=0 means DO NOT TRUNCATE, and that is the default. Truncating at a subword
+        # limit is what made the extracted word set model-dependent: a sentence that fits one
+        # tokenizer overflows another, and the overflowing copy loses its tail WORDS entirely, so
+        # two models hold different words rather than different tokenizations of the same words.
+        # UD sentences are far below every model's position limit, so nothing needs cutting.
+        enc = tok(batch_forms, is_split_into_words=True, padding=True,
+                  truncation=bool(max_length), max_length=max_length or None)
         for row, si in enumerate(chunk):
             sent = sentences[si]
             last_sub = {}
@@ -129,6 +134,7 @@ def aligned_labels(z, conllu, candidates=(32, 128, 192, 256, 64, 16, 8)):
     n = len(upos)
     sents = list(parse_conllu(conllu))
     seed = int(z["seed"]) if "seed" in z.files else 0
+    # Files written before this was recorded were extracted at the old default of 256.
     max_length = int(z["max_length"]) if "max_length" in z.files else 256
     tried = []
     order = ([int(z["batch_size"])] if "batch_size" in z.files else []) +             [b for b in candidates if "batch_size" not in z.files or b != int(z["batch_size"])]
@@ -143,7 +149,7 @@ def aligned_labels(z, conllu, candidates=(32, 128, 192, 256, 64, 16, 8)):
 
 
 def extract_stream_to_npz(out_path, model_name, sentences, layer_idxs, max_tokens, device, seed=0,
-                          max_length=256, random_init=False, batch_size=32, scratch_dir=None,
+                          max_length=0, random_init=False, batch_size=32, scratch_dir=None,
                           ablate_positions=False):
     """MEMORY-FLAT extraction for LARGE models: identical logic to extract() but each layer's
     per-token vectors stream straight into a disk-backed np.memmap (never a growing in-RAM list),
@@ -194,7 +200,8 @@ def extract_stream_to_npz(out_path, model_name, sentences, layer_idxs, max_token
             chunk.sort(key=lambda si: len(sentences[si]))
             batch_forms = [[w[0] for w in sentences[si]] for si in chunk]
             enc = tok(batch_forms, is_split_into_words=True, return_tensors="pt",
-                      padding=True, truncation=True, max_length=max_length)
+                      padding=True, truncation=bool(max_length),
+                      max_length=max_length or None)   # 0 = no truncation; see derive_labels
             with torch.no_grad():
                 hs = model(**{k: v.to(device) for k, v in enc.items()}).hidden_states
 

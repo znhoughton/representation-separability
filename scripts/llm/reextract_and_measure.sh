@@ -77,7 +77,8 @@ rc_derived=0
 # mostly idle. Splitting the six models across concurrent invocations is what the --models flag
 # is for. Three groups pairs each BabyLM with its matched Pythia, so the heavy 1.3B/1.4b pair
 # runs alongside the light ones rather than after them.
-EXTRACT_BATCH="${EXTRACT_BATCH:-0}"   # 0 = auto, per model, from free VRAM
+EXTRACT_BATCH="${EXTRACT_BATCH:-0}"   # 0 = one auto-sized value for the whole sweep
+MAX_LENGTH="${MAX_LENGTH:-0}"         # 0 = do not truncate, so every model gets the same words
 VUA_BATCH="${VUA_BATCH:-64}"
 EXTRACT_JOBS="${EXTRACT_JOBS:-3}"
 # Passed through to the measurement runner. measure.py peaks near 12 GB of HOST RAM per worker,
@@ -96,6 +97,7 @@ run() {
 echo "=== re-extract and re-measure ===================================="
 echo "  max-tokens : $MAX_TOKENS  (the default of 100000 would give a third of the data)"
 echo "  batch      : UD $( [ "$EXTRACT_BATCH" = 0 ] && echo auto || echo "$EXTRACT_BATCH" ) / VUA $VUA_BATCH"
+echo "  truncation : $( [ "$MAX_LENGTH" = 0 ] && echo "none (same words for every model)" || echo "$MAX_LENGTH subwords" )"
 echo "  extract    : $EXTRACT_JOBS concurrent job(s); measure workers: $LLM_WORKERS"
 echo "  models     : ${MODELS:-all six}"
 echo "  ablation   : $ABLATION"
@@ -196,7 +198,7 @@ if [ "$SKIP_EXTRACT" != "1" ]; then
     gflag=""; [ -n "$g" ] && gflag="--models $g"
     echo "  [job $i] ${g:-all six}"
     if [ "$DRY_RUN" = "1" ]; then
-      echo "  [dry] $PY scripts/llm/extract_ud.py --conllu $CONLLU --reps-dir $REPS_DIR --max-tokens $MAX_TOKENS --batch-size $EXTRACT_BATCH --inits pretrained random $gflag"
+      echo "  [dry] $PY scripts/llm/extract_ud.py --conllu $CONLLU --reps-dir $REPS_DIR --max-tokens $MAX_TOKENS --batch-size $EXTRACT_BATCH --max-length $MAX_LENGTH --inits pretrained random $gflag"
     else
       "$PY" scripts/llm/extract_ud.py --conllu "$CONLLU" --reps-dir "$REPS_DIR" \
           --max-tokens "$MAX_TOKENS" --batch-size "$EXTRACT_BATCH" \

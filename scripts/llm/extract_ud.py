@@ -106,13 +106,14 @@ def run_one(model_name, family, size_bin, init, sentences, args):
     # The value that actually worked is what gets recorded in the npz, so a retried extraction is
     # as replayable as a first-try one; alignment reads it back rather than guessing.
     # 0 (the default) means size it from the VRAM free right now; a positive value forces it.
-    bs = args.batch_size if args.batch_size > 0 else _auto_batch(model_name, 256)
+    bs = args.batch_size if args.batch_size > 0 else _auto_batch(model_name, args.max_length)
     asked = bs
     while True:
         try:
             upos, lemma, n_tok = L.extract_stream_to_npz(
                 str(p), model_name, sentences, _resolve_layers(model_name), args.max_tokens,
-                args.device, args.seed, random_init=(init == "random"), batch_size=bs,
+                args.device, args.seed, max_length=args.max_length,
+                random_init=(init == "random"), batch_size=bs,
                 ablate_positions=args.ablate_positions, scratch_dir=args.scratch_dir)
             break
         except torch.cuda.OutOfMemoryError:
@@ -148,6 +149,13 @@ def main():
                          "retains every layer. DEFAULT 0 = size it automatically from the memory "
                          "free at the time, per model, and halve on OOM. Pass a positive value "
                          "only to pin it.")
+    ap.add_argument("--max-length", type=int, default=0,
+                    help="truncation limit in SUBWORDS. DEFAULT 0 = do not truncate, which is what "
+                         "makes the extracted word set the same for every model: a sentence that "
+                         "fits one tokenizer overflows another, and the overflowing copy loses its "
+                         "tail WORDS entirely, so the two hold different words rather than "
+                         "different tokenizations of the same words. UD sentences sit far below "
+                         "every model's position limit, so there is nothing to cut.")
     ap.add_argument("--models", nargs="*", default=None,
                     help="substrings to filter the model set. Extraction runs one model at a "
                          "time, so splitting the set across several concurrent invocations is "
@@ -181,6 +189,13 @@ def main():
 
     sentences = list(L.parse_conllu(args.conllu))
     print(f"Loaded {len(sentences)} sentences from {args.conllu}", flush=True)
+    if args.max_length == 0:
+        # Not truncating is only safe while every sentence fits the model's position embeddings.
+        # Nothing in UD comes close, but a silent overflow would be a crash mid-sweep, and a
+        # silent truncation would be the very divergence this default exists to prevent.
+        longest = max(len(s_) for s_ in sentences)
+        print(f"  not truncating; longest sentence is {longest} words "
+              f"(subwords are more, still far below every model's position limit)", flush=True)
 
     failed = []
     for bin_i, (baby, pyth) in enumerate(PAIRS):
