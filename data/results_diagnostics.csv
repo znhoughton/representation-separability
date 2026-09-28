@@ -5,7 +5,7 @@ ordbeta_size_interaction,size,relu,interaction,36000,1.008000991011656,b_c_int,1
 ordbeta_size_interaction_linear,size,linear,interaction,108000,1.0005747879125986,lp__,18309.958634978288,36256.4287923899,0,0,TRUE
 ordbeta_size_item,size,relu,item,36000,1.0075698166653204,b_Intercept,2238.1018682391386,4463.4170760567695,0,0,TRUE
 ordbeta_size_item_linear,size,linear,item,108000,1.007830741966215,b_c_int,1555.5394973350094,3298.0845627513077,0,0,TRUE
-overlap_int_margins,overlap,relu,int_margins,36000,1.0014514089656292,"r_lang[1_0.5_2_6.0_4,Intercept]",8709.67125311887,15331.204979823266,0,0,TRUE
-overlap_int_margins_linear,overlap,linear,int_margins,108000,1.0006078098975264,lp__,18803.900399603273,35512.69972553009,0,0,TRUE
-overlap_item_class,overlap,relu,item_class,36000,1.0011924857254424,"r_lang[2_1_1_6.0_16,Intercept]",7920.921404030729,14266.48280956837,0,0,TRUE
-overlap_item_class_linear,overlap,linear,item_class,108000,1.0005727211455824,"r_lang[2_0.5_2_2.0_16,Intercept]",21682.05782219551,40865.23716524294,0,0,TRUE
+overlap_int_margins,overlap,relu,int_margins,36000,1.0014701425609527,lp__,7580.518618689191,14170.814801226474,0,0,TRUE
+overlap_int_margins_linear,overlap,linear,int_margins,108000,1.0007524079370398,b_c_item,19712.39622793849,36649.366629623866,0,0,TRUE
+overlap_item_class,overlap,relu,item_class,36000,1.0012543540123675,b_Intercept,7284.270803461685,13685.375710023281,0,0,TRUE
+overlap_item_class_linear,overlap,linear,item_class,108000,1.0004304232731949,"r_lang[0_0_0.5_2.0_4,Intercept]",21487.34933238318,38029.60904523375,0,0,TRUE
