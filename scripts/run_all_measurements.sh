@@ -27,8 +27,23 @@
 #
 # It assumes the representations already exist in data/llm_reps and data/vua_reps. Extraction is
 # a separate step because it downloads models and is the one part that is not idempotent:
-#   python scripts/llm/extract_ud.py  --conllu data/ud/en_all-ud.conllu
+#   python scripts/llm/extract_ud.py --conllu data/ud/en_all-ud.conllu --max-tokens 300000
 #   python scripts/llm/extract_vua.py
+#
+# --max-tokens MUST be passed: it defaults to 100000, and 300000 is the sample size behind every
+# number in the paper. It counts WORDS, not subwords -- one row per word, holding that word's last
+# subword -- so the name is misleading and the default is a third of the data.
+#
+# Everything else that makes the extraction comparable across models is now the default and needs
+# no flags: batch size is sized once from free VRAM and halved on OOM, and nothing is truncated.
+# Both matter for the same reason. Batch size sets token ORDER, because batches are length-sorted
+# and the word budget then runs out in a different place; truncation at a subword limit drops the
+# tails of long sentences, and it drops them at a different point in every tokenizer, so models
+# hold different WORDS rather than different tokenizations of the same words. Either one varying
+# makes the pretrained-vs-random contrast a comparison between two samples.
+#
+# The three checks below verify all of that from the files themselves, and this script refuses to
+# measure if any fails.
 #
 # WHY THE NPZ DIRECTORIES EXIST. A summary answers only the question it was chosen for. Writing
 # one quantile of the null has twice forced a re-measure and once a retrain when the question
@@ -290,6 +305,33 @@ if [ "$SKIP_TOY" != "1" ]; then
     rc="${PIPESTATUS[0]}"; step_end re-measure
     [ "$rc" -eq 0 ] || { echo "[re-measure] FAILED (exit $rc)" >&2; rc_all=1; }
   fi
+fi
+
+# ---------------------------------------------------------------- verify the representations
+# Measuring representations that are not comparable produces numbers that look fine and are not,
+# so these run before Experiment 2 rather than after it. Each has cost a re-run at least once.
+#
+#   check_rep_metadata      every file records batch_size, seed and max_length. Without them the
+#                           extraction order cannot be replayed, and aligned_labels falls back to
+#                           guessing it -- which failed outright for one model and was hidden for
+#                           weeks by measure.py resuming past the rows it had already written.
+#   check_batch_uniform     every file was written at the SAME batch size, so they hold the same
+#                           words. The OOM retry can lower one file's batch, which is right for
+#                           finishing that file and wrong for comparing it.
+#   compare_token_samples   the models actually sampled the same words. Reported, not enforced:
+#                           BabyLM and Pythia can legitimately differ if anything ever truncates.
+if [ "$SKIP_LLM" != "1" ] && [ -d "$REPS_DIR" ]; then
+  echo
+  echo "[verify] representations comparable?"
+  for chk in check_rep_metadata check_batch_uniform; do
+    if [ -f "scripts/llm/$chk.py" ]; then
+      "$PY" "scripts/llm/$chk.py" --reps-dir "$REPS_DIR" || {
+        echo "[verify] $chk failed; not measuring. Re-extract before going further." >&2
+        exit 1; }
+    fi
+  done
+  [ -f scripts/llm/compare_token_samples.py ] &&
+    "$PY" scripts/llm/compare_token_samples.py --reps-dir "$REPS_DIR" | tail -6
 fi
 
 # ---------------------------------------------------------------- Experiment 2
