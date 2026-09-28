@@ -1,2 +1,2 @@
 model,n_draws,max_rhat,worst_rhat_param,min_ess_bulk,min_ess_tail,divergences,treedepth_hits,converged
-overlap_item_class,36000,1.0011229424907573,lp__,7085.539239546784,11690.697835173267,0,0,TRUE
+overlap_int_margins,36000,1.0014514089656292,"r_lang[1_0.5_2_6.0_4,Intercept]",8709.67125311887,15331.204979823266,0,0,TRUE
