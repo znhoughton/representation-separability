@@ -1124,7 +1124,7 @@ rcrwd |>
 #| fig-width: 6.3
 #| fig-height: 2.7
 #| out-width: "100%"
-#| fig-cap: "Fitted overlap between components, as a multiple of the level an arbitrary orientation would give, against hidden width. Left: the item effect projected onto the class direction. Right: the interaction projected onto the span of both margins. The dashed line is chance; above it components share directions more than orientation alone explains, below it the learner has separated them by more than chance. Widths are drawn evenly spaced rather than to scale, since width 64 was not trained. Effect sizes are held at their means, and each estimate is conditional on the component being large enough to have a direction."
+#| fig-cap: "Fitted overlap between components, as a multiple of the level an arbitrary orientation would give, against hidden width. Left: the item effect projected onto the class direction. Right: the interaction projected onto the span of both margins. The dashed line is chance; above it components share directions more than orientation alone explains, below it the learner has separated them by more than chance. Widths are drawn evenly spaced rather than to scale, since width 64 was not trained. Effect sizes are held at their means, and every run contributes: no overlap is excluded on the size of the components it relates."
 #|
 ARMC <- c(ReLU = UO[["gold"]], linear = UO[["green2"]])
 OVLAB <- c(item_class = "item into class", int_margins = "interaction into margins",
