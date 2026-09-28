@@ -76,8 +76,17 @@ SUFFIX <- paste0(TAG, ARM, if (DEMO) "_demo" else "")
 CACHE  <- file.path(".", "model_cache", "toy"); dir.create(CACHE, recursive = TRUE, showWarnings = FALSE)
 OUT    <- file.path(".", "data")
 
+# Same inclusion rule as the component models. `resolved` means at least one of the three
+# components has a re-split interval excluding zero; where none does, the decomposition is noise
+# end to end, so the shares divide noise and the directions one would project between are noise
+# too. That argument does not depend on which quantity is being modelled, and the two model
+# families having different rules was an accident rather than a decision. It drops 5.3% of the
+# converged ReLU runs and 1.4% of the linear ones, almost all at the narrowest width, where a
+# decomposition is least likely to resolve anything.
 d_raw <- read_csv(file.path(OUT, "artificial_language_grid.csv"), show_col_types = FALSE) |>
-  filter(activation == ACT, converged %in% c(TRUE, "True", "TRUE"), d >= MIN_WIDTH)
+  mutate(resolved = size_item_excludes_zero | size_class_excludes_zero |
+                    size_interaction_excludes_zero) |>
+  filter(activation == ACT, converged %in% c(TRUE, "True", "TRUE"), resolved, d >= MIN_WIDTH)
 
 # The outcome is a LOG ratio, so a zero overlap or a zero chance level has nowhere to go and is
 # dropped. That used to be invisible and nearly empty, because the measure suppressed exactly the
