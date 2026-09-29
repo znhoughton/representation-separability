@@ -743,7 +743,7 @@ Results are shown in @fig-toy; the effects of width are reported in Appendix \re
 #| label: fig-toy
 #| fig-env: figure*
 #| fig-width: 6.3
-#| fig-height: 3.6
+#| fig-height: 2.9
 #| out-width: "100%"
 #| fig-cap: "Each component's share of the representation against its share of the language, by activation. Each faint point is one run. Lines are fitted values from the ordered beta models of @eq-ordbeta with 95% intervals, taken at the mean of the other two effect sizes and of the interaction's rank, which is why they need not pass through the centre of a cloud spanning every combination of those. The dashed diagonal is where a representation would sit had it reproduced the language's composition exactly. Runs in which none of the three components had a re-split 95% interval excluding zero are not plotted, since the three shares then divide noise."
 #|
@@ -762,6 +762,7 @@ ggplot(toy_learn_both, aes(planted, measured, color = factor(d), fill = factor(d
   scale_color_manual(values = WIDC, name = "hidden width") +
   scale_fill_manual(values = WIDC, guide = "none") +
   scale_x_continuous(limits = c(0, 1), breaks = c(0, .5, 1)) +
+  scale_y_continuous(breaks = c(0, .5, 1)) +
   coord_cartesian(ylim = c(0, 1)) +
   labs(x = "effect size in the language", y = "effect size in the representation") +
   theme_paper(8) +
@@ -821,9 +822,8 @@ In contrast to the main effects, the interaction is not orthogonal to class or i
 
 ```{r}
 #| label: fig-llm
-#| fig-env: figure*
-#| fig-width: 6.3
-#| fig-height: 2.5
+#| fig-width: 3.05
+#| fig-height: 3.5
 #| out-width: "100%"
 #| fig-cap: "The three components through the network, for every model and linguistic category. Relative depth runs from the static embedding layer (0) to the final block (1). Rows are the item effect, the class effect and their interaction, each as a share of the item-by-class structure, which sum to one within each model and layer. Each line is one model: color distinguishes the training corpus, linetype the three matched widths. The shaded band is that model's re-split 95% interval."
 # Built by hand rather than pivoted, because each component carries its own re-split interval.
@@ -856,8 +856,14 @@ ggplot(plt, aes(depth, share, color = family, linetype = scale,
   scale_linetype_manual(values = c("125M/160M" = "dotted", "350M/410M" = "dashed",
                                    "1.3B/1.4B" = "solid"), name = NULL) +
   scale_x_continuous(breaks = c(0, .5, 1)) +
+  scale_y_continuous(n.breaks = 3) +
   labs(x = "relative depth", y = NULL) +
-  theme_paper(8) + theme(strip.placement = "outside")
+  # One column wide, so the two legends stack rather than running off the edge, and the rotated
+  # row labels drop a point to keep clear of the panel they sit beside.
+  theme_paper(7) +
+  theme(strip.placement = "outside", legend.box = "vertical",
+        legend.spacing.y = unit(0, "pt"), legend.key.width = unit(12, "pt"),
+        strip.text.y.left = element_text(size = 7))
 ```
 
 # Experiment 3: Probing the Interaction {#sec-exp3}
