@@ -93,7 +93,12 @@ toy <- rd("artificial_language_grid.csv") |>
 # is not at zero, because a trained linear model still carries whatever its contexts bring to
 # each cell -- see the Results. Both readings are the measure's at this exact width, sample
 # size and context level.
-toy_null <- toy |> group_by(act, planted = w_int > 0) |>
+# Restricted to languages that hold both margins, as toy_relu and toy_noise are. An additive
+# language is an item part plus a class part; where one of the two is absent there is no
+# item-by-class grid for an interaction to be built in, the measure correctly reports none,
+# and those runs cannot test whether a learner manufactures one.
+toy_null <- toy |> filter(w_item > 0, w_class > 0) |>
+  group_by(act, planted = w_int > 0) |>
   summarize(n = n(), med = median(size_interaction),
             p95 = quantile(size_interaction, .95),
             flagged_ez = mean(ez, na.rm = TRUE), .groups = "drop")
@@ -1209,7 +1214,7 @@ toy_bylang |>
   collapse_rows(1, latex_hline = "major", valign = "top")
 ```
 
-Whether an interaction is detected at all, rather than how large it is, separates the two activations further. Across the `r cm(nullget("linear", TRUE, "n"))` runs whose language contained an interaction, the linear learner's interaction interval excludes zero in `r sprintf("%.0f%%", 100 * nullget("linear", TRUE, "flagged_ez"))` of them against `r sprintf("%.0f%%", 100 * nullget("ReLU", TRUE, "flagged_ez"))` for ReLU; where the language contained no interaction the rates were `r sprintf("%.0f%%", 100 * nullget("linear", FALSE, "flagged_ez"))` and `r sprintf("%.0f%%", 100 * nullget("ReLU", FALSE, "flagged_ez"))` respectively, against a test that flags a truly-zero component about 5% of the time (Appendix \ref{sec-appendix-validate}). A linear learner therefore builds interaction structure it has no parameter for, and a ReLU learner registers one even where the language holds none.
+Whether an interaction is detected at all, rather than how large it is, separates the two activations further. Every language counted here holds both an item and a class effect, so an additive one is genuinely an item part plus a class part. Across the `r cm(nullget("linear", TRUE, "n"))` of them that also contained an interaction, the linear learner's interaction interval excludes zero in `r sprintf("%.0f%%", 100 * nullget("linear", TRUE, "flagged_ez"))` of them against `r sprintf("%.0f%%", 100 * nullget("ReLU", TRUE, "flagged_ez"))` for ReLU; where the language contained no interaction the rates were `r sprintf("%.0f%%", 100 * nullget("linear", FALSE, "flagged_ez"))` and `r sprintf("%.0f%%", 100 * nullget("ReLU", FALSE, "flagged_ez"))` respectively, against a test that flags a truly-zero component about 5% of the time (Appendix \ref{sec-appendix-validate}). A linear learner therefore builds interaction structure it has no parameter for, and a ReLU learner registers one even where the language holds none.
 
 {{< pagebreak >}}
 
