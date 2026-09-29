@@ -520,6 +520,7 @@ llm <- bind_rows(
               leak_int_null_lo = std_leak_int_into_margins_null_lo,
               leak_int_null_med = std_leak_int_into_margins_null_med,
               between = std_between_share, between_adj = std_between_share_adj,
+              between_var = std_between_var, within_var = std_within_var,
               obs_size_class = std_obs_size_class,
               size_class_excludes_zero = std_size_class_excludes_zero,
               obs_size_interaction = std_obs_size_interaction,
@@ -547,6 +548,7 @@ llm <- bind_rows(
               leak_int_null_lo = leak_int_into_margins_null_lo,
               leak_int_null_med = leak_int_into_margins_null_med,
               between = between_share, between_adj = between_share_adj,
+              between_var = between_var, within_var = within_var,
               obs_size_class = obs_size_class,
               size_class_excludes_zero = size_class_excludes_zero,
               obs_size_interaction = obs_size_interaction,
@@ -586,6 +588,35 @@ local({
                           paste(names(n)[n < 6], n[n < 6], sep = "=", collapse = ", "),
                           call. = FALSE)
 })
+
+# ---- Effect size on a scale a reader can interpret ------------------------------------------
+# A share of the item-by-class grid says how the between-cell structure divides; it does not say
+# how much of an actual token's representation any of it accounts for, and the two differ by
+# roughly a factor of three because most of a token's variation is context within its own cell.
+# These put the three components in one currency: the reduction in squared error when predicting
+# a token's hidden state, against guessing the grand mean. The components are orthogonal by
+# construction, so each contributes its own variance term and the ladder is cumulative. The
+# sizes already sum to one, so a component's variance is its share times the between-cell
+# component; `gi` is the interaction's gain over the ADDITIVE model rather than over the mean,
+# which is the quantity the additive account is being judged on.
+llm_gain <- llm_deep |>
+  mutate(v_item = size_item * between_var, v_class = size_class * between_var,
+         v_int = size_int * between_var, tot_var = between_var + within_var,
+         ga = v_item / tot_var,                      # know the word
+         gb = v_class / tot_var,                     # know the class
+         gab = (v_item + v_class) / tot_var,         # know both: the additive account
+         gabg = (v_item + v_class + v_int) / tot_var,# know both plus the interaction
+         gg = v_int / tot_var,                       # what the interaction adds, same scale
+         gi = v_int / (v_int + within_var))          # ... as a share of what additive leaves
+
+# A gain as a percentage range across the twelve grids, or across one construction's six models.
+gr <- function(col, constr = NULL, digits = 0) {
+  d <- if (is.null(constr)) llm_gain else llm_gain[llm_gain$construction == constr, ]
+  v <- 100 * d[[col]]
+  sprintf("%s%% to %s%%", g(min(v), digits), g(max(v), digits))
+}
+# How many of the twelve grids have the interaction contributing at least as much as the class.
+gbeat <- function() sum(llm_gain$gg >= llm_gain$gb)
 ```
 
 # Introduction
@@ -680,7 +711,7 @@ For each representation we report two measurements. The first measure is the fra
 
 To quantify whether a size is meaningful, we compare each against zero, which is the null because the dot product of two independent split estimates has an expected value of zero if there is no structure in the underlying representations. We redraw the split two hundred times and call a size meaningful when its confidence interval excludes zero; for components whose value is exactly zero this flags an effect about 5% of the time (Appendix \ref{sec-appendix-validate}), the false-positive rate expected of a 95% confidence interval.
 
-To quantify whether an overlap is meaningful, we project the effect, held exactly as measured, onto two hundred random subspaces of the same rank, which gives the distribution of overlaps an unrelated subspace would yield. An overlap below that baseline indicates meaningful orthogonality; an overlap above the baseline indicates meaningful non-orthogonality. We report each overlap as a multiple of the baseline's median, with how many measurements fall outside its 95% interval.
+To quantify whether an overlap is meaningful, we project the effect, held exactly as measured, onto two hundred random subspaces of the same rank, which gives the distribution of overlaps an unrelated subspace would yield. An overlap below that baseline indicates meaningful orthogonality; an overlap above the baseline indicates meaningful non-orthogonality. We report each overlap as a multiple of the baseline's median, with how many measurements fall outside its 95% interval; Appendix \ref{sec-appendix-math} gives the algebra for both measures.
 
 ![The four item-by-class means formed by two items in two classes. Under an item part plus a class part, three corners fix the fourth and the parallelogram closes. The arrow is $\gamma(i,c)$, the displacement between the fourth mean and the point that additive account places it at, with length $\lVert \gamma(i,c) \rVert$.](fig-measurement.pdf){#fig-measurement width="78%"}
 
@@ -772,13 +803,15 @@ The decomposition, the two reported quantities, and the replication logic are id
 
 [^6]: Almost every item is a single subword, so this choice has little bearing on the results: zero items are split into multiple subword tokens under Pythia's tokenizer, and only eight are split into multiple subword tokens under OPT-BabyLM's tokenizer.
 
-Transformer hidden states contain a few *rogue* dimensions whose variance exceeds the rest by two to three orders of magnitude [@timkey2021bark], and these would otherwise dominate any subspace estimated from the raw scatter, so we divide each dimension by its standard deviation before decomposing.
+Transformer hidden states contain a few *rogue* dimensions whose variance exceeds the rest by two to three orders of magnitude [@timkey2021bark], and these would otherwise dominate any subspace estimated from the raw scatter, so we divide each dimension by its standard deviation before decomposing (Appendix \ref{sec-appendix-standardize}).
 
 ## Results {#sec-exp2-results}
 
 The results for the final layer are reported in @tbl-llm; the layer-by-layer results are shown in @fig-llm.
 
 The item effect is the largest component in both categories, running from `r ldrng("POS (noun/verb)", "size_item", 3)` for part of speech and `r ldrng("role (subject/object)", "size_item", 3)` for grammatical role. What differs between them is how the remainder divides. For grammatical role the class effect, at `r ldrng("role (subject/object)", "size_class", 3)`, is comparable to the interaction at `r ldrng("role (subject/object)", "size_int", 3)`; for part of speech the interaction, at `r ldrng("POS (noun/verb)", "size_int", 3)`, runs well above the class effect at `r ldrng("POS (noun/verb)", "size_class", 3)`.
+
+These are shares of the item-by-class structure, which say how that structure divides rather than how much of a token's representation it accounts for. Placing the three on one scale, the reduction in squared error when predicting a token's hidden state against guessing the grand mean, knowing which word a token is accounts for `r gr("ga")` of that error, knowing which class it is used in a further `r gr("gb")`, and knowing the word-class combination another `r gr("gg")` on top of both. The item-specific component therefore contributes at least as much as the class it sits inside in `r gbeat()` of the twelve grids, and roughly three times as much for part of speech. Appendix \ref{sec-appendix-llm} gives the figures per model.
 
 Both the class effect and the interaction grow stronger through the layers of the model. The interaction is essentially absent at layer 0 in both categories, between `r allrange("size_int", deep = FALSE)` across every category and model, and rises to between `r allrange("size_int")` (@fig-llm, top row). This is not surprising since at the first layer, the model has yet to integrate enough context into the representation to commit to the class of the representation. What the network builds over those layers is also not an artifact of where a word sits in the sentence: zeroing OPT-BabyLM's learned absolute position embeddings leaves the class structure more word-specific rather than less, and Pythia, which has no such embeddings to remove, shows the interaction at least as strongly (Appendix \ref{sec-appendix-positions}).
 
@@ -1061,6 +1094,88 @@ v_ov_power |>
 
 {{< pagebreak >}}
 
+## Within-cell spread {#sec-appendix-spread}
+
+The interaction is a residual, and a residual absorbs whatever noise the terms before it do not. Each cell mean is an average over the contexts a word appears in, so it carries sampling error of order the within-cell spread over the number of tokens; estimated within a single split, the interaction would inherit that error and grow with the spread whether or not any interaction was present.
+
+The cross-split product forecloses this rather than reducing it. The two estimates come from disjoint halves of a cell's tokens, so their errors are independent and mean-zero, and the expectation of their inner product is the true squared length with no variance term: the spread enters the variance of the estimate and not its expectation. This holds for any spread, and for a spread that differs from cell to cell.
+
+Table 
+ef{tbl-val-noise} shows it. Holding the planted interaction fixed and scaling the within-cell spread by fifty leaves the measured value where it is, and where nothing was planted the false-positive rate stays at the nominal level rather than rising with the spread. If anything the measure drifts slightly low at the widest spread.
+
+```{r}
+#| label: tbl-val-noise
+#| tbl-cap: "Recovery against within-cell spread, in 768 or more dimensions, pooled over item counts, widths and sample sizes. *Noise* is the multiple of the baseline within-cell spread the representations were generated with. *Measured* is the median across runs and *flagged* the share whose re-split interval excludes zero, which should sit at 5% in the rows where nothing was planted."
+val |> filter(d >= 768, planted_int %in% c(0, 0.1, 0.2)) |>
+  group_by(planted_int, noise_ratio) |>
+  summarize(runs = n(), measured = median(size_interaction),
+            flagged = mean(size_interaction_excludes_zero), .groups = "drop") |>
+  transmute(specified = g(planted_int, 2), noise = paste0(g(noise_ratio, 0), "x"),
+            runs, measured = g(measured, 4),
+            flagged = sprintf("%.0f%%", 100 * flagged)) |>
+  kbl(booktabs = TRUE, align = "rrrrr", linesep = "", escape = TRUE,
+      col.names = c("specified", "noise", "runs", "measured", "flagged")) |>
+  kable_styling(latex_options = c("HOLD_position"), font_size = 8) |>
+  collapse_rows(1, latex_hline = "major", valign = "top")
+```
+
+Two things outside the validation grid point the same way. The independence the argument rests on would fail if a cell's tokens were not independent draws, the same word in the same class pulled repeatedly from one passage; across the items measured here, 2.6% of occurrences share a sentence with another occurrence of the same word in the same class, and the most affected item reaches 15%. And in Experiment 1, where the spread is manipulated directly rather than observed, raising the context weight *lowers* the measured interaction (Table 
+ef{tbl-lang}), which is the opposite of what an inflation account predicts.
+
+{{< pagebreak >}}
+
+# The Decomposition {#sec-appendix-math}
+
+## The item-by-class means {#sec-appendix-math-grid}
+
+![Each word in each class is observed in many contexts, and those observations are averaged within the pairing to give one of the item-by-class means. Every one of them is a vector in $\mathbb{R}^d$, and every item appears in every class.](fig-grid.pdf){#fig-grid width="100%"}
+
+A word used in a given class is observed in many contexts, and the representation differs a little in each. Averaging those observations within the pairing gives one of the item-by-class means: for items $i \in \{1,\dots,I\}$ crossed with classes $c \in \{1,\dots,C\}$, $M[i,c] \in \mathbb{R}^d$ is the mean representation of item $i$ in class $c$ (@fig-grid). An item observed in only one class is dropped, as is an item with fewer than 10 tokens in either class, so the set is complete and every mean rests on a comparable number of observations. Because every item appears at every class, the means arrange into $I$ by $C$ positions, and the rest of this appendix calls that arrangement the grid when what matters is the positions rather than the vectors sitting at them. The variation across contexts that the averaging sets aside is not discarded; it is what the two splits of @sec-measure are drawn from.
+
+## Sizes {#sec-appendix-math-sizes}
+
+![How many positions of the grid each component occupies. $\alpha_i$ does not depend on the class, so it occupies all $C$ positions of its row; $\beta_c$ does not depend on the item, so it occupies all $I$ positions of its column; $\gamma_{ic}$ takes its own value at every position and is never repeated.](fig-replication.pdf){#fig-replication width="100%"}
+
+Since the effects are centered along their respective axes, their cross-terms cancel when summed over the full grid. Thus the total squared length partitions exactly:
+
+$$
+\sum_{i,c}\lVert M[i,c]-\mu\rVert^{2}
+= C\sum_{i}\lVert\alpha_i\rVert^{2}
++ I\sum_{c}\lVert\beta_c\rVert^{2}
++ \sum_{i,c}\lVert\gamma_{ic}\rVert^{2},
+$$
+
+Sizes are reported as shares of the total. All three terms scale linearly in $I$, so the shares do not depend on how many items there are and are comparable across categories of different size.
+
+The above decomposition, however, ignores the role of context. In order to estimate how the three components and context vary in size, we can instead decompose each representation into its pairing mean and its deviation from that mean, giving the standard within–between partition:
+
+$$
+\sum_{x}\lVert x-\bar x\rVert^{2}
+=
+\underbrace{\sum_{i,c}\sum_{x\in(i,c)}
+\lVert x-\hat M[i,c]\rVert^{2}}_{\text{within a pairing}}
++
+\underbrace{\sum_{i,c}n_{ic}
+\lVert\hat M[i,c]-\bar x\rVert^{2}}_{\text{between pairings}}.
+$$
+
+The between-pairing term is the variation partitioned into item, class, and item-by-class components above, while the within-pairing term captures variation across contexts. The resulting context variance and the $\alpha$, $\beta$, and $\gamma$ variance components together partition the variance of the original representations.
+
+## The overlaps and their chance level {#sec-appendix-math-overlap}
+
+The component sizes describe how much variation each component accounts for, but not whether the components occupy the same directions in $\mathbb{R}^d$. To measure their overlap, we project each component into a target subspace and ask how much of its squared length is retained. Specifically, we project $\alpha$ into the subspace spanned by $\beta$, $\beta$ into the subspace spanned by $\alpha$, and $\gamma$ into the subspace jointly spanned by $\alpha$ and $\beta$. If $S$ is an orthonormal basis for the target subspace and $V$ is the component being projected, the overlap is
+
+$$
+\frac{\lVert VS\rVert_F^2}{\lVert V\rVert_F^2}
+$$ Thus, an overlap of zero means that the component is orthogonal to the target subspace, whereas an overlap of one means that it lies entirely within it. Because the projection uses squared lengths, opposite directions contribute equally rather than canceling. We use the leading singular vectors of each target component to define its subspace, with the number of directions determined by its participation ratio. The number of directions in the target subspace therefore determines its chance overlap under random orientation.
+
+The chance level for overlap is $r/d$, where $r$ is the dimensionality of the target subspace and $d$ is the full representation dimension. A randomly oriented component therefore has an expected fraction $r/d$ of its squared length in the target subspace. At $d=2048$, for example, the chance level is $0.0005$ for a one-dimensional class subspace. We therefore interpret observed overlaps relative to this chance level.
+
+{{< pagebreak >}}
+
+
+{{< pagebreak >}}
+
 # Width and Orthogonality {#sec-appendix-capacity}
 
 Whether the item and class effects are orthogonal depends on the width of the representation. @fig-toy-overlap reports that relationship from the fitted models; this appendix gives the remaining properties of the artificial-language runs.
@@ -1233,6 +1348,110 @@ They differ in two ways that matter elsewhere in the paper. The training corpora
 
 {{< pagebreak >}}
 
+# Stimulus Counts {#sec-appendix-stimuli}
+
+```{r}
+#| label: tbl-constructions
+#| tbl-cap: "Stimuli for the two linguistic categories, with the two classes of each in parentheses. *Item types* is how many word forms occur in both of them at least ten times; forms occurring in only one are excluded. *Median tokens* is how often a typical form occurs in each of its two classes, in the order they are listed."
+tibble::tribble(
+  ~class,                                  ~`item types`,
+  "part of speech (noun / verb)",          max(llm$n_items[llm$construction == "POS (noun/verb)"]),
+  "grammatical role (subject / object)",   max(llm$n_items[llm$construction == "role (subject/object)"])) |>
+  mutate(`median tokens` = c(stimmed("pos_noun_verb_form"),
+                             stimmed("role_nsubj_obj"))) |>
+  kbl(booktabs = TRUE, align = "lrl", linesep = "", escape = FALSE) |>
+  kable_styling(latex_options = c("HOLD_position"), font_size = 8)
+```
+
+{{< pagebreak >}}
+
+# Standardizing the Hidden States {#sec-appendix-standardize}
+
+Transformer hidden states carry a few dimensions whose variance exceeds the rest by two to three orders of magnitude [@timkey2021bark], and we divide each dimension by its standard deviation before decomposing. The correction is there for the second measure rather than the first. A share is a ratio of squared lengths, and a diagonal rescaling scales the three components alike unless one of them loads disproportionately on the large dimensions, so the sizes are largely unaffected by it. An overlap is a projection onto a subspace estimated from the scatter, and the leading directions of that scatter are set by the largest dimensions, so without the correction every subspace tilts toward the same few axes and unrelated components appear to share directions. The random-subspace baseline does not absorb this, since a random subspace of matched rank is isotropic and inherits none of the tilt, leaving the ratio to chance inflated along with the overlap.
+
+Table 
+ef{tbl-standardize} reports both readings for part of speech, which was measured twice. The interaction's share is unchanged to three decimals in every model. What moves is the overlaps, and they move in one family: item-class overlap is three to four times larger unstandardized in Pythia and identical to two decimals in OPT-BabyLM. That split is what a rogue-dimension account predicts, since massive activations are documented in the former and the latter is trained on a hundredth of the data; an account on which the correction removes class signal would have to explain why it removes none of it from three of the six models.
+
+The one quantity we would not defend either way is Pythia's class effect, whose share falls by 12 to 31% under the correction. Nothing in the paper turns on its absolute size, and the comparative claim that the interaction runs above it holds under both readings. Grammatical role was measured once, standardized, so the comparison here is for part of speech only.
+
+We use a per-dimension rescaling rather than whitening or a principal-components truncation. Whitening needs the full covariance, which at 768 to 2048 dimensions and roughly 3,700 tokens per grid is near-singular, and making the total scatter isotropic would flatten the between-cell structure the decomposition exists to partition. A truncation discards directions irreversibly and needs a cutoff chosen by hand, and with two classes the class effect spans a single direction that such a cutoff could remove outright. Rotating to principal axes without rescaling changes nothing at all: the decomposition and every quantity we report from it are invariant under orthogonal transformation.
+
+```{r}
+#| label: tbl-standardize
+#| tbl-cap: "Part of speech at the deepest layer, measured with and without the per-dimension rescaling. Sizes are shares of the item-by-class structure; overlaps are the raw fractions, not multiples of chance."
+rd("llm_unified_form.csv") |> filter(init == "pretrained") |>
+  group_by(model) |> filter(layer == max(layer)) |> ungroup() |>
+  left_join(MODELS, by = "model") |> arrange(family, scale) |>
+  transmute(model = paste(family, size),
+            si = g(std_size_interaction, 3), ri = g(raw_size_interaction, 3),
+            sc = g(std_size_class, 3), rc = g(raw_size_class, 3),
+            so = g(std_leak_item_into_class, 4), ro = g(raw_leak_item_into_class, 4)) |>
+  kbl(booktabs = TRUE, align = "lrrrrrr", linesep = "", escape = TRUE,
+      col.names = c("model", "std", "raw", "std", "raw", "std", "raw")) |>
+  add_header_above(c(" " = 1, "interaction" = 2, "class effect" = 2,
+                     "item-class overlap" = 2)) |>
+  kable_styling(latex_options = c("HOLD_position"), font_size = 7)
+```
+
+{{< pagebreak >}}
+
+# Deepest-Layer Measurements {#sec-appendix-llm}
+
+Table \ref{tbl-llm} gives the deepest-layer values behind the curves of @fig-llm, together with the null each overlap is read against.
+
+```{r}
+#| label: tbl-llm
+#| tbl-cap: "Deepest-layer measurements, one row per model. The two overlaps are the fraction of the item effect lying in the class subspace and the fraction of the interaction lying in the span of the two main effects, each followed in parentheses by how many times its own rotation null's median it is. That null holds the effect fixed and rotates the target subspace at random 200 times. The class effect and the interaction are shares of the item-by-class structure, with each model's re-split 95% interval in brackets."
+llm |> group_by(construction, model) |>
+  filter(layer == max(layer)) |> ungroup() |>
+  arrange(construction, family, scale) |>
+  # One row per model. A median across the six hid exactly what the six are being compared for,
+  # and the sizes' re-split intervals are far narrower than the spread across models, so pooling
+  # them reported a precision that belonged to a single measurement rather than to the set.
+  # Each overlap is against its own model's null rather than r/d: the two differ, since r/d
+  # assumes the subspace has its algebraic maximum rank while the projection uses the rank
+  # actually fitted, roughly half of it for the marginal subspace.
+  transmute(class = shortname(construction),
+            model = paste(family, size),
+            `item-class overlap` = ov1(leak, leak_null_med, 4),
+            `interaction overlap` = ov1(leak_int, leak_int_null_med, 3),
+            `class effect` = ci(size_class, size_class_lo, size_class_hi),
+            `interaction` = ci(size_int, size_int_lo, size_int_hi)) |>
+  kbl(longtable = FALSE, booktabs = TRUE, align = "llrrrr", linesep = "") |>
+  kable_styling(font_size = 7) |>
+  collapse_rows(1, latex_hline = "major", valign = "top")
+```
+
+## How much of a token the components account for {#sec-appendix-gain}
+
+A share of the item-by-class structure answers how that structure divides. It does not answer how much of a word's representation the structure is, and the two differ by about a factor of three, because most of what varies in a token's hidden state is the context it appears in rather than anything about its word or its class.
+
+Table 
+ef{tbl-gain} puts the three components in one currency. Take a single token, *walk* used as a noun in some sentence, and ask how well its hidden state can be guessed. Guessing the grand mean is the baseline. Knowing that the word is *walk* removes the *word* column's share of the squared error; knowing further that it is a noun removes the *class effect* column's share; knowing what is specific to *walk*-as-a-noun removes the *interaction* column's. The three components are orthogonal by construction, so each contributes its own term and the columns accumulate.
+
+Two things follow. The class effect, the abstract category the representation is usually said to encode, accounts for `r gr("gb")` of a token; the interaction accounts for `r gr("gg")`, matching or exceeding it in `r gbeat()` of the twelve grids. And nothing here exceeds `r gr("gabg", digits = 0)` at the top end, because the remainder is within-cell context variation, which no item-by-class decomposition sets out to capture.
+
+The last column states the interaction's contribution the other way round, as a share of what the additive account leaves unexplained rather than of the whole. That is the quantity the additive account is judged on, and it runs `r gr("gi")`.
+
+Read geometrically the same quantity looks smaller than it is. The displacement of a cell mean from where an additive account puts it is only about a fifth to a third of the radius of the token cloud around that mean, which invites the reading that the interaction lands inside the cloud and so cannot matter. In 768 to 2048 dimensions that reading does not hold: a cloud is a thin shell with essentially no tokens near its centre, so the observed cell mean fails the same test. Along the direction that actually separates the two classes of a word, the probes of Experiment 3 imply a standardized separation of roughly two to three.
+
+```{r}
+#| label: tbl-gain
+#| tbl-cap: "How much of a token's hidden state each component accounts for, at the deepest layer, as the percentage reduction in squared error against guessing the grand mean. The three components are orthogonal, so their contributions add: *word* plus *class effect* is the additive account, and adding *interaction* gives the full decomposition. *Over additive* restates the interaction the other way round, as a percentage of the error the additive account leaves."
+llm_gain |>
+  arrange(construction, family, scale) |>
+  transmute(class = shortname(construction), model = paste(family, size),
+            word = g(100 * ga, 1), cls = g(100 * gb, 1),
+            int = g(100 * gg, 1), over = g(100 * gi, 1)) |>
+  kbl(booktabs = TRUE, align = "llrrrr", linesep = "", escape = TRUE,
+      col.names = c("class", "model", "word", "class effect", "interaction",
+                    "over additive")) |>
+  kable_styling(latex_options = c("HOLD_position"), font_size = 7) |>
+  collapse_rows(1, latex_hline = "major", valign = "top")
+```
+
+{{< pagebreak >}}
+
 # Positional Embeddings Are Not the Source {#sec-appendix-positions}
 
 One architectural explanation of the interaction has to be ruled out before it can be read as a fact about lexical representations. The BabyLMs add a *learned absolute position embedding* at the input. The two classes of a linguistic category are not positionally interchangeable in a sentence, since subjects precede objects and nouns and verbs occupy different slots, so a representation that varies with position varies with the class. If that is what the decomposition is picking up, the interaction would be an artifact of where words sit rather than of how they are represented.
@@ -1266,98 +1485,3 @@ rd("llm_unified_form.csv") |>
 ```
 
 Removing the position embeddings makes these representations *less* separable, not more. The portable fraction falls in every model, from `r pf("125m", "intact")` to `r pf("125m", "zeroed")`, from `r pf("350m", "intact")` to `r pf("350m", "zeroed")`, and from `r pf("1.3B", "intact")` to `r pf("1.3B", "zeroed")` (Table \ref{tbl-posabl}). Whatever the absolute position embedding contributes, it is contributing to the part of class structure that *is* carried by a shared direction. Take it away and what remains is more word-specific, not less. The interaction is not an artifact of position.
-
-{{< pagebreak >}}
-
-# Stimulus Counts {#sec-appendix-stimuli}
-
-```{r}
-#| label: tbl-constructions
-#| tbl-cap: "Stimuli for the two linguistic categories, with the two classes of each in parentheses. *Item types* is how many word forms occur in both of them at least ten times; forms occurring in only one are excluded. *Median tokens* is how often a typical form occurs in each of its two classes, in the order they are listed."
-tibble::tribble(
-  ~class,                                  ~`item types`,
-  "part of speech (noun / verb)",          max(llm$n_items[llm$construction == "POS (noun/verb)"]),
-  "grammatical role (subject / object)",   max(llm$n_items[llm$construction == "role (subject/object)"])) |>
-  mutate(`median tokens` = c(stimmed("pos_noun_verb_form"),
-                             stimmed("role_nsubj_obj"))) |>
-  kbl(booktabs = TRUE, align = "lrl", linesep = "", escape = FALSE) |>
-  kable_styling(latex_options = c("HOLD_position"), font_size = 8)
-```
-
-{{< pagebreak >}}
-
-# Deepest-Layer Measurements {#sec-appendix-llm}
-
-Table \ref{tbl-llm} gives the deepest-layer values behind the curves of @fig-llm, together with the null each overlap is read against.
-
-```{r}
-#| label: tbl-llm
-#| tbl-cap: "Deepest-layer measurements, one row per model. The two overlaps are the fraction of the item effect lying in the class subspace and the fraction of the interaction lying in the span of the two main effects, each followed in parentheses by how many times its own rotation null's median it is. That null holds the effect fixed and rotates the target subspace at random 200 times. The class effect and the interaction are shares of the item-by-class structure, with each model's re-split 95% interval in brackets."
-llm |> group_by(construction, model) |>
-  filter(layer == max(layer)) |> ungroup() |>
-  arrange(construction, family, scale) |>
-  # One row per model. A median across the six hid exactly what the six are being compared for,
-  # and the sizes' re-split intervals are far narrower than the spread across models, so pooling
-  # them reported a precision that belonged to a single measurement rather than to the set.
-  # Each overlap is against its own model's null rather than r/d: the two differ, since r/d
-  # assumes the subspace has its algebraic maximum rank while the projection uses the rank
-  # actually fitted, roughly half of it for the marginal subspace.
-  transmute(class = shortname(construction),
-            model = paste(family, size),
-            `item-class overlap` = ov1(leak, leak_null_med, 4),
-            `interaction overlap` = ov1(leak_int, leak_int_null_med, 3),
-            `class effect` = ci(size_class, size_class_lo, size_class_hi),
-            `interaction` = ci(size_int, size_int_lo, size_int_hi)) |>
-  kbl(longtable = FALSE, booktabs = TRUE, align = "llrrrr", linesep = "") |>
-  kable_styling(font_size = 7) |>
-  collapse_rows(1, latex_hline = "major", valign = "top")
-```
-
-# The Decomposition {#sec-appendix-math}
-
-## The item-by-class means {#sec-appendix-math-grid}
-
-![Each word in each class is observed in many contexts, and those observations are averaged within the pairing to give one of the item-by-class means. Every one of them is a vector in $\mathbb{R}^d$, and every item appears in every class.](fig-grid.pdf){#fig-grid width="100%"}
-
-A word used in a given class is observed in many contexts, and the representation differs a little in each. Averaging those observations within the pairing gives one of the item-by-class means: for items $i \in \{1,\dots,I\}$ crossed with classes $c \in \{1,\dots,C\}$, $M[i,c] \in \mathbb{R}^d$ is the mean representation of item $i$ in class $c$ (@fig-grid). An item observed in only one class is dropped, as is an item with fewer than 10 tokens in either class, so the set is complete and every mean rests on a comparable number of observations. Because every item appears at every class, the means arrange into $I$ by $C$ positions, and the rest of this appendix calls that arrangement the grid when what matters is the positions rather than the vectors sitting at them. The variation across contexts that the averaging sets aside is not discarded; it is what the two splits of @sec-measure are drawn from.
-
-## Sizes {#sec-appendix-math-sizes}
-
-![How many positions of the grid each component occupies. $\alpha_i$ does not depend on the class, so it occupies all $C$ positions of its row; $\beta_c$ does not depend on the item, so it occupies all $I$ positions of its column; $\gamma_{ic}$ takes its own value at every position and is never repeated.](fig-replication.pdf){#fig-replication width="100%"}
-
-Since the effects are centered along their respective axes, their cross-terms cancel when summed over the full grid. Thus the total squared length partitions exactly:
-
-$$
-\sum_{i,c}\lVert M[i,c]-\mu\rVert^{2}
-= C\sum_{i}\lVert\alpha_i\rVert^{2}
-+ I\sum_{c}\lVert\beta_c\rVert^{2}
-+ \sum_{i,c}\lVert\gamma_{ic}\rVert^{2},
-$$
-
-Sizes are reported as shares of the total. All three terms scale linearly in $I$, so the shares do not depend on how many items there are and are comparable across categories of different size.
-
-The above decomposition, however, ignores the role of context. In order to estimate how the three components and context vary in size, we can instead decompose each representation into its pairing mean and its deviation from that mean, giving the standard within–between partition:
-
-$$
-\sum_{x}\lVert x-\bar x\rVert^{2}
-=
-\underbrace{\sum_{i,c}\sum_{x\in(i,c)}
-\lVert x-\hat M[i,c]\rVert^{2}}_{\text{within a pairing}}
-+
-\underbrace{\sum_{i,c}n_{ic}
-\lVert\hat M[i,c]-\bar x\rVert^{2}}_{\text{between pairings}}.
-$$
-
-The between-pairing term is the variation partitioned into item, class, and item-by-class components above, while the within-pairing term captures variation across contexts. The resulting context variance and the $\alpha$, $\beta$, and $\gamma$ variance components together partition the variance of the original representations.
-
-## The overlaps and their chance level {#sec-appendix-math-overlap}
-
-The component sizes describe how much variation each component accounts for, but not whether the components occupy the same directions in $\mathbb{R}^d$. To measure their overlap, we project each component into a target subspace and ask how much of its squared length is retained. Specifically, we project $\alpha$ into the subspace spanned by $\beta$, $\beta$ into the subspace spanned by $\alpha$, and $\gamma$ into the subspace jointly spanned by $\alpha$ and $\beta$. If $S$ is an orthonormal basis for the target subspace and $V$ is the component being projected, the overlap is
-
-$$
-\frac{\lVert VS\rVert_F^2}{\lVert V\rVert_F^2}
-$$ Thus, an overlap of zero means that the component is orthogonal to the target subspace, whereas an overlap of one means that it lies entirely within it. Because the projection uses squared lengths, opposite directions contribute equally rather than canceling. We use the leading singular vectors of each target component to define its subspace, with the number of directions determined by its participation ratio. The number of directions in the target subspace therefore determines its chance overlap under random orientation.
-
-The chance level for overlap is $r/d$, where $r$ is the dimensionality of the target subspace and $d$ is the full representation dimension. A randomly oriented component therefore has an expected fraction $r/d$ of its squared length in the target subspace. At $d=2048$, for example, the chance level is $0.0005$ for a one-dimensional class subspace. We therefore interpret observed overlaps relative to this chance level.
-
-{{< pagebreak >}}
