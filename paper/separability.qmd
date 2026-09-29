@@ -7,7 +7,7 @@ author:
       - name: "University of Oregon"
     email: znh@uoregon.edu
 abstract: |
-  Lexical representations are central to linguistic theory, yet to what extent they're memorized, item-specific representations or abstract, generalizable representations remains a core debate. In the present study, we investigate how Large Language Models (LLMs) navigate this distinction using a quantitative framework that decomposes contextual word representations into three additive components: an item component, a class component, and an idiosyncratic word-class interaction. After validating our measurement on an artificial language, we evaluate six pretrained transformers (OPT-BabyLM and Pythia families) across two linguistic categories: part of speech and grammatical role. We find that the idiosyncratic interaction term is consistently positive and grows substantially across layers. Crucially, while abstract lexical and class axes remain nearly orthogonal, the interaction term systematically overlaps with both. Together, our results demonstrate that LLMs do not commit exclusively to pure abstraction or exemplar storage; rather, they construct representations that are simultaneously both abstract and holistic.
+  Lexical representations are central to linguistic theory, yet to what extent they're memorized, item-specific representations or abstract, generalizable representations remains a core debate. In the present study, we investigate how Large Language Models (LLMs) navigate this distinction by decomposing contextual word representations into three additive components: an item component, a class component, and an idiosyncratic word-class interaction. After validating our measurement on an artificial language, we evaluate six pretrained transformers (OPT-BabyLM and Pythia families) across two linguistic categories: part of speech and grammatical role. We find that the idiosyncratic interaction term is consistently positive and grows substantially across layers. Crucially, while abstract lexical and class axes remain nearly orthogonal, the interaction term systematically overlaps with both. Together, our results demonstrate that LLMs do not commit exclusively to pure abstraction or exemplar storage; rather, they construct representations that are simultaneously both abstract and holistic.
   
 bibliography: refs.bib
 acl-mode: review
@@ -639,9 +639,9 @@ Lexical representations are deceptively complex: a single word often carries vas
 
 [^1]: In *Jacobellis v. Ohio* (1964), Justice Stewart famously addressed the difficulty of defining obscenity, remarking that while formulating a precise definition might be a herculean task, he could still recognize obscene material when he saw it.
 
-This central paradox, that representations are simultaneously context-specific yet broadly generalizable, has fueled long-standing debates over the nature of lexical representations. The two leading frameworks offer distinct solutions: **abstraction theories** posit that humans construct generalized mental representations stripped of specific context, while **exemplar theories** argue that representations are built from distinct, context-rich memory traces.
+This central paradox, that representations are simultaneously context-specific yet broadly generalizable, has fueled long-standing debates over the nature of lexical representations. The two leading frameworks offer distinct solutions: abstraction theories posit that humans construct generalized mental representations stripped of specific context, while exemplar theories argue that representations are built from distinct, context-rich memory traces.
 
-In the present study, we investigate how Large Language Models (LLMs) navigate this paradox. Specifically, we examine the extent to which LLM lexical representations comprise abstract, generalizable features versus context-specific exemplars.
+In the present study, we investigate how Large Language Models (LLMs) navigate this tradeoff. Specifically, we examine the extent to which LLM lexical representations comprise abstract, generalizable features versus context-specific exemplars.
 
 ## Evidence for Abstractions
 
@@ -691,19 +691,19 @@ $$ {#eq-toy}
 
 Each term is isotropically scaled to unit variance before it is weighted,[^2] so changing the weights changes the mix of the three effects without changing how much signal there is in total.
 
-[^2]: Specifically, each observation consists of a form in a specific class and a context, paired with that term's contribution to the next-token distribution for that observation. We normalize this dataset by dividing each value in it by the total standard deviation across all observations. This is necessary because different matrices can contain the same information at different scales. For example, imagine a matrix with random numbers, and that same matrix with each number multiplied by two. The information is the same, but the weights will have a larger effect on the latter dataset.
+[^2]: Specifically, each observation consists of a form in a specific class and a context, paired with that term's contribution to the next-token distribution for that observation. We normalize this dataset by dividing each value by the total standard deviation across all observations.
 
-The weights $w_\alpha$, $w_\beta$, and $w_\gamma$ in @eq-toy control how much of the true distribution each of the three effects contributes, and we cross them factorially over $\{0, 0.5, 1, 2\}$: zero removes an effect from the language altogether, and the other three values make an effect half as strong as another, equal to it, or twice it. Similarly, $w_{\text{ctx}}$ governs how much the context contributes, so we cross those languages with three context weights: $\{0.5, 2.0, 6.0\}$, ranging from context being a minor part of the true distribution to the dominant one. The four weights are subsequently rescaled together to unit length, such that $w_\alpha^2 + w_\beta^2 + w_\gamma^2 + w_{\text{ctx}}^2 = 1$.[^3] The ranks of the item and class are held fixed at `r unique(toy$r_item)` and `r unique(toy$r_class)` respectively but each language is crossed with an interaction effect that is chosen a set of four different ranks that it can take: $\{4, 16, 64, 177\}$. Additionally, we train a model on each of the resulting languages at hidden widths of `r paste(sort(unique(toy$d)), collapse = ", ")`, with either a linear or a ReLU activation. The whole grid is then run with five random seeds giving `r format(nrow(toy), big.mark = ",")` runs in all, of which `r sprintf("%.1f%%", 100 * mean(toy$converged))` trained to convergence; Appendix \ref{sec-appendix-grid} lists every factor and its levels.
+The weights $w_\alpha$, $w_\beta$, and $w_\gamma$ in @eq-toy control how much of the true distribution each of the three effects contributes, and we cross them factorially over $\{0, 0.5, 1, 2\}$: zero removes an effect from the language altogether, and the other three values make an effect half as strong as another, equal to it, or twice it. Similarly, $w_{\text{ctx}}$ governs how much the context contributes, so we cross those languages with three context weights: $\{0.5, 2.0, 6.0\}$, ranging from context being a minor part of the true distribution to the dominant one. The four weights are subsequently rescaled together to unit length, such that $w_\alpha^2 + w_\beta^2 + w_\gamma^2 + w_{\text{ctx}}^2 = 1$.[^3] The ranks of the item and class are held fixed at `r unique(toy$r_item)` and `r unique(toy$r_class)` respectively but each language is crossed with four interaction effect ranks: $\{4, 16, 64, 177\}$. Additionally, we train a model on each of the resulting languages at hidden widths of `r paste(sort(unique(toy$d)), collapse = ", ")`, with either a linear or a ReLU activation. The whole grid is then run with five random seeds giving `r format(nrow(toy), big.mark = ",")` runs in all, of which `r sprintf("%.1f%%", 100 * mean(toy$converged))` trained to convergence; Appendix \ref{sec-appendix-grid} lists every factor and its levels.
 
 [^3]: This makes the resulting languages more comparable by enforcing the same total signal (i.e., the variance of the weighted sum in @eq-toy is held constant), despite individual differences in the amount that each individual term contributes.
 
 ## Method {#sec-exp1-method}
 
-All code and analyses in this paper can be found here: <https://github.com/znhoughton/representation-separability>.
-
 ### The learner
 
-The learner model is a multi-layer perceptron (MLP) with a single hidden layer of width $d$ and either a linear or a ReLU activation function. The model takes as its input three pieces of information: form, class, and context. Each has its own embedding, and the three are concatenated and passed through the model which then outputs a probability distribution over the vocabulary (@fig-training). The training objective is thus to minimize cross-entropy between the model's predicted distribution over the vocabulary and the ground-truth distribution.
+The learner model is a multi-layer perceptron (MLP) with a single hidden layer of width $d$ and either a linear or a ReLU activation function.[^code] The model takes as its input three pieces of information: form, class, and context. Each has its own embedding, and the three are concatenated and passed through the model which then outputs a probability distribution over the vocabulary (@fig-training). The training objective is thus to minimize cross-entropy between the model's predicted distribution over the vocabulary and the ground-truth distribution.
+
+[^code]: All code and analyses in this paper can be found here: <https://github.com/znhoughton/representation-separability>.
 
 ![Structure of our model. Every form is observed 24 times at each class, each time in a different context; that variation across contexts is what the measurement later splits in two.](fig-training.pdf){#fig-training width="100%" fig-env="figure*"}
 
@@ -941,6 +941,7 @@ Our evaluation is restricted to English and relies on two linguistic categories 
 \renewcommand{\bibliography}[1]{}
 \clearpage
 ```
+
 \onecolumn
 
 \appendix
@@ -960,6 +961,7 @@ Our evaluation is restricted to English and relies on two linguistic categories 
 \floatplacement{figure}{H}
 \floatplacement{table}{H}
 ```
+
 # The Artificial-Language Grid {#sec-appendix-grid}
 
 Table \ref{tbl-grid} lists every factor crossed in Experiment 1 and its levels. The three effect weights and the context weight define the language; the interaction's rank is a property of the language too, since it sets how many directions the interaction spans. Hidden width and activation belong to the learner, and the seed redraws both the language's realization and the model's initialization.
