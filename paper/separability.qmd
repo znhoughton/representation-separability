@@ -715,7 +715,7 @@ $$
 M[i,c] \;=\; \mu + \alpha(i) + \beta(c) + \gamma(i,c),
 $$ {#eq-decomp}
 
-where $\mu$ is the grand mean; $\alpha(i)$ is item $i$'s mean across classes minus $\mu$ which conceptually is the representation unique to the item; $\beta(c)$ is the mean across items at class $c$ minus $\mu$ which conceptually is the representation unique to the class (e.g., noun vs verb); and $\gamma(i,c)$ is what item $i$ at class $c$ holds that neither marginal accounts for which conceptually is the item-specific representation in a specific class (@fig-measurement). Since every item is observed in every class with equal weight, averaging over class isolates the item effect, and averaging over items isolates the class effect. Each representation for a given item in a given class is exactly the sum of the four terms and no two of them vary together across those representations, so the squared lengths of each term (excluding $\mu$) sum to the total and we report each as a share.
+where $\mu$ is the grand mean; $\alpha(i)$ is item $i$'s mean across classes minus $\mu$ which conceptually is the representation unique to the item; $\beta(c)$ is the mean across items at class $c$ minus $\mu$ which conceptually is the representation unique to the class (e.g., noun vs verb); and $\gamma(i,c)$ is what item $i$ at class $c$ holds that neither marginal accounts for which conceptually is the item-specific representation in a specific class (@fig-measurement). Since every item is observed in every class with equal weight, averaging over class isolates the item effect, and averaging over items isolates the class effect. Each representation for a given item in a given class is exactly the sum of the four terms of @eq-decomp and no two of them vary together across those representations, so the squared lengths of each term (excluding $\mu$) sum to the total and we report each as a share.
 
 Each of these averages is taken over a sample of observations that differ only in context, so each carries some of the context term of @eq-toy as noise. We remove it by dividing the observations into two evenly sized splits, running the decomposition on each split separately, and estimating each component's size as the dot product of its two split estimates, which is large when the splits agree about the component and near zero when they do not. As a result, noise that differs between the splits is independent and cancels.
 
@@ -727,7 +727,7 @@ To quantify whether a size is meaningful, we compare each against zero, which is
 
 To quantify whether an overlap is meaningful, we project the effect, held exactly as measured, onto two hundred random subspaces of the same rank, which gives the distribution of overlaps an unrelated subspace would yield. An overlap below that baseline indicates meaningful orthogonality; an overlap above the baseline indicates meaningful non-orthogonality. We report each overlap as a multiple of the baseline's median, with how many measurements fall outside its 95% interval; Appendix \ref{sec-appendix-math} gives the algebra for both measures.
 
-![The four item-by-class means formed by two items in two classes.](fig-measurement.pdf){#fig-measurement width="78%"}
+![The four item-by-class means formed by two items in two classes. The arrow is $\gamma(i,c)$.](fig-measurement.pdf){#fig-measurement width="78%"}
 
 It's important to note that the weights in @eq-toy describe the distribution the model is trained to match, while the measure decomposes the representation that the model learns, so the two sets of numbers are not on a common scale: a learner handed a language that is 85% interaction can represent it with the interaction taking a far smaller share. Appendix \ref{sec-appendix-validate} reports a separate check in which components were set directly in a representation and recovered almost exactly, which is what licenses interpreting the results below as facts about the learner rather than about the measure. We include runs only if at least one of the three components has a re-split interval excluding zero; where none does, the three shares divide noise.
 
@@ -758,7 +758,7 @@ Results are shown in @fig-toy, with every coefficient in Appendix \ref{sec-appen
 #| fig-width: 3.05
 #| fig-height: 3.1
 #| out-width: "100%"
-#| fig-cap: "Each component's share of the representation against its share of the language, by activation. Faint points are runs; lines are fitted values from @eq-ordbeta with 95% intervals, coloured by hidden width. The dashed diagonal is exact reproduction of the language's composition."
+#| fig-cap: "Each component's share of the representation against its share of the language, by activation. Faint points are runs; lines are fitted values from @eq-ordbeta with 95% intervals, coloured by hidden width. The dashed diagonal is exact reproduction of the language's composition. Unresolved runs are not plotted."
 #|
 .fit <- rpred |>
   filter(kind == "size", grid == "planted") |>
@@ -836,7 +836,7 @@ In contrast to the main effects, the interaction is not orthogonal to class or i
 #| fig-width: 3.05
 #| fig-height: 3.5
 #| out-width: "100%"
-#| fig-cap: "The three components through the network, by linguistic category. x-axis is layer depth. The y-axis is the effect size for item, class, and the interaction. Each line is one model: color is the training corpus, linetype the hidden width; the band is that model's re-split 95% interval."
+#| fig-cap: "The three components through the network, by linguistic category. x-axis is relative depth, from the static embedding layer (0) to the final block (1). The y-axis is each component's share of the item-by-class structure: item, class, and their interaction. Each line is one model: color is the training corpus, linetype the hidden width; the band is that model's re-split 95% interval."
 # Built by hand rather than pivoted, because each component carries its own re-split interval.
 band <- function(d, val, lo, hi, label) {
   tibble(construction = d$construction, family = d$family, scale = d$scale, depth = d$depth,
@@ -896,7 +896,7 @@ Results are reported in @tbl-decode.
 
 ```{r}
 #| label: tbl-decode
-#| tbl-cap: "Accuracy of recovering the class from the interaction, at the deepest layer of the largest model in each family."
+#| tbl-cap: "Accuracy of recovering the class from the interaction, at the deepest layer of the largest model in each family. *Null* permutates the class labels within each form; brackets are bootstrap intervals over forms and chance is 0.50."
 dec <- bind_rows(
   rd("llm_decode_pos_form.csv") |> mutate(construction = "POS (noun/verb)"),
   rd("llm_decode_interaction.csv") |>
@@ -1163,7 +1163,7 @@ $$
 + \sum_{i,c}\lVert\gamma_{ic}\rVert^{2},
 $$
 
-Sizes are reported as shares of the total. All three terms scale linearly in $I$, so the shares do not depend on how many items there are and are comparable across categories of different size.
+The multipliers count grid positions, since $\alpha_i$ is repeated across all $C$ classes of its row and $\beta_c$ across all $I$ items of its column while $\gamma_{ic}$ appears once (@fig-replication). Sizes are reported as shares of the total. All three terms scale linearly in $I$, so the shares do not depend on how many items there are and are comparable across categories of different size.
 
 The above decomposition, however, ignores the role of context. In order to estimate how the three components and context vary in size, we can instead decompose each representation into its pairing mean and its deviation from that mean, giving the standard within–between partition:
 
