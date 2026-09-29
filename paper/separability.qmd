@@ -713,7 +713,7 @@ To quantify whether a size is meaningful, we compare each against zero, which is
 
 To quantify whether an overlap is meaningful, we project the effect, held exactly as measured, onto two hundred random subspaces of the same rank, which gives the distribution of overlaps an unrelated subspace would yield. An overlap below that baseline indicates meaningful orthogonality; an overlap above the baseline indicates meaningful non-orthogonality. We report each overlap as a multiple of the baseline's median, with how many measurements fall outside its 95% interval; Appendix \ref{sec-appendix-math} gives the algebra for both measures.
 
-![The four item-by-class means formed by two items in two classes. Under an item part plus a class part, three corners fix the fourth and the parallelogram closes. The arrow is $\gamma(i,c)$, the displacement between the fourth mean and the point that additive account places it at, with length $\lVert \gamma(i,c) \rVert$.](fig-measurement.pdf){#fig-measurement width="78%"}
+![The four item-by-class means formed by two items in two classes. Under an item part plus a class part, three corners fix the fourth and the parallelogram closes. The arrow is $\gamma(i,c)$, the displacement between the fourth mean and where an additive account places it.](fig-measurement.pdf){#fig-measurement width="78%"}
 
 It's important to note that the weights in @eq-toy describe the distribution the model is trained to match, while the measure decomposes the representation that the model learns, so the two sets of numbers are not on a common scale: a learner handed a language that is 85% interaction can represent it with the interaction taking a far smaller share. Appendix \ref{sec-appendix-validate} reports a separate check in which components were set directly in a representation and recovered almost exactly, which is what licenses interpreting the results below as facts about the learner rather than about the measure. We include runs only if at least one of the three components has a re-split interval excluding zero; where none does, the three shares divide noise.
 
@@ -745,7 +745,7 @@ Results are shown in @fig-toy; the effects of width are reported in Appendix \re
 #| fig-width: 6.3
 #| fig-height: 2.9
 #| out-width: "100%"
-#| fig-cap: "Each component's share of the representation against its share of the language, by activation. Each faint point is one run. Lines are fitted values from the ordered beta models of @eq-ordbeta with 95% intervals, taken at the mean of the other two effect sizes and of the interaction's rank, which is why they need not pass through the centre of a cloud spanning every combination of those. The dashed diagonal is where a representation would sit had it reproduced the language's composition exactly. Runs in which none of the three components had a re-split 95% interval excluding zero are not plotted, since the three shares then divide noise."
+#| fig-cap: "Each component's share of the representation against its share of the language, by activation. Faint points are runs; lines are fitted values from @eq-ordbeta with 95% intervals, at the mean of the other two effect sizes and of the interaction's rank. The dashed diagonal is exact reproduction of the language's composition. Runs in which no component's re-split interval excluded zero are not plotted."
 #|
 .fit <- rpred |>
   filter(kind == "size", grid == "planted") |>
@@ -825,7 +825,7 @@ In contrast to the main effects, the interaction is not orthogonal to class or i
 #| fig-width: 3.05
 #| fig-height: 3.5
 #| out-width: "100%"
-#| fig-cap: "The three components through the network, for every model and linguistic category. Relative depth runs from the static embedding layer (0) to the final block (1). Rows are the item effect, the class effect and their interaction, each as a share of the item-by-class structure, which sum to one within each model and layer. Each line is one model: color distinguishes the training corpus, linetype the three matched widths. The shaded band is that model's re-split 95% interval."
+#| fig-cap: "The three components through the network, by linguistic category. Depth runs from the static embedding layer (0) to the final block (1). Rows are the item effect, the class effect and their interaction, each a share of the item-by-class structure. Each line is one model: color is the training corpus, linetype the matched width; the band is that model's re-split 95% interval."
 # Built by hand rather than pivoted, because each component carries its own re-split interval.
 band <- function(d, val, lo, hi, label) {
   tibble(construction = d$construction, family = d$family, scale = d$scale, depth = d$depth,
@@ -882,7 +882,7 @@ Results are reported in @tbl-decode.
 
 ```{r}
 #| label: tbl-decode
-#| tbl-cap: "Recovering the class from the interaction with a probe, at the deepest layer of the largest model in each family. The item is held fixed and the shared class direction is projected out, so neither main effect can contribute. *Accuracy* is the mean over them; *null* repeats the probe with the class labels permutated within each form. Brackets are percentile bootstrap intervals over forms, and chance is 0.50."
+#| tbl-cap: "Recovering the class from the interaction with a probe, at the deepest layer of the largest model in each family. The item is held fixed and the shared class direction projected out. *Null* repeats the probe with the class labels permutated within each form. Brackets are percentile bootstrap intervals over forms; chance is 0.50."
 dec <- bind_rows(
   rd("llm_decode_pos_form.csv") |> mutate(construction = "POS (noun/verb)"),
   rd("llm_decode_interaction.csv") |>
