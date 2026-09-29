@@ -741,9 +741,8 @@ Results are shown in @fig-toy; the effects of width are reported in Appendix \re
 
 ```{r}
 #| label: fig-toy
-#| fig-env: figure*
-#| fig-width: 6.3
-#| fig-height: 2.9
+#| fig-width: 3.05
+#| fig-height: 3.1
 #| out-width: "100%"
 #| fig-cap: "Each component's share of the representation against its share of the language, by activation. Faint points are runs; lines are fitted values from @eq-ordbeta with 95% intervals, at the mean of the other two effect sizes and of the interaction's rank. The dashed diagonal is exact reproduction of the language's composition. Runs in which no component's re-split interval excluded zero are not plotted."
 #|
@@ -753,7 +752,7 @@ Results are shown in @fig-toy; the effects of width are reported in Appendix \re
          act = factor(arm, c("relu", "linear"), c("ReLU", "linear")))
 ggplot(toy_learn_both, aes(planted, measured, color = factor(d), fill = factor(d))) +
   geom_abline(slope = 1, intercept = 0, linetype = 2, linewidth = .3, color = UO[["grey"]]) +
-  geom_point(size = .3, alpha = .18, stroke = 0) +
+  geom_point(size = .18, alpha = .14, stroke = 0) +
   geom_ribbon(data = .fit, aes(x = own, y = epred, ymin = lo, ymax = hi, fill = factor(width)),
               inherit.aes = FALSE, alpha = .16) +
   geom_line(data = .fit, aes(x = own, y = epred, color = factor(width)),
@@ -761,13 +760,15 @@ ggplot(toy_learn_both, aes(planted, measured, color = factor(d), fill = factor(d
   facet_grid(act ~ component) +
   scale_color_manual(values = WIDC, name = "hidden width") +
   scale_fill_manual(values = WIDC, guide = "none") +
-  scale_x_continuous(limits = c(0, 1), breaks = c(0, .5, 1)) +
-  scale_y_continuous(breaks = c(0, .5, 1)) +
+  scale_x_continuous(limits = c(0, 1), breaks = c(0, .5, 1),
+                     labels = c("0", ".5", "1")) +
+  scale_y_continuous(breaks = c(0, .5, 1), labels = c("0", ".5", "1")) +
   coord_cartesian(ylim = c(0, 1)) +
   labs(x = "effect size in the language", y = "effect size in the representation") +
-  theme_paper(8) +
+  theme_paper(7) +
   theme(legend.position = "top", legend.margin = margin(0, 0, -6, 0),
-        panel.grid.minor = element_blank())
+        legend.key.width = unit(10, "pt"), panel.grid.minor = element_blank()) +
+  guides(color = guide_legend(nrow = 1, title.position = "top"))
 ```
 
 The interaction effect in the linear condition was zero only where the language was additive. On the other hand, across the `r cm(nullget("linear", TRUE, "n"))` runs whose language contained an interaction, the linear model's interaction interval excludes zero in `r sprintf("%.0f%%", 100 * nullget("linear", TRUE, "flagged_ez"))` of them, against `r sprintf("%.0f%%", 100 * nullget("ReLU", TRUE, "flagged_ez"))` for ReLU. In contrast, where the language contained no interaction, the rates were `r sprintf("%.0f%%", 100 * nullget("linear", FALSE, "flagged_ez"))` and `r sprintf("%.0f%%", 100 * nullget("ReLU", FALSE, "flagged_ez"))`. The linear model has no parameter depending on the form and the class together beyond a linear combination of them, yet represents an interaction anyway. One possible explanation for this is that the model can still learn context-specific representations for different items, by learning that a specific item in a specific class occurs with a specific context (and then subsequently representing that information within the context weights). In the models with a ReLU activation function, surprisingly we see an interaction effect represented in the model even in cases where the language is additive. One potential explanation is that the model only ever encounters words in specific contexts; the additive structure of the language is visible across the corpus rather than in any single observation, and the model does not seem to abstract away the interaction completely.
