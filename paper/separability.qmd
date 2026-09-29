@@ -744,7 +744,7 @@ Results are shown in @fig-toy; the effects of width are reported in Appendix \re
 #| fig-width: 3.05
 #| fig-height: 3.1
 #| out-width: "100%"
-#| fig-cap: "Each component's share of the representation against its share of the language, by activation. Faint points are runs; lines are fitted values from @eq-ordbeta with 95% intervals, at the mean of the other two effect sizes and of the interaction's rank. The dashed diagonal is exact reproduction of the language's composition. Runs in which no component's re-split interval excluded zero are not plotted."
+#| fig-cap: "Each component's share of the representation against its share of the language, by activation. Faint points are runs; lines are fitted values from @eq-ordbeta with 95% intervals, coloured by hidden width, at the mean of the other two effect sizes and of the interaction's rank. The dashed diagonal is exact reproduction of the language's composition. Runs in which no component's re-split interval excluded zero are not plotted."
 #|
 .fit <- rpred |>
   filter(kind == "size", grid == "planted") |>
@@ -758,7 +758,7 @@ ggplot(toy_learn_both, aes(planted, measured, color = factor(d), fill = factor(d
   geom_line(data = .fit, aes(x = own, y = epred, color = factor(width)),
             inherit.aes = FALSE, linewidth = .55) +
   facet_grid(act ~ component) +
-  scale_color_manual(values = WIDC, name = "hidden width") +
+  scale_color_manual(values = WIDC, name = NULL) +
   scale_fill_manual(values = WIDC, guide = "none") +
   scale_x_continuous(limits = c(0, 1), breaks = c(0, .5, 1),
                      labels = c("0", ".5", "1")) +
@@ -768,7 +768,7 @@ ggplot(toy_learn_both, aes(planted, measured, color = factor(d), fill = factor(d
   theme_paper(7) +
   theme(legend.position = "top", legend.margin = margin(0, 0, -6, 0),
         legend.key.width = unit(10, "pt"), panel.grid.minor = element_blank()) +
-  guides(color = guide_legend(nrow = 1, title.position = "top"))
+  guides(color = guide_legend(nrow = 1))
 ```
 
 The interaction effect in the linear condition was zero only where the language was additive. On the other hand, across the `r cm(nullget("linear", TRUE, "n"))` runs whose language contained an interaction, the linear model's interaction interval excludes zero in `r sprintf("%.0f%%", 100 * nullget("linear", TRUE, "flagged_ez"))` of them, against `r sprintf("%.0f%%", 100 * nullget("ReLU", TRUE, "flagged_ez"))` for ReLU. In contrast, where the language contained no interaction, the rates were `r sprintf("%.0f%%", 100 * nullget("linear", FALSE, "flagged_ez"))` and `r sprintf("%.0f%%", 100 * nullget("ReLU", FALSE, "flagged_ez"))`. The linear model has no parameter depending on the form and the class together beyond a linear combination of them, yet represents an interaction anyway. One possible explanation for this is that the model can still learn context-specific representations for different items, by learning that a specific item in a specific class occurs with a specific context (and then subsequently representing that information within the context weights). In the models with a ReLU activation function, surprisingly we see an interaction effect represented in the model even in cases where the language is additive. One potential explanation is that the model only ever encounters words in specific contexts; the additive structure of the language is visible across the corpus rather than in any single observation, and the model does not seem to abstract away the interaction completely.
@@ -826,7 +826,7 @@ In contrast to the main effects, the interaction is not orthogonal to class or i
 #| fig-width: 3.05
 #| fig-height: 3.5
 #| out-width: "100%"
-#| fig-cap: "The three components through the network, by linguistic category. Depth runs from the static embedding layer (0) to the final block (1). Rows are the item effect, the class effect and their interaction, each a share of the item-by-class structure. Each line is one model: color is the training corpus, linetype the matched width; the band is that model's re-split 95% interval."
+#| fig-cap: "The three components through the network, by linguistic category. Depth runs from the static embedding layer (0) to the final block (1). Rows are the item effect, the class effect and their interaction, each a share of the item-by-class structure. Each line is one model: color is the training corpus, linetype the hidden width; the band is that model's re-split 95% interval."
 # Built by hand rather than pivoted, because each component carries its own re-split interval.
 band <- function(d, val, lo, hi, label) {
   tibble(construction = d$construction, family = d$family, scale = d$scale, depth = d$depth,
@@ -854,16 +854,19 @@ ggplot(plt, aes(depth, share, color = family, linetype = scale,
   facet_grid(component ~ construction, scales = "free_y", switch = "y") +
   scale_color_manual(values = c(BabyLM = UO[["gold"]], Pythia = UO[["blue"]]), name = NULL) +
   scale_fill_manual(values = c(BabyLM = UO[["gold"]], Pythia = UO[["blue"]]), guide = "none") +
+  # Labelled by the hidden width the pair shares rather than by the two parameter counts:
+  # four characters instead of nine, and it is what the caption says the linetype encodes.
   scale_linetype_manual(values = c("125M/160M" = "dotted", "350M/410M" = "dashed",
-                                   "1.3B/1.4B" = "solid"), name = NULL) +
+                                   "1.3B/1.4B" = "solid"),
+                        labels = c("768", "1024", "2048"), name = NULL) +
   scale_x_continuous(breaks = c(0, .5, 1)) +
   scale_y_continuous(n.breaks = 3) +
   labs(x = "relative depth", y = NULL) +
-  # One column wide, so the two legends stack rather than running off the edge, and the rotated
-  # row labels drop a point to keep clear of the panel they sit beside.
+  # With the short width labels both legends fit on one row, so they sit side by side rather
+  # than stacked. The rotated row labels drop a point to keep clear of the panel beside them.
   theme_paper(7) +
-  theme(strip.placement = "outside", legend.box = "vertical",
-        legend.spacing.y = unit(0, "pt"), legend.key.width = unit(12, "pt"),
+  theme(strip.placement = "outside", legend.box = "horizontal",
+        legend.spacing.x = unit(4, "pt"), legend.key.width = unit(11, "pt"),
         strip.text.y.left = element_text(size = 7))
 ```
 
