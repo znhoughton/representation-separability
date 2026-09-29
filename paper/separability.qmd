@@ -93,15 +93,6 @@ toy <- rd("artificial_language_grid.csv") |>
 # is not at zero, because a trained linear model still carries whatever its contexts bring to
 # each cell -- see the Results. Both readings are the measure's at this exact width, sample
 # size and context level.
-# Restricted to languages that hold both margins, as toy_relu and toy_noise are. An additive
-# language is an item part plus a class part; where one of the two is absent there is no
-# item-by-class grid for an interaction to be built in, the measure correctly reports none,
-# and those runs cannot test whether a learner manufactures one.
-toy_null <- toy |> filter(w_item > 0, w_class > 0) |>
-  group_by(act, planted = w_int > 0) |>
-  summarize(n = n(), med = median(size_interaction),
-            p95 = quantile(size_interaction, .95),
-            flagged_ez = mean(ez, na.rm = TRUE), .groups = "drop")
 
 # Does the measured interaction track the planted one? Binned, because the achieved share is
 # continuous (neither the softmax nor the normalization is linear in the weights).
@@ -372,7 +363,6 @@ pf <- function(size, positions) {
   g(d$std_size_class / (d$std_size_class + d$std_size_interaction), 3)
 }
 
-nullget <- function(a, pl, col) toy_null[[col]][toy_null$act == a & toy_null$planted == pl]
 capget <- function(a, cap, col) toy_cap[[col]][toy_cap$act == a & toy_cap$capacity == cap]
 
 # ---- Experiment 1: the component models ----------------------------------------------------
@@ -780,9 +770,7 @@ Unsurprisingly, the effect size for each component increases as a function of th
 
 The effect size of the interaction does not depend on its rank in the language (`r b("interaction", "rank")`). Instead, it is the size of the hidden layer that determines how much of the interaction is encoded (`r b("interaction", "width")`): the larger the hidden layer, the larger the size of the interaction it encodes. This is not the case for the item effect, which decreases as the hidden layer grows (`r b("item", "width")`), or for the class effect, which barely changes (`r b("class", "width")`). In the linear condition width is spent on the item effect at the class effect's expense (`r b("item", "width", "linear")` against `r b("class", "width", "linear")`); the interaction grows with width there too (`r b("interaction", "width", "linear")`) but stays small throughout.
 
-Width governs geometry as well as magnitude. The width coefficient on item-class overlap is large and negative and excludes zero (`r b("item_class", "width", kindv = "overlap")`): the wider the layer, the less the item and class effects share directions, falling from above chance to below it. The interaction's overlap with the two margins carries a coefficient of the same sign and nearly the same size (`r b("int_margins", "width", kindv = "overlap")`), so both geometries open up together as the layer grows. Under a linear learner the two come apart. The item-class coefficient is small, negative, and includes zero (`r b("item_class", "width", armv = "linear", kindv = "overlap")`), so width leaves that overlap where it is; the interaction's overlap with the margins instead carries a small positive coefficient that excludes zero (`r b("int_margins", "width", armv = "linear", kindv = "overlap")`), opening up as the layer grows. Neither rises above chance at any width under the linear learner (@fig-toy-overlap). A narrow layer thus does not merely represent less of the interaction, it also forces the components it does represent onto shared directions, and given room the learner separates them by more than chance. Every coefficient of these models, with its interval, is in Appendix \ref{sec-appendix-capacity}.
-
-How much of each component the model builds, and how separately it keeps them, depends on how wide the hidden layer is rather than on how many dimensions the interaction spans.
+The amount of overlap is also affected by the width of the hidden layer as well: For the ReLU models, the wider the hidden layer, the less the item and class effects share directions (`r b("item_class", "width", kindv = "overlap")`). Similarly, the overlap between the interaction and the item-class subspace follows the same pattern (`r b("int_margins", "width", kindv = "overlap")`). The linear models show a different pattern, however. The item-class overlap shows no effect as a function of width, and the interaction effect's overlap with the item-class space grows as a function of the width (`r b("int_margins", "width", armv = "linear", kindv = "overlap")`), climbing from `r fv("int_margins", 8, "linear", "overlap")` to `r fv("int_margins", 256, "linear", "overlap")` times chance. It approaches chance without reaching it, and both overlaps stay below chance at every width under the linear learner (@fig-toy-overlap). Smaller hidden layers thus do not merely represent less of the interaction, they also force the components onto shared directions.
 
 # Experiment 2: Language Models {#sec-exp2}
 
@@ -1190,9 +1178,9 @@ The chance level for overlap is $r/d$, where $r$ is the dimensionality of the ta
 
 Whether the item and class effects are orthogonal depends on the width of the representation. @fig-toy-overlap reports that relationship from the fitted models; this appendix gives the remaining properties of the artificial-language runs.
 
-Under ReLU, overlap stays below chance at wide layers and rises above it as the layer narrows, while the linear condition stays well below chance at every width. Varying the rank of the interaction moves that crossing only slightly, and far less than it moves the interaction's own overlap with the margins.
+Under ReLU, overlap stays below chance at wide layers and rises above it as the layer narrows, while the linear condition stays well below chance at every width.
 
-At low widths, the representations also vary substantially across runs, with this variability decreasing as width increases. For example, two runs of the same language differ by `r g(seedspan(8, "item"), 2)` in the item effect and `r g(seedspan(8, "class"), 2)` in the class effect at width 8, compared with `r g(seedspan(32, "item"), 2)` and `r g(seedspan(32, "class"), 2)` at width 32. This variability reflects the different ways models can distribute information when representational capacity is limited.
+The two summaries that follow are descriptive medians across runs rather than estimates from the fitted models. At low widths, the representations vary substantially across runs, with this variability decreasing as width increases. For example, two runs of the same language differ by `r g(seedspan(8, "item"), 2)` in the item effect and `r g(seedspan(8, "class"), 2)` in the class effect at width 8, compared with `r g(seedspan(32, "item"), 2)` and `r g(seedspan(32, "class"), 2)` at width 32. This variability reflects the different ways models can distribute information when representational capacity is limited.
 
 Two properties of the language also affect the composition of the item-by-class structure (Table \ref{tbl-lang}). Increasing the contribution of context reduces the interaction share, while increasing the item's share in the language produces a corresponding increase in its share of the representation.
 
@@ -1206,8 +1194,6 @@ toy_bylang |>
   kable_styling(latex_options = c("HOLD_position"), font_size = 8) |>
   collapse_rows(1, latex_hline = "major", valign = "top")
 ```
-
-Whether an interaction is detected at all, rather than how large it is, separates the two activations further. Every language counted here holds both an item and a class effect, so an additive one is genuinely an item part plus a class part. Across the `r cm(nullget("linear", TRUE, "n"))` of them that also contained an interaction, the linear learner's interaction interval excludes zero in `r sprintf("%.0f%%", 100 * nullget("linear", TRUE, "flagged_ez"))` of them against `r sprintf("%.0f%%", 100 * nullget("ReLU", TRUE, "flagged_ez"))` for ReLU; where the language contained no interaction the rates were `r sprintf("%.0f%%", 100 * nullget("linear", FALSE, "flagged_ez"))` and `r sprintf("%.0f%%", 100 * nullget("ReLU", FALSE, "flagged_ez"))` respectively, against a test that flags a truly-zero component about 5% of the time (Appendix \ref{sec-appendix-validate}). A linear learner therefore builds interaction structure it has no parameter for, and a ReLU learner registers one even where the language holds none.
 
 {{< pagebreak >}}
 
