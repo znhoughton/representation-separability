@@ -825,7 +825,7 @@ In contrast to the main effects, the interaction is not orthogonal to class or i
 #| fig-width: 6.3
 #| fig-height: 2.5
 #| out-width: "100%"
-#| fig-cap: "The three components through the network, for every model and linguistic category. Relative depth runs from the static embedding layer (0) to the final block (1). Rows are the three components' shares of the item-by-class structure, which sum to one within each model and layer. Each line is one model: color distinguishes the training corpus, linetype the three matched widths. The shaded band is that model's re-split 95% interval."
+#| fig-cap: "The three components through the network, for every model and linguistic category. Relative depth runs from the static embedding layer (0) to the final block (1). Rows are the item effect, the class effect and their interaction, each as a share of the item-by-class structure, which sum to one within each model and layer. Each line is one model: color distinguishes the training corpus, linetype the three matched widths. The shaded band is that model's re-split 95% interval."
 # Built by hand rather than pivoted, because each component carries its own re-split interval.
 band <- function(d, val, lo, hi, label) {
   tibble(construction = d$construction, family = d$family, scale = d$scale, depth = d$depth,
@@ -835,10 +835,12 @@ band <- function(d, val, lo, hi, label) {
 }
 plt <- llm
 plt <- bind_rows(
-  band(plt, "size_item", "size_item_lo", "size_item_hi", "item effect"),
-  band(plt, "size_class", "size_class_lo", "size_class_hi", "class effect"),
+  band(plt, "size_item", "size_item_lo", "size_item_hi", "item"),
+  band(plt, "size_class", "size_class_lo", "size_class_hi", "class"),
   band(plt, "size_int", "size_int_lo", "size_int_hi", "interaction")) |>
-  mutate(component = factor(component, c("item effect", "class effect", "interaction")))
+  # Short labels, matching @fig-toy. Spelled out they are longer than the row is tall, and the
+  # rotated strip text clipped mid-word ("class effec").
+  mutate(component = factor(component, c("item", "class", "interaction")))
 # Color separates the two corpora, linetype the three matched widths, so each of the six lines
 # is identifiable rather than three of them sharing one color. The shaded band is each model's
 # re-split 95% interval; it is narrow enough to read as a thickening of the line, which is the
