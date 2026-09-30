@@ -602,7 +602,8 @@ llm_gain <- llm_deep |>
          gab = (v_item + v_class) / tot_var,         # know both: the additive account
          gabg = (v_item + v_class + v_int) / tot_var,# know both plus the interaction
          gg = v_int / tot_var,                       # what the interaction adds, same scale
-         gi = v_int / (v_int + within_var))          # ... as a share of what additive leaves
+         gi = v_int / (v_int + within_var),          # ... as a share of what additive leaves
+         gctx = within_var / tot_var)                # the rest: context within a cell
 
 # A gain as a percentage range across the twelve grids, or across one construction's six models.
 gr <- function(col, constr = NULL, digits = 0) {
@@ -658,7 +659,7 @@ In Experiment 1 we test our measurement on an artificial language whose features
 
 ## Dataset {#sec-exp1-data}
 
-In order to examine the separability of linguistic representations, we constructed an artificial language which comprises a probability distribution over a vocabulary of `r cm(600)` tokens. Every observation is a combination of a **form** (one of `r max(toy$n_form)`), a **class** (one of `r max(toy$n_class)`), and a **context** (drawn from a pool of 400). The motivation for this setup is to give each word a naturalistic environment: the word occurs in a context that favors a specific class-membership (e.g., *walk* as a verb occurs in a different context than *walk* as a noun). Each form is observed `r max(toy$n_obs)` times in each class, each time in a different context, mirroring the patterns of human language. Consider *walk* used as a verb in one of those contexts. Four things determine the distribution over the next token. *Walk* itself contributes the same amount regardless of the class it is used in, and the verb class also contributes the same amount for every item. The third contribution is what is specific to *walk*-as-a-verb over and above those two: every form and every class has its own random vector, and this term multiplies *walk*'s by the verb's, entry by entry. The context contributes the rest, which is noise as far as our question goes, though the model still has to encode it in order to accurately learn the language. The four are weighted, summed and passed through a softmax layer in order to create the ground truth probability distribution over next tokens for a given input:
+In order to examine the separability of linguistic representations, we constructed an artificial language which comprises a probability distribution over a vocabulary of `r cm(600)` tokens. Every observation is a combination of a **form** (one of `r max(toy$n_form)`), a **class** (one of `r max(toy$n_class)`), and a **context** (drawn from a pool of 400). The motivation for this setup is to give each word a naturalistic environment: each word occurs in a context that favors a specific class-membership (e.g., *walk* as a verb occurs in a different context than *walk* as a noun). Each form is observed `r max(toy$n_obs)` times in each class, each time in a different context, mirroring the patterns of human language. Consider *walk* used as a verb in one of those contexts. Four things determine the distribution over the next token. *Walk* itself contributes the same amount regardless of the class it is used in, and the verb class also contributes the same amount for every item. The third contribution is what is specific to *walk*-as-a-verb over and above those two: every form and every class has its own random vector, and this term multiplies *walk*'s by the verb's, entry by entry. The context contributes the rest, which is noise as far as our question goes, though the model still has to encode it in order to accurately learn the language. The four are weighted, summed and passed through a softmax layer in order to create the ground truth probability distribution over next tokens for a given input:
 
 $$
 \begin{aligned}
@@ -670,7 +671,7 @@ $$
 \end{aligned}
 $$ {#eq-toy}
 
-Each term is isotropically scaled to unit variance before it is weighted,[^2] so changing the weights changes the mix of the three effects without changing how much signal there is in total.
+Each term is isotropically scaled to unit variance before being weighted,[^2] so changing the weights changes the mix of the three effects without changing how much signal there is in total.
 
 [^2]: Specifically, each observation consists of a form in a specific class and a context, paired with that term's contribution to the next-token distribution for that observation. We normalize this dataset by dividing each value by the total standard deviation across all observations.
 
@@ -704,17 +705,17 @@ For each representation we report two measurements. The first measure is the fra
 
 [^5]: The class effect spans at most one direction fewer than the number of classes, so it is low-dimensional in both experiments: one direction in Experiment 2 and at most three in Experiment 1. Its projection into the item subspace, which has many more dimensions, has high overlap by chance; we therefore do not report it.
 
-To quantify whether a size is meaningful, we compare each against zero, which is the null because the dot product of two independent split estimates has an expected value of zero if there is no structure in the underlying representations. We redraw the split two hundred times and call a size meaningful when its confidence interval excludes zero; for components whose value is exactly zero this flags an effect about 5% of the time (Appendix \ref{sec-appendix-validate}), the false-positive rate expected of a 95% confidence interval.
+To quantify whether a size is meaningful, we redraw the split two hundred times and estimate how often its confidence interval excludes zero; for components whose value is exactly zero this flags an effect about 5% of the time (Appendix \ref{sec-appendix-validate}), the false-positive rate expected of a 95% confidence interval.
 
 To quantify whether an overlap is meaningful, we project the effect, held exactly as measured, onto two hundred random subspaces of the same rank, which gives the distribution of overlaps an unrelated subspace would yield. An overlap below that baseline indicates meaningful orthogonality; an overlap above the baseline indicates meaningful non-orthogonality. We report each overlap as a multiple of the baseline's median, with how many measurements fall outside its 95% interval; Appendix \ref{sec-appendix-math} gives the algebra for both measures.
 
 ![The four item-by-class means formed by two items in two classes. The arrow is $\gamma(i,c)$.](fig-measurement.pdf){#fig-measurement width="78%"}
 
-It's important to note that the weights in @eq-toy describe the distribution the model is trained to match, while the measure decomposes the representation that the model learns, so the two sets of numbers are not expected to be identical: a learner handed a language that is 85% interaction can represent it with the interaction taking a far smaller share. Appendix \ref{sec-appendix-validate} reports a separate check in which components were set directly in a representation and recovered almost exactly, which is what licenses interpreting the results below as facts about the learner rather than about the measure. We include runs only if at least one of the three components has a re-split interval excluding zero; where none does, the three shares divide noise.
+It's important to note that the weights in @eq-toy describe the ground-truth distribution the model is trained to match, while the measure decomposes the representation that the model *learns*, so the two sets of numbers are necessarily analogous: a learner handed a language that is 85% interaction can learn a representation in which the interaction is far smaller (or larger). Appendix \ref{sec-appendix-validate} reports a separate check in which components were set directly in a representation and recovered almost exactly, which is what licenses interpreting the results below as facts about the learner rather than about the measure. We include runs only if at least one of the three components has a re-split interval excluding zero; where none does, the three shares divide noise.
 
 ### Analysis {#sec-exp1-analysis}
 
-We model our data using an ordered beta regression [@kubinec2023ordbeta] for the first measurement and a Gaussian model for the second measurement, both in *brms* [@burkner2017brms] with default priors. For the first measurement, we modeled each component's fraction of the representation as a function of its own effect size in the language, the hidden width, and the total rank of the planted structure (with interactions between each), with the other two effect sizes as controls, and random intercepts by language. @eq-ordbeta demonstrates the model for the item effect; the class and interaction models are analogous, but with their own effect being included as an interaction term rather than the item effect. All predictors are centered, and a language a specific combination of parameters, so its five seeds share an intercept.
+We model our data using an ordered beta regression [@kubinec2023ordbeta] for the first measurement and a Gaussian model for the second measurement, both in *brms* [@burkner2017brms] with default priors. For the first measurement, we modeled each component's fraction of the representation as a function of its own effect size in the language, the hidden width, and the total rank of the planted structure (with interactions between each), with the other two components as controls, and random intercepts by language (language here refers to the 5 languages that share parameter settings but differ by seed). @eq-ordbeta demonstrates the model for the item effect; the class and interaction models are analogous, but with their own effect being included as an interaction term rather than the item effect. All predictors are centered. Coefficient values here indicate how much a specific parameter affects the amount that the model represents either item, class, or the interaction.
 
 $$
 \begin{aligned}
@@ -722,7 +723,7 @@ $$
 \end{aligned}
 $$ {#eq-ordbeta}
 
-For our second measure, we modeled each overlap as a logged multiple of its own chance level with fixed-effects for each component, width, and total rank, with a random intercept for language (@eq-overlap). All predictors are centered for this model as well.
+For our second measure, we modeled each overlap as a logged multiple of its own chance level with fixed-effects for each component, width, and total rank, with a random intercept for language (@eq-overlap). All predictors are centered for this model as well. Coefficient values here indicate the extent to which each parameter causes the item, class, and interaction dimensions to be orthogonal or non-orthogonal.
 
 $$
 \begin{aligned}
@@ -786,23 +787,23 @@ Our stimuli comprise two linguistic categories: part of speech ([noun]{.smallcap
 
 [^6]: OPT-BabyLM's tokenizer is uncased, so this choice has no effect for that family of models. On the other hand, Pythia's tokenizer is not uncased; however, lowercasing the input would be the larger distortion, since a sentence-initial word is capitalized in written English which the model was trained on.
 
-An item is included only if it occurs at least ten times in each class; forms occurring in only one are excluded, which bites harder for part of speech, since fewer forms occur as both noun and verb than nouns occur as both subject and object. This yields `r max(llm$n_items[llm$construction == "POS (noun/verb)"])` items for part of speech and `r max(llm$n_items[llm$construction == "role (subject/object)"])` for grammatical role, with median counts per class running from `r stimrange()` (@tbl-constructions), inside the range we validated for the measurement (Appendix \ref{sec-appendix-validate}).
+An item is included only if it occurs at least ten times in each class; forms occurring in only one are excluded. This yields `r max(llm$n_items[llm$construction == "POS (noun/verb)"])` items for part of speech and `r max(llm$n_items[llm$construction == "role (subject/object)"])` for grammatical role, with median counts per class running from `r stimrange()` (@tbl-constructions), inside the range we validated for the measurement (Appendix \ref{sec-appendix-validate}).
 
 ## Method {#sec-exp2-method}
 
-The decomposition, the two reported quantities, and the replication logic are identical to Experiment 1. For every token we take the hidden state of the word's **last subword** at every layer of each model (using the model's own tokenizer).[^7]
+The decomposition, the two reported quantities, and the replication logic are identical to Experiment 1. For every token we take the hidden state of the word's last subword at every layer of each model (using the model's own tokenizer).[^7]
 
 [^7]: Almost every item is a single subword, so this choice has little bearing on the results: zero items are split into multiple subword tokens under Pythia's tokenizer, and only eight are split into multiple subword tokens under OPT-BabyLM's tokenizer.
 
-Transformer hidden states contain a few *rogue* dimensions whose variance exceeds the rest by two to three orders of magnitude [@timkey2021bark], and these would otherwise dominate any subspace estimated from the raw scatter, so we divide each dimension by its standard deviation before decomposing (Appendix \ref{sec-appendix-standardize}).
+Transformer hidden states contain a few rogue dimensions whose variance exceeds the rest by two to three orders of magnitude [@timkey2021bark], and these would otherwise dominate any subspace estimated from the raw scatter, so we divide each dimension by its standard deviation before decomposing (Appendix \ref{sec-appendix-standardize}).
 
 ## Results {#sec-exp2-results}
 
 The results for the final layer are reported in @tbl-llm; the layer-by-layer results are shown in @fig-llm.
 
-The item effect is the largest component in both categories, running from `r ldrng("POS (noun/verb)", "size_item", 3)` for part of speech and `r ldrng("role (subject/object)", "size_item", 3)` for grammatical role. What differs between them is how the remainder divides. For grammatical role the class effect, at `r ldrng("role (subject/object)", "size_class", 3)`, is comparable to the interaction at `r ldrng("role (subject/object)", "size_int", 3)`; for part of speech the interaction, at `r ldrng("POS (noun/verb)", "size_int", 3)`, runs well above the class effect at `r ldrng("POS (noun/verb)", "size_class", 3)`.
+The item effect is the largest component in both categories, running from `r ldrng("POS (noun/verb)", "size_item", 3)` for part of speech and `r ldrng("role (subject/object)", "size_item", 3)` for grammatical role. For both grammatical role and part of speech, the effect of class is mostly comparable (`r ldrng("role (subject/object)", "size_class", 3)` vs `r ldrng("POS (noun/verb)", "size_class", 3)` respectively). On the other hand, while the interaction effect is larger than the class effect for part of speech (`r ldrng("POS (noun/verb)", "size_int", 3)`), the same is not true for grammatical role (`r ldrng("role (subject/object)", "size_int", 3)`). This may indicate that part of speech is more lexicalized than grammatical role, perhaps unsurprisingly.
 
-These are shares of the item-by-class structure, which say how that structure divides rather than how much of a token's representation it accounts for. Placing the three on one scale, the reduction in squared error when predicting a token's hidden state against guessing the grand mean, knowing which word a token is accounts for `r gr("ga")` of that error, knowing which class it is used in a further `r gr("gb")`, and knowing the word-class combination another `r gr("gg")` on top of both. The item-specific component therefore contributes at least as much as the class it sits inside in `r gbeat()` of the twelve grids, and roughly three times as much for part of speech. Appendix \ref{sec-appendix-llm} gives the figures per model.
+Another way to describe these results is with respect to the whole representation rather than the item-by-class structure: the item effect accounts for `r gr("ga")` of what varies in a token, the class effect `r gr("gb")`, and the interaction `r gr("gg")`, with the remaining `r gr("gctx")` being the context a word appears in. Appendix \ref{sec-appendix-llm} gives the figures per model.
 
 Both the class effect and the interaction grow stronger through the layers of the model. The interaction is essentially absent at layer 0 in both categories, between `r allrange("size_int", deep = FALSE)` across every category and model, and rises to between `r allrange("size_int")` (@fig-llm, top row). This is not surprising since at the first layer, the model has yet to integrate enough context into the representation to commit to the class of the representation. What the network builds over those layers is also not an artifact of where a word sits in the sentence: zeroing OPT-BabyLM's learned absolute position embeddings leaves the class structure more word-specific rather than less, and Pythia, which has no such embeddings to remove, shows the interaction at least as strongly (Appendix \ref{sec-appendix-positions}).
 
@@ -861,7 +862,7 @@ ggplot(plt, aes(depth, share, color = family, linetype = scale,
 
 # Experiment 3: Probing the Interaction {#sec-exp3}
 
-Experiment 2 shows that the interaction is large and that it replicates across independent splits of a word's occurrences, but neither shows what information is contained within the interaction. An item-by-class term captures any reliable difference between a word's uses in the two classes, and some of that difference may be correlated with the context, since subjects appear in different constructions from objects.
+Experiment 2 shows that the interaction is present in every model and that it replicates across independent splits of a word's occurrences, but neither shows what information is contained within the interaction. An item-by-class term captures any reliable difference between a word's uses in the two classes, and some of that difference may be correlated with the context, since subjects appear in different constructions from objects.
 
 ## Method {#sec-exp3-method}
 
