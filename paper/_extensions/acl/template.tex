@@ -19,6 +19,15 @@ $endif$
 % Set any of these in the document YAML:
 %   code-url / anon-code-url          written in the text as \codefootnote
 %   weights-url / anon-weights-url    written in the text as \weightsfootnote
+%
+% In the qmd, call them as raw inline LaTeX WITH braces, immediately after the
+% punctuation and with no space before:
+%     ...activation function.`\codefootnote{}`{=latex} The model takes...
+% The {} matters. TeX consumes whitespace after a control word as the terminator
+% of the macro NAME, before expansion, so a bare `\codefootnote`{=latex} followed
+% by text loses the space and the marker collides with the next word. The braces
+% end the name so the following space survives. A bare call is only safe at the
+% end of a paragraph or list item, where nothing follows it.
 % acl-mode decides which URL of each pair appears, so the anonymous and the
 % camera-ready builds come from one source and the URLs live in the header
 % rather than being typed into the prose. With no anon-* URL set, the review
