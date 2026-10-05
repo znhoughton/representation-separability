@@ -152,3 +152,8 @@ model_cache/toy/*
 
 # Run logs from the component-model fits
 toy_models_full.log
+
+# The paper source carries the author block in its YAML header, so it is kept out of
+# the public repository while the work is under double-blind review. Re-add it with
+# `git add -f` once the paper is accepted.
+paper/separability.qmd
