@@ -48,13 +48,13 @@
         <mxCell id="Ac32" value="⋮" style="text;html=1;align=center;fontSize=15;fontColor=#9bb7d4;" vertex="1" parent="1">
           <mxGeometry x="216" y="154" width="88" height="26" as="geometry" />
         </mxCell>
-        <mxCell id="Ar4" value="word I" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;fontSize=13;fontStyle=1" vertex="1" parent="1">
+        <mxCell id="Ar4" value="word i" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;fontSize=13;fontStyle=1" vertex="1" parent="1">
           <mxGeometry x="40" y="180" width="88" height="34" as="geometry" />
         </mxCell>
-        <mxCell id="Ac41" value="α_I" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#eaf2fc;strokeColor=#cccccc;fontSize=14;fontColor=#9bb7d4;" vertex="1" parent="1">
+        <mxCell id="Ac41" value="αᵢ" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#eaf2fc;strokeColor=#cccccc;fontSize=14;fontColor=#9bb7d4;" vertex="1" parent="1">
           <mxGeometry x="128" y="180" width="88" height="34" as="geometry" />
         </mxCell>
-        <mxCell id="Ac42" value="α_I" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#eaf2fc;strokeColor=#cccccc;fontSize=14;fontColor=#9bb7d4;" vertex="1" parent="1">
+        <mxCell id="Ac42" value="αᵢ" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#eaf2fc;strokeColor=#cccccc;fontSize=14;fontColor=#9bb7d4;" vertex="1" parent="1">
           <mxGeometry x="216" y="180" width="88" height="34" as="geometry" />
         </mxCell>
         <mxCell id="Acount" value="each repeated C times" style="text;html=1;fontSize=14;align=center;fontColor=#6c8ebf;fontStyle=1" vertex="1" parent="1">
@@ -94,7 +94,7 @@
         <mxCell id="Bc32" value="⋮" style="text;html=1;align=center;fontSize=15;fontColor=#bda6cc;" vertex="1" parent="1">
           <mxGeometry x="564" y="154" width="88" height="26" as="geometry" />
         </mxCell>
-        <mxCell id="Br4" value="word I" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;fontSize=13;fontStyle=1" vertex="1" parent="1">
+        <mxCell id="Br4" value="word i" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;fontSize=13;fontStyle=1" vertex="1" parent="1">
           <mxGeometry x="388" y="180" width="88" height="34" as="geometry" />
         </mxCell>
         <mxCell id="Bc41" value="β₁" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;strokeWidth=3;fontSize=14;fontColor=#9673a6;fontStyle=1" vertex="1" parent="1">
@@ -140,21 +140,20 @@
         <mxCell id="Cc32" value="⋮" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;strokeWidth=3;fontSize=15;fontColor=#b85450;" vertex="1" parent="1">
           <mxGeometry x="912" y="154" width="88" height="26" as="geometry" />
         </mxCell>
-        <mxCell id="Cr4" value="word I" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;fontSize=13;fontStyle=1" vertex="1" parent="1">
+        <mxCell id="Cr4" value="word i" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;fontSize=13;fontStyle=1" vertex="1" parent="1">
           <mxGeometry x="736" y="180" width="88" height="34" as="geometry" />
         </mxCell>
-        <mxCell id="Cc41" value="γ_I1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;strokeWidth=3;fontSize=14;fontColor=#b85450;fontStyle=1" vertex="1" parent="1">
+        <mxCell id="Cc41" value="γᵢ₁" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;strokeWidth=3;fontSize=14;fontColor=#b85450;fontStyle=1" vertex="1" parent="1">
           <mxGeometry x="824" y="180" width="88" height="34" as="geometry" />
         </mxCell>
-        <mxCell id="Cc42" value="γ_I2" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;strokeWidth=3;fontSize=14;fontColor=#b85450;fontStyle=1" vertex="1" parent="1">
+        <mxCell id="Cc42" value="γᵢ₂" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;strokeWidth=3;fontSize=14;fontColor=#b85450;fontStyle=1" vertex="1" parent="1">
           <mxGeometry x="912" y="180" width="88" height="34" as="geometry" />
         </mxCell>
         <mxCell id="Ccount" value="never repeated" style="text;html=1;fontSize=14;align=center;fontColor=#b85450;fontStyle=1" vertex="1" parent="1">
           <mxGeometry x="736" y="224" width="264" height="24" as="geometry" />
         </mxCell>
 
-        <mxCell id="eq" value="Σ&#95;{i,c} ‖M[i,c] − μ‖²   =   C · Σ&#95;i ‖α&#95;i‖²   +   I · Σ&#95;c ‖β&#95;c‖²   +   Σ&#95;{i,c} ‖γ&#95;ic‖²" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=16;fontStyle=1" vertex="1" parent="1">
-          <mxGeometry x="40" y="266" width="960" height="46" as="geometry" />
+        
         </mxCell>
 
       </root>

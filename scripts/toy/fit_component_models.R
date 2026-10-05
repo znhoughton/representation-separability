@@ -335,7 +335,7 @@ draws <- lapply(names(fits), function(v) {
 panel <- function(blk, show_x) {
   ggplot(filter(draws, block == blk), aes(x = value, y = label)) +
     geom_vline(xintercept = 0, linewidth = 0.3, colour = "grey55") +
-    stat_pointinterval(.width = c(0.66, 0.95), point_size = 1.5,
+    stat_pointinterval(.width = 0.95, point_size = 1.5,
                        interval_size_range = c(0.4, 1.1)) +
     facet_wrap(~ component, nrow = 1,
                labeller = labeller(component = function(x) paste("measured", x))) +

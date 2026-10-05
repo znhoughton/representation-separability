@@ -6,6 +6,9 @@ contributes:
       template: template.tex
       pdf-engine: pdflatex
       cite-method: natbib
+      filters:
+        - at: post-quarto
+          path: longtable-bottomrule.lua
       format-resources:
         - acl.sty
         - acl_natbib.bst
