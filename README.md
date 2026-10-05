@@ -85,7 +85,7 @@ Because a squared length has a positive noise floor, **each of the three sizes**
 interaction) is estimated as a **cross product of two independent half-estimates** of the same grid,
 whose null is exactly zero. Significance is a **200-draw re-split confidence interval**: the split of
 each cell's observations is redrawn 200 times and a size counts as present when that interval
-excludes zero, calibrated to a ~5% false-positive rate on planted zeros. The two overlaps are read
+excludes zero, calibrated to a about 5% false-positive rate on planted zeros. The two overlaps are read
 against a random-orientation null instead. Both experiments obtain the halves the same way, so the
 toy and the language models are measured by the same function with the same arguments. The paper's
 first appendix gives the formal statement.
@@ -121,7 +121,7 @@ It also writes two directories of artefacts, both gitignored:
 
 | | what | size |
 |:--|:--|:--|
-| `data/toy_runs/` | per toy cell: the hidden states the measure ran on, and the raw null draws | ~8 GB |
+| `data/toy_runs/` | per toy cell: the hidden states the measure ran on, and the raw null draws | about 8 GB |
 | `data/llm_nulls/` | per model and construction: the raw null draws | a few hundred KB |
 
 These exist so that a change to how a number is *summarised* never costs another measurement pass.
