@@ -13,8 +13,8 @@ axes and (b) how large the irreducibly-joint interaction is.
 two marginals are near-orthogonal, yet a large, depth-built item×class **interaction** remains that
 cannot be factored back into item plus class, and that interaction is not on axes of its own either:
 13–23% of it lies in the span of the two marginals. The balance is **graded across linguistic
-dimensions**, more portable for grammatical role than for part of speech. An ACL methods/results
-draft is in [`paper/`](paper/).
+dimensions**, more portable for grammatical role than for part of speech. The rendered paper is in [`paper/`](paper/); its Quarto source is withheld
+while the work is under double-blind review.
 
 ## Repository structure
 
@@ -22,7 +22,7 @@ Only scripts that produce something in the paper live under `scripts/`.
 
 ```
 representation-separability/
-├── paper/                          # ACL Quarto draft (separability.qmd + refs.bib)
+├── paper/                          # rendered PDF and refs.bib (source withheld during review)
 ├── scripts/
 │   ├── separability.py             # THE measure (numpy): decomposition, sizes, overlaps, 200-re-split CI
 │   ├── separability_gpu.py         # torch per-spec backend (LLM + toy re-measure); SEP_DEVICE=cuda
@@ -180,5 +180,5 @@ seconds without a GPU. Worth running before spending hours on an extraction.
   before that change are handled by trying the batch sizes this project has used and keeping the one
   that reproduces the saved labels exactly.
 - **Figures:** the two diagrams are drawio sources; Quarto cannot read those, so `bash paper/make-figures.sh` exports the PDFs the qmd includes. Re-run it after editing a diagram.
-- **Paper:** `paper/separability.qmd` uses a custom ACL Quarto template; install it with
-  `quarto add <template-repo>/acl`, then `quarto render`.
+- **Paper:** the Quarto source is not included while the work is under review. It builds
+  with a custom ACL template (`quarto add <template-repo>/acl`, then `quarto render`).
