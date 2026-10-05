@@ -15,6 +15,48 @@ $else$
 \usepackage[review]{acl}
 $endif$
 
+% --- Link footnotes ---------------------------------------------------------
+% Set any of these in the document YAML:
+%   code-url / anon-code-url          written in the text as \codefootnote
+%   weights-url / anon-weights-url    written in the text as \weightsfootnote
+% acl-mode decides which URL of each pair appears, so the anonymous and the
+% camera-ready builds come from one source and the URLs live in the header
+% rather than being typed into the prose. With no anon-* URL set, the review
+% build says the link is withheld; with no url at all, nothing is emitted.
+$if(code-url)$\newcommand{\coderepourl}{$code-url$}$endif$
+$if(anon-code-url)$\newcommand{\anoncoderepourl}{$anon-code-url$}$endif$
+$if(weights-url)$\newcommand{\weightsrepourl}{$weights-url$}$endif$
+$if(anon-weights-url)$\newcommand{\anonweightsrepourl}{$anon-weights-url$}$endif$
+$if(acl-mode)$\newcommand{\aclmodename}{$acl-mode$}$else$\newcommand{\aclmodename}{review}$endif$
+\newcommand{\codefootnote}{%
+  \ifnum\pdfstrcmp{\aclmodename}{review}=0
+    \ifdefined\anoncoderepourl
+      \footnote{All code and analyses in this paper can be found here: \url{\anoncoderepourl}.}%
+    \else
+      \footnote{All code and analyses will be released on acceptance; the link is
+        omitted here to preserve double-blind review.}%
+    \fi
+  \else
+    \ifdefined\coderepourl
+      \footnote{All code and analyses in this paper can be found here: \url{\coderepourl}.}%
+    \fi
+  \fi}
+\newcommand{\weightsfootnote}{%
+  \ifnum\pdfstrcmp{\aclmodename}{review}=0
+    \ifdefined\anonweightsrepourl
+      \footnote{Model weights and checkpoints are released at \url{\anonweightsrepourl}.}%
+    \else
+      \footnote{A model-weights link is omitted here to preserve double-blind
+        review; the weights and checkpoints are released.}%
+    \fi
+  \else
+    \ifdefined\weightsrepourl
+      \footnote{Model weights and checkpoints are released at \url{\weightsrepourl}.}%
+    \fi
+  \fi}
+
+
+
 % Packages from the official ACL template (acl_latex.tex) — safe to load after acl.sty
 \usepackage{times}
 \usepackage{latexsym}

@@ -11,6 +11,8 @@ abstract: |
   
 bibliography: refs.bib
 acl-mode: review
+code-url: https://github.com/znhoughton/representation-separability
+# anon-code-url: https://anonymous.4open.science/r/XXXXXX
 number-sections: true
 tbl-cap-location: bottom
 format:
@@ -687,9 +689,7 @@ The weights $w_\alpha$, $w_\beta$, and $w_\gamma$ in @eq-toy control how much of
 
 ### The learner
 
-The learner model is a multi-layer perceptron (MLP) with a single hidden layer of width $d$ and either a linear or a ReLU activation function.[^4] The model takes as its input three pieces of information: form, class, and context. Each has its own embedding, and the three are concatenated and passed through the model which then outputs a probability distribution over the vocabulary (@fig-training). The training objective is thus to minimize cross-entropy between the model's predicted distribution over the vocabulary and the ground-truth distribution.
-
-[^4]: All code and analyses in this paper can be found here: <https://github.com/znhoughton/representation-separability>.
+The learner model is a multi-layer perceptron (MLP) with a single hidden layer of width $d$ and either a linear or a ReLU activation function.`\codefootnote`{=latex} The model takes as its input three pieces of information: form, class, and context. Each has its own embedding, and the three are concatenated and passed through the model which then outputs a probability distribution over the vocabulary (@fig-training). The training objective is thus to minimize cross-entropy between the model's predicted distribution over the vocabulary and the ground-truth distribution.
 
 ![Structure of our model. Every form is observed 24 times at each class, each time in a different context; that variation across contexts is what the measurement later splits in two.](fig-training.pdf){#fig-training width="100%" fig-env="figure*"}
 

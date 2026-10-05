@@ -1,6 +1,6 @@
 # representation-separability
 
-Follow-up to [*Exemplars in Disguise*](../exemplar-abstraction-sims) (Houghton & Kapatsinski).
+Follow-up to *Exemplars in Disguise*.
 
 **Question.** In a distributed representation of a word, is **class-level** structure (what makes
 *dog* pattern like *cat* — "noun-ness") a **separable component** of the representation, or is it
@@ -180,5 +180,5 @@ seconds without a GPU. Worth running before spending hours on an extraction.
   before that change are handled by trying the batch sizes this project has used and keeping the one
   that reproduces the saved labels exactly.
 - **Figures:** the two diagrams are drawio sources; Quarto cannot read those, so `bash paper/make-figures.sh` exports the PDFs the qmd includes. Re-run it after editing a diagram.
-- **Paper:** `paper/separability.qmd` uses the [ACL Quarto template](https://github.com/znhoughton/quarto-templates)
-  (`quarto add znhoughton/quarto-templates/acl` then `quarto render`).
+- **Paper:** `paper/separability.qmd` uses a custom ACL Quarto template; install it with
+  `quarto add <template-repo>/acl`, then `quarto render`.
