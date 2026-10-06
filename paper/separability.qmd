@@ -752,9 +752,9 @@ Results are visualized in @fig-toy, with the full coefficient results included i
 ```{r}
 #| label: fig-toy
 #| fig-width: 3.05
-#| fig-height: 3.1
+#| fig-height: 2.4
 #| out-width: "100%"
-#| fig-cap: "The x-axis is the ground truth effect size of each component in the language. The y-axis is the effect size of each component in the MLP's learned representations. Points are individual runs; lines are fitted values from @eq-ordbeta with 95% intervals, coloured by hidden width. The dashed diagonal indicates where representations matching the ground truth would lie."
+#| fig-cap: "Ground-truth effect size of each component in the language (x) against its size in the MLP's representations (y). Points are runs; lines are fitted values from @eq-ordbeta with 95% intervals, coloured by hidden width. The dashed diagonal marks exact recovery."
 #|
 .fit <- rpred |>
   filter(kind == "size", grid == "planted") |>
@@ -828,9 +828,9 @@ In contrast to the main effects, the interaction effect is not orthogonal to cla
 ```{r}
 #| label: fig-llm
 #| fig-width: 3.05
-#| fig-height: 3.025
+#| fig-height: 2.65
 #| out-width: "100%"
-#| fig-cap: "The fraction of the representation (ignoring context) accounted for by each component, such that they sum to 1, as a function of layer. x-axis is relative depth, from the embedding layer (0) to the final layer (1). The y-axis is the fraction of the representation accounted for by each component. Each line is one model, color is the training corpus, linetype is the hidden layer's width width; shading is the 95% interval."
+#| fig-cap: "Fraction of the representation (ignoring context) accounted for by each component, summing to 1, against relative depth from the embedding layer (0) to the final layer (1). Each line is one model; colour is the training corpus, linetype the hidden width, shading the 95% interval."
 # Built by hand rather than pivoted, because each component carries its own re-split interval.
 band <- function(d, val, lo, hi, label) {
   tibble(construction = d$construction, family = d$family, scale = d$scale, depth = d$depth,
@@ -886,11 +886,9 @@ What remains after removing those components is the interaction: the part of a w
 
 ## Results {#sec-exp3-results}
 
-Results are reported in @tbl-decode. For all models, the class is recoverable from the interaction at well above chance while the permutated null sits on chance, reaching `r g(dec$class_peritem[dec$construction == "POS (noun/verb)" & dec$family == "Pythia"], 2)` for part of speech and `r g(dec$class_peritem[dec$construction == "role (subject/object)" & dec$family == "Pythia"], 2)` for grammatical role. The null landing on chance is what makes those accuracies interpretable, since it is the same probe, the same folds, and the same word-level averaging with only the labeling destroyed.
-
 ```{r}
-#| label: tbl-decode
-#| tbl-cap: "Accuracy of recovering the class from the interaction, at the deepest layer of the largest model in each family, compared to the null; brackets are bootstrapped intervals."
+#| label: dec-setup
+#| include: false
 dec <- bind_rows(
   rd("llm_decode_pos_form.csv") |> mutate(construction = "POS (noun/verb)"),
   rd("llm_decode_interaction.csv") |>
@@ -899,7 +897,13 @@ dec <- bind_rows(
                                  role = "role (subject/object)"))) |>
   left_join(MODELS, by = "model") |>
   mutate(construction = factor(construction, c("POS (noun/verb)", "role (subject/object)")))
+```
 
+Results are reported in @tbl-decode. For all models, the class is recoverable from the interaction at well above chance while the permutated null sits on chance, reaching `r g(dec$class_peritem[dec$construction == "POS (noun/verb)" & dec$family == "Pythia"], 2)` for part of speech and `r g(dec$class_peritem[dec$construction == "role (subject/object)" & dec$family == "Pythia"], 2)` for grammatical role. The null landing on chance is what makes those accuracies interpretable, since it is the same probe, the same folds, and the same word-level averaging with only the labeling destroyed.
+
+```{r}
+#| label: tbl-decode
+#| tbl-cap: "Accuracy of recovering the class from the interaction, at the deepest layer of the largest model in each family, compared to the null; brackets are bootstrapped intervals."
 dec |>
   arrange(construction, family) |>
   transmute(class = shortname(construction), model = paste(family, size),
