@@ -805,11 +805,11 @@ An item is included only if it occurs at least ten times in each class. This yie
 
 ## Method {#sec-exp2-method}
 
-The decomposition, the two reported quantities, and the replication logic are identical to Experiment 1. For every token we take the hidden state of the word's last subword at every layer of each model (using the model's own tokenizer).[^6]
+The decomposition, the two reported quantities, and the replication logic are identical to Experiment 1. For every token we take the hidden state of the word's last subword at every layer of each model.[^6]
 
 [^6]: Almost every item is a single subword, so this choice has little bearing on the results: zero items are split into multiple subword tokens under Pythia's tokenizer, and only eight are split under OPT-BabyLM's tokenizer.
 
-Transformer hidden states contain a few rogue dimensions whose means sit far from the origin and whose variance is disproportionately high [@timkey2021bark], and these would otherwise dominate any subspace estimated from the raw scatter, so we divide each dimension by its standard deviation before decomposing (Appendix \ref{sec-appendix-standardize}).
+Transformer hidden states contain a few rogue dimensions whose means and variance are both disproportionately high [@timkey2021bark], and these would otherwise dominate any subspace estimated from the raw embeddings, so we divide each dimension by its standard deviation before decomposing (Appendix \ref{sec-appendix-standardize}).
 
 ## Results {#sec-exp2-results}
 
@@ -886,7 +886,7 @@ What remains after removing those components is the interaction: the part of a w
 
 ## Results {#sec-exp3-results}
 
-Results are reported in @tbl-decode.
+Results are reported in @tbl-decode. For all models, the class is recoverable from the interaction at well above chance while the permutated null sits on chance, reaching `r g(dec$class_peritem[dec$construction == "POS (noun/verb)" & dec$family == "Pythia"], 2)` for part of speech and `r g(dec$class_peritem[dec$construction == "role (subject/object)" & dec$family == "Pythia"], 2)` for grammatical role. The null landing on chance is what makes those accuracies interpretable, since it is the same probe, the same folds, and the same word-level averaging with only the labeling destroyed.
 
 ```{r}
 #| label: tbl-decode
@@ -911,9 +911,7 @@ dec |>
   kable_styling(latex_options = c("HOLD_position"), font_size = 7)
 ```
 
-For both families of LLMs across both linguistic categories, the class is recoverable from the interaction at well above chance while the permutated null sits on chance, reaching `r g(dec$class_peritem[dec$construction == "POS (noun/verb)" & dec$family == "Pythia"], 2)` for part of speech and `r g(dec$class_peritem[dec$construction == "role (subject/object)" & dec$family == "Pythia"], 2)` for grammatical role, with bootstrap intervals excluding the nulls in all four cases. The null landing on chance is what makes those accuracies interpretable, since it is the same probe, the same folds, and the same word-level averaging with only the labeling destroyed.
-
-The results demonstrate that $\gamma$ carries class information rather than generic correlated context, since generic context would not survive holding the word fixed and removing the shared axis. It does not show that $\gamma$ is *only* the class label: context correlated with the class within a word survives both removals, so the interaction remains an upper bound.
+The results demonstrate that $\gamma$ carries class information rather than generic correlated context. It does not show that $\gamma$ is *only* the class label: context correlated with the class within a word survives both removals, so the interaction remains an upper bound.
 
 # Discussion and Conclusion {#sec-discussion}
 
