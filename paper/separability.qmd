@@ -793,7 +793,7 @@ Experiment 1 established that if the language a learner model encounters is not 
 
 ## Dataset {#sec-exp2-data}
 
-In order to examine the separability of linguistic representations in models, we examined two linguistic categories: part of speech and grammatical role. For both, we concatenate six general-domain English Universal Dependencies treebanks [@nivre2020ud]: EWT [@silveira2014ewt], GUM [@zeldes2017gum], LinES [@ahrenberg2007lines], ParTUT [@sanguinetti2015partut], GENTLE [@aoyama2023gentle], and PUD [@zeman2017pud], giving `r cm(gsf("ud_corpus", "n_sentences", 41095))` sentences and `r cm(gsf("ud_corpus", "n_pre_grid_tokens", 706323))` word tokens. We measure two model families at three matched scales: OPT-BabyLM, trained on developmentally plausible quantities of child-available language [@warstadt2023babylm; @houghton2026holisticstorageverb+up], and Pythia, trained on the Pile [@biderman2023pythia], at 125M/160M, 350M/410M, and 1.3B/1.4B parameters, with widths of 768, 1024, and 2048. Appendix \ref{sec-appendix-models} gives parameter counts and training-token estimates.
+In order to examine the separability of linguistic representations in models, we examined two linguistic categories: part of speech and grammatical role. For both, we concatenate six general-domain English Universal Dependencies treebanks [@nivre2020ud], giving `r cm(gsf("ud_corpus", "n_sentences", 41095))` sentences and `r cm(gsf("ud_corpus", "n_pre_grid_tokens", 706323))` word tokens; Appendix \ref{sec-appendix-stimuli} provides the full breakdown. We measure two model families at three matched scales: OPT-BabyLM, trained on developmentally plausible quantities of child-available language [@warstadt2023babylm; @houghton2026holisticstorageverb+up], and Pythia, trained on the Pile [@biderman2023pythia], at 125M/160M, 350M/410M, and 1.3B/1.4B parameters, with widths of 768, 1024, and 2048. Appendix \ref{sec-appendix-models} gives parameter counts and training-token estimates.
 
 ## Stimuli {#sec-exp2-stimuli}
 
@@ -1302,6 +1302,8 @@ They differ in two ways that matter elsewhere in the paper. The training corpora
 {{< pagebreak >}}
 
 # Stimulus Counts {#sec-appendix-stimuli}
+
+The six general-domain English Universal Dependencies treebanks [@nivre2020ud] we concatenate are EWT [@silveira2014ewt], GUM [@zeldes2017gum], LinES [@ahrenberg2007lines], ParTUT [@sanguinetti2015partut], GENTLE [@aoyama2023gentle], and PUD [@zeman2017pud].
 
 ```{r}
 #| label: tbl-constructions
