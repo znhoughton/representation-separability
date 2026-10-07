@@ -651,7 +651,7 @@ Abstract knowledge also shapes something as deceptively simple as word order pre
 
 Exemplar theories, in contrast, argue that abstract representations are not necessary. Instead, linguistic knowledge may be stored as context-rich memory traces whose properties vary with experience. Much of the evidence for this comes from the phonetics literature, showing that phonetic representations are surprisingly rich, as well as the psycholinguistic literature's line of research demonstrating the holistic storage of multi-morphemic and multi-word phrases [@bybee1999usagebasedphonology; @houghton2025roleabstractrepresentations; @houghton2026holisticstorageverb+up; @houghton2023doespredictabilitydrive; @stembergerAreInflectedForms2004; @stembergerFrequencyLexicalStorage1986; @schreuderBaayen1997complexsimplex].
 
-The strongest evidence for exemplars comes from frequency in favorable context effects [FFC, @raymondBrown2012frequency; @kapatsinski2026lexicalfrequency]. FFC effects describe a phenomenon in which a form's behavior is predicted by how often it has occurred in a context that conditions a change rather than by how often it has occurred overall [@kapatsinski2026lexicalfrequency]. FFC effects show that it is not raw frequency, but rather frequency in a specific *context*, that is stored. For example, @raymondBrownHealy2016cumulative found that English words ending in /t/ or /d/ were more likely to be deleted if they were words that frequently occurred before a consonant (the conditioning context for that deletion), regardless of the words *overall* frequency. Crucially, this deletion was observed even when the word occurred outside of a context that favored the conditioning [@bybee2002wordfrequency]. While we consider FFC effects to be the clearest evidence for exemplars, they are by no means the only evidence: context-specific storage is also evidenced by phonetic reduction [@bybeeScheibman1999constituency], gradient phonetic representations [@mcmurrayGradientSensitivityWithincategory2008; @palmeri1993episodicencoding; @miller1994internalstructure], reading times for binomials [@siyanova-chanturia2011seeingphrasetime], word-order preferences [@morgan2016abstractknowledgedirect; @morganModelingIdiosyncraticPreferences2015; @morgan2024productiveknowledgeitemspecific], and recognition times [@kapatsinskiRadicke2009prefabs; @houghton2025multiwordrepresentationsminds].
+The strongest evidence for exemplars comes from frequency in favorable context effects [FFC, @raymondBrown2012frequency; @kapatsinski2026lexicalfrequency]. FFC effects describe a phenomenon in which a form's behavior is predicted by how often it has occurred in a context that conditions a change rather than by how often it has occurred overall [@kapatsinski2026lexicalfrequency]. FFC effects show that it is not raw frequency, but rather frequency in a specific *context*, that is stored. For example, @raymondBrownHealy2016cumulative found that English words ending in /t/ or /d/ were more likely to be deleted if they were words that frequently occurred before a consonant (the conditioning context for that deletion), regardless of the word's *overall* frequency. Crucially, this deletion was observed even when the word occurred outside of a context that favored the conditioning [@bybee2002wordfrequency]. While we consider FFC effects to be the clearest evidence for exemplars, they are by no means the only evidence: context-specific storage is also evidenced by phonetic reduction [@bybeeScheibman1999constituency], gradient phonetic representations [@mcmurrayGradientSensitivityWithincategory2008; @palmeri1993episodicencoding; @miller1994internalstructure], reading times for binomials [@siyanova-chanturia2011seeingphrasetime], word-order preferences [@morgan2016abstractknowledgedirect; @morganModelingIdiosyncraticPreferences2015; @morgan2024productiveknowledgeitemspecific], and recognition times [@kapatsinskiRadicke2009prefabs; @houghton2025multiwordrepresentationsminds].
 
 FFC effects demonstrate that lexical representations can encode information about the contexts in which a word occurs. This raises a more specific question: can a particular use of a word have its own representation, rather than being represented entirely in terms of representations that are shared across words or uses? Consider *walk*, which can function as both a noun and a verb: if its representation as a verb were fully determined by a representation of *walk* and a representation of the verb category, then nothing in its representation would be specific to the *walk*-verb combination. If, instead, *walk* as a verb had a representation of its own, that representation would contain information that cannot be reduced to its constituent parts. Word embeddings offer a way of asking this directly, since they give a separate representation of a word in each category it occurs in. Recent work has targeted a version of this question and demonstrated that abstractions can be narrower than might be expected [@shafaeiBajestan2024pluralization; @nikolaev2025casenumber], but such narrowness still reflects information shared across words within a specific class (just one that is narrower than the classes traditionally proposed). What remains unclear is whether individual word–category combinations have representations of their own.
 
@@ -659,7 +659,7 @@ FFC effects demonstrate that lexical representations can encode information abou
 
 The evidence for both abstraction and item-specificity therefore raises a broader question about the structure of linguistic representations: is a representation of a specific linguistic construction a combination of abstract features, or does that representation also contain item-specific knowledge that is irreducible to these component parts? This is difficult to settle behaviorally, since a learner with no abstract representations at all can look like one that abstracts [@houghton2026exemplars], but it is a property of a representation, and unlike in humans, model representations can be examined directly [@pluthInterpretabilityWhisperEncodings2026; @hinton1986distributed; @elhage2022superposition].
 
-In the present study we examine whether linguistic representations contain both abstract and item-specific information by decomposing a word-in-class representation into three components: a class component (e.g., a verb component), and item component (e.g., *walk* regardless of the part of speech), and an item-of-a-specific-class component (e.g., *walk* as a verb). We first validate this decomposition on a model trained on an artificial language, then apply it to six pretrained language models across two linguistic constructions.
+In the present study we examine whether linguistic representations contain both abstract and item-specific information by decomposing a word-in-class representation into three components: a class component (e.g., a verb component), an item component (e.g., *walk* regardless of the part of speech), and an item-of-a-specific-class component (e.g., *walk* as a verb). We first validate this decomposition on a model trained on an artificial language, then apply it to six pretrained language models across two linguistic constructions.
 
 Our main contributions are as follows:
 
@@ -754,7 +754,7 @@ Results are visualized in @fig-toy, with the full coefficient results included i
 #| fig-width: 3.05
 #| fig-height: 2.4
 #| out-width: "100%"
-#| fig-cap: "Ground-truth effect size of each component in the language (x) against its size in the MLP's representations (y). Points are runs; lines are fitted values from @eq-ordbeta with 95% intervals, coloured by hidden width. The dashed diagonal marks exact recovery."
+#| fig-cap: "Ground-truth effect size of each component in the language (x) against its size in the MLP's representations (y). Points are runs; lines are fitted values from @eq-ordbeta with 95% intervals, colored by hidden width. The dashed diagonal marks exact recovery."
 #|
 .fit <- rpred |>
   filter(kind == "size", grid == "planted") |>
@@ -830,7 +830,7 @@ In contrast to the main effects, the interaction effect is not orthogonal to cla
 #| fig-width: 3.05
 #| fig-height: 2.65
 #| out-width: "100%"
-#| fig-cap: "Fraction of the representation (ignoring context) accounted for by each component, summing to 1, against relative depth from the embedding layer (0) to the final layer (1). Each line is one model; colour is the training corpus, linetype the hidden width, shading the 95% interval."
+#| fig-cap: "Fraction of the representation (ignoring context) accounted for by each component, summing to 1, against relative depth from the embedding layer (0) to the final layer (1). Each line is one model; color is the training corpus, linetype the hidden width, shading the 95% interval."
 # Built by hand rather than pivoted, because each component carries its own re-split interval.
 band <- function(d, val, lo, hi, label) {
   tibble(construction = d$construction, family = d$family, scale = d$scale, depth = d$depth,
@@ -1069,7 +1069,7 @@ All three effects read essentially zero when a component is set to zero, at ever
 
 ```{r}
 #| label: tbl-val-null
-#| tbl-cap: "What the measure reports when an effect is set to exactly zero, by observations per item and class, pooled over every other axis of the validation grid. *Median* and *95th pct* summarise the measured share of that effect across runs, and *flagged* is the share of runs whose re-split interval excludes zero, which should sit near the nominal 5%."
+#| tbl-cap: "What the measure reports when an effect is set to exactly zero, by observations per item and class, pooled over every other axis of the validation grid. *Median* and *95th pct* summarize the measured share of that effect across runs, and *flagged* is the share of runs whose re-split interval excludes zero, which should sit near the nominal 5%."
 v_null |>
   transmute(effect, observations = n_obs,
             median = g(med, 5), `95th pct` = g(p95, 4),
@@ -1165,7 +1165,7 @@ toy_bylang |>
 
 ## Component models {#sec-appendix-component-models}
 
-Results for our statistical analysis is presented in Tables \ref{tbl-component-coefs} and \ref{tbl-component-coefs-lin}, and visualized in @fig-toy-coefs.
+Results for our statistical analysis are presented in Tables \ref{tbl-component-coefs} and \ref{tbl-component-coefs-lin}, and visualized in @fig-toy-coefs.
 
 ```{r}
 #| label: tbl-component-coefs
@@ -1277,6 +1277,25 @@ rpred |>
   theme_paper(8) + theme(legend.position = "right")
 ```
 
+# Stimulus Counts {#sec-appendix-stimuli}
+
+The six general-domain English Universal Dependencies treebanks [@nivre2020ud] we concatenate are EWT [@silveira2014ewt], GUM [@zeldes2017gum], LinES [@ahrenberg2007lines], ParTUT [@sanguinetti2015partut], GENTLE [@aoyama2023gentle], and PUD [@zeman2017pud].
+
+```{r}
+#| label: tbl-constructions
+#| tbl-cap: "Stimuli for the two linguistic categories, with the two classes of each in parentheses. *Item types* is how many word forms occur in both of them at least ten times; forms occurring in only one are excluded. *Median tokens* is how often a typical form occurs in each of its two classes, in the order they are listed."
+tibble::tribble(
+  ~class,                                  ~`item types`,
+  "part of speech (noun / verb)",          max(llm$n_items[llm$construction == "POS (noun/verb)"]),
+  "grammatical role (subject / object)",   max(llm$n_items[llm$construction == "role (subject/object)"])) |>
+  mutate(`median tokens` = c(stimmed("pos_noun_verb_form"),
+                             stimmed("role_nsubj_obj"))) |>
+  kbl(booktabs = TRUE, align = "lrl", linesep = "", escape = FALSE) |>
+  kable_styling(latex_options = c("HOLD_position"), font_size = 8)
+```
+
+{{< pagebreak >}}
+
 # Model Details {#sec-appendix-models}
 
 ```{r}
@@ -1298,25 +1317,6 @@ tibble::tribble(
 The six models are listed in @tbl-models. The two families are matched on width rather than on parameter count, which is what the measure is sensitive to: the chance level for overlap is the class subspace rank over the width, so a comparison across models of different width has to be read against different chance levels. Pairing at 768, 1024, and 2048 removes that from the family comparison.
 
 They differ in two ways that matter elsewhere in the paper. The training corpora differ by more than two orders of magnitude in size, which is the manipulation of interest. They also use different mechanisms for representing the position of each token: Pythia uses rotary embeddings, applied inside attention, while OPT learns absolute position embeddings added at the input. Appendix \ref{sec-appendix-positions} uses that difference to rule out absolute position as the source of the interaction.
-
-{{< pagebreak >}}
-
-# Stimulus Counts {#sec-appendix-stimuli}
-
-The six general-domain English Universal Dependencies treebanks [@nivre2020ud] we concatenate are EWT [@silveira2014ewt], GUM [@zeldes2017gum], LinES [@ahrenberg2007lines], ParTUT [@sanguinetti2015partut], GENTLE [@aoyama2023gentle], and PUD [@zeman2017pud].
-
-```{r}
-#| label: tbl-constructions
-#| tbl-cap: "Stimuli for the two linguistic categories, with the two classes of each in parentheses. *Item types* is how many word forms occur in both of them at least ten times; forms occurring in only one are excluded. *Median tokens* is how often a typical form occurs in each of its two classes, in the order they are listed."
-tibble::tribble(
-  ~class,                                  ~`item types`,
-  "part of speech (noun / verb)",          max(llm$n_items[llm$construction == "POS (noun/verb)"]),
-  "grammatical role (subject / object)",   max(llm$n_items[llm$construction == "role (subject/object)"])) |>
-  mutate(`median tokens` = c(stimmed("pos_noun_verb_form"),
-                             stimmed("role_nsubj_obj"))) |>
-  kbl(booktabs = TRUE, align = "lrl", linesep = "", escape = FALSE) |>
-  kable_styling(latex_options = c("HOLD_position"), font_size = 8)
-```
 
 {{< pagebreak >}}
 
@@ -1398,7 +1398,7 @@ In theory, one possible architectural explanation for the interaction could be t
 
 In order to rule this out, we re-extracted every OPT-BabyLM model with the positional embeddings zeroed out. Pythia encodes position with rotary embeddings applied inside attention rather than an additive input embedding, so this analysis was run only for the BabyLMs.
 
-We rule out the effect of position by comparing the class effect to the interaction for the models with positions in tact and positions zeroed out. We operationalize this as the class effect divided by the sum of the class effect and the interaction, which we call the *portable fraction*. The three shares sum to one by construction, and zeroing the embeddings drives the item share up sharply, which pushes the class effect and the interaction down together for reasons unrelated to the split between them. Dividing one by their sum holds the item share out of the comparison. If positions were manufacturing the interaction, removing them should mitigate or eliminate the interaction effect and increase the effect of class, so the portable fraction should rise.
+We rule out the effect of position by comparing the class effect to the interaction for the models with positions intact and positions zeroed out. We operationalize this as the class effect divided by the sum of the class effect and the interaction, which we call the *portable fraction*. The three shares sum to one by construction, and zeroing the embeddings drives the item share up sharply, which pushes the class effect and the interaction down together for reasons unrelated to the split between them. Dividing one by their sum holds the item share out of the comparison. If positions were manufacturing the interaction, removing them should mitigate or eliminate the interaction effect and increase the effect of class, so the portable fraction should rise.
 
 ```{r}
 #| label: tbl-posabl
