@@ -1277,6 +1277,8 @@ rpred |>
   theme_paper(8) + theme(legend.position = "right")
 ```
 
+{{< pagebreak >}}
+
 # Stimulus Counts {#sec-appendix-stimuli}
 
 The six general-domain English Universal Dependencies treebanks [@nivre2020ud] we concatenate are EWT [@silveira2014ewt], GUM [@zeldes2017gum], LinES [@ahrenberg2007lines], ParTUT [@sanguinetti2015partut], GENTLE [@aoyama2023gentle], and PUD [@zeman2017pud].
