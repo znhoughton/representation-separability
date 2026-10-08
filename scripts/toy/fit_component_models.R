@@ -332,6 +332,54 @@ ggsave(out_eff, p_eff, width = 7.2, height = 4.4)
 ggsave(sub("[.]pdf$", ".png", out_eff), p_eff, width = 7.2, height = 4.4, dpi = 160)
 cat(sprintf("\n  main figure -> %s\n", out_eff))
 
+# ---------------------------------------------------------------- appendix figure: width x rank
+# The same quantity as the first row of @fig-toy-effects, but with the planted interaction rank
+# broken out instead of marginalised, which is the only layout that shows the width x rank term
+# the Results quote. Everything it needs is already in scope: this is the planted grid crossed
+# with r_int, so log2_rank varies instead of being held at its mean.
+#
+# Replaces export_component_models.R, which built this from three separate per-component fits
+# (ordbeta_size_item.rds and siblings) and cannot run against the stacked model.
+nd_cross <- expand_grid(own_raw = seq(0, 1, length.out = 30),
+                        width   = D_LEVELS,
+                        r_int   = R_LEVELS) |>
+  mutate(log2_d    = log2(width) - MU_D,
+         log2_rank = log2(R2RANK[as.character(r_int)]) - MU_RANK)
+
+pred_cross <- lapply(COMPS, function(cp) {
+  nd <- nd_cross
+  nd[[OWNC[[cp]]]] <- nd$own_raw - MU_ACH[[sub("^c_", "", OWNC[[cp]])]]
+  epred_for(cp, nd, "own_raw", "width")
+}) |> bind_rows() |> mutate(component = factor(component, levels = COMPS))
+
+summ_cross <- pred_cross |>
+  group_by(component, r_int, grp, x) |>
+  median_qi(.epred, .width = 0.95) |>
+  ungroup()
+
+p_full <- ggplot(summ_cross, aes(x, .epred, colour = grp, fill = grp)) +
+  geom_ribbon(aes(ymin = .lower, ymax = .upper), alpha = 0.14, colour = NA) +
+  geom_line(linewidth = 0.8) +
+  facet_grid(r_int ~ component,
+             labeller = labeller(component = function(z) paste("measured", z),
+                                 r_int     = function(z) paste("rank", z))) +
+  scale_colour_manual(values = WIDC, name = "hidden width") +
+  scale_fill_manual(values = WIDC, guide = "none") +
+  scale_x_continuous(breaks = c(0, 0.25, 0.5, 0.75, 1), limits = c(0, 1)) +
+  coord_cartesian(ylim = c(0, 1)) +
+  labs(x = "effect size in the language", y = "effect size in the representation") +
+  theme_minimal(base_size = 9) +
+  theme(legend.position = "right", legend.key.height = unit(8, "pt"),
+        legend.title = element_text(size = 7.5), legend.text = element_text(size = 7),
+        panel.grid.minor = element_blank(),
+        strip.text = element_text(size = 8.5),
+        axis.title = element_text(size = 8))
+
+out_full <- file.path(FIGDIR, paste0("fig-toy-effects-full", SUFFIX, ".pdf"))
+ggsave(out_full, p_full, width = 7.2, height = 7.6)
+ggsave(sub("[.]pdf$", ".png", out_full), p_full, width = 7.2, height = 7.6, dpi = 160)
+cat(sprintf("  appendix figure -> %s\n", out_full))
+
 # ---------------------------------------------------------------- appendix figure: coefficients
 # The own-strength term is named differently in each model (b_ach_item in one, b_ach_class in
 # the next), so it and its cross-terms are relabelled to common rows: the three panels then line
