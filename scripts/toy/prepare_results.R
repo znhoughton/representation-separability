@@ -182,10 +182,17 @@ for (f in rds) {
       ungroup() |> group_by(own, width, r_int) |>
       median_qi(.epred, .width = .95) |> ungroup()
   }
+  # `planted` and `arch` are the two marginal slices the main figure draws. `cross` varies all
+  # three at once, which is what the width-by-rank appendix figure needs: epred is a nonlinear
+  # function of the linear predictor, so that surface cannot be recovered from the two marginals
+  # afterwards, and exporting it here is what lets the figure be rebuilt from the CSV alone
+  # without the fitted object.
   gr <- list(
     planted = expand_grid(own = seq(0, 1, length.out = 25), width = D_L, r_int = NA_real_),
-    arch    = expand_grid(own = NA_real_, width = D_L, r_int = R_L))
-  if (m$kind == "overlap") gr$planted <- NULL   # no own effect size to sweep
+    arch    = expand_grid(own = NA_real_, width = D_L, r_int = R_L),
+    cross   = expand_grid(own = seq(0, 1, length.out = 25), width = D_L, r_int = R_L))
+  # Neither own-strength sweep applies to the overlap models, which have no planted own effect.
+  if (m$kind == "overlap") { gr$planted <- NULL; gr$cross <- NULL }
   pred_all[[m$name]] <- lapply(GLEV, function(lv) {
     lapply(names(gr), function(g) {
       nd <- gr[[g]] |>
