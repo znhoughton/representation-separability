@@ -940,15 +940,25 @@ Results are reported in @tbl-decode. For all models, the class is recoverable fr
 ```{r}
 #| label: tbl-decode
 #| tbl-cap: "Accuracy of recovering the class from the interaction, at the deepest layer of the largest model in each family, compared to the null; brackets are bootstrapped intervals."
-dec |>
-  arrange(construction, family) |>
-  transmute(class = shortname(construction), model = paste(family, size),
-            accuracy = sprintf("%.2f [%.2f, %.2f]", class_peritem,
-                            class_peritem_lo, class_peritem_hi),
-            null = sprintf("%.2f [%.2f, %.2f]", class_peritem_null,
-                           class_peritem_null_lo, class_peritem_null_hi)) |>
-  kbl(booktabs = TRUE, align = "llll", linesep = "") |>
-  kable_styling(latex_options = c("HOLD_position"), font_size = 7)
+# The construction is a row group rather than a column. As a column its widest cell
+# ("grammatical role") set the width of a field that only ever holds two values, and the four
+# columns together overran the text column. As a group label it costs no width at all.
+local({
+  d <- dec |>
+    arrange(construction, family) |>
+    transmute(class = shortname(construction), model = paste(family, size),
+              accuracy = sprintf("%.2f [%.2f, %.2f]", class_peritem,
+                              class_peritem_lo, class_peritem_hi),
+              null = sprintf("%.2f [%.2f, %.2f]", class_peritem_null,
+                             class_peritem_null_lo, class_peritem_null_hi))
+  # rle, not table(), which would sort the groups alphabetically and so disagree with the
+  # row order arrange() just established.
+  r <- rle(as.character(d$class))
+  d |> select(-class) |>
+    kbl(booktabs = TRUE, align = "lll", linesep = "") |>
+    kable_styling(latex_options = c("HOLD_position"), font_size = 7) |>
+    pack_rows(index = setNames(r$lengths, r$values))
+})
 ```
 
 The results demonstrate that $\gamma$ carries class information rather than generic correlated context.
