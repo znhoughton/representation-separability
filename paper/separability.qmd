@@ -762,7 +762,9 @@ It's important to note that the weights in @eq-toy describe the ground-truth dis
 
 ### Analysis {#sec-exp1-analysis}
 
-We model our data using an ordered beta regression [@kubinec2023ordbeta] for the sizes and a Gaussian model for the overlaps, both in *brms* [@burkner2017brms] with weakly informative priors, given in Appendix \ref{sec-appendix-grid}. Both quantities are fit with the single structure in @eq-model. For the sizes we fit one model over all three components, with Outcome a component's share of the representation and Group that component, predicted by all three planted effect sizes, the hidden width, and the total rank of the planted structure, which is the item, class and interaction ranks summed (`r min(toy$rank)` to `r max(toy$rank)` across the grid), with every term crossed with component so that the architecture effects are free to differ between the item, the class and the interaction. All predictors are centered. A language here is one combination of the four weights and the interaction rank, `r cm(length(unique(paste(toy$key, toy$r_int))))` in all; the five seeds for a language are re-realizations of the same specification rather than different languages, so they share an intercept. Width is the only predictor that varies within a language, and so the only one that can carry a random slope: the effect sizes and the rank are properties of the language itself and are constant across its runs. A random intercept by run lets the three components measured from one trained model covary.
+We model our data using an ordered beta regression [@kubinec2023ordbeta] for the sizes and a Gaussian model for the overlaps, both in *brms* [@burkner2017brms] with uninformative priors, given in Appendix \ref{sec-appendix-grid}. For the sizes we fit one model over all three components, where the outcome variable is the component's share of the representation and group is that component. Fixed-effects for each component, the width of the hidden-layer, and total rank of the language were included along with maximal random effects. @eq-model gives the full equation. All predictors are centered. A language here is one combination of the four weights and the interaction rank, `r cm(length(unique(paste(toy$key, toy$r_int))))` in all; A run here are the five seeds for a given language.
+
+The overlaps are likewise fit as one model over both overlap measures, with the same structure. Outcome is the log of an overlap divided by its own chance level, and Group is the overlap measure: the item effect's overlap with the class direction, or the interaction's overlap with the span of the item and class subspaces. Coefficient values here indicate the extent to which each parameter causes the item, class, and interaction dimensions to be orthogonal or non-orthogonal.
 
 $$
 \begin{aligned}
@@ -770,7 +772,7 @@ $$
 \end{aligned}
 $$ {#eq-model}
 
-The overlaps are likewise fit as one model over both overlap measures, with the same structure. Outcome is the log of an overlap divided by its own chance level, and Group is the overlap measure: the item effect's overlap with the class direction, or the interaction's overlap with the span of the item and class subspaces. Dividing each by its own chance level is what lets the two measures share one response, since a raw overlap's chance level depends on the rank of the subspace it is projected onto, which differs between the two measures and moves with width. Both models are fit separately for the ReLU and the linear learner, giving four fits in all. Coefficient values here indicate the extent to which each parameter causes the item, class, and interaction dimensions to be orthogonal or non-orthogonal.
+
 
 ## Results {#sec-exp1-results}
 
