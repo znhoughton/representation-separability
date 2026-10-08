@@ -397,6 +397,30 @@ cf <- function(comp, lab, armv = "relu", kindv = "size", dig = 3) {
 # The same coefficient for running prose: the estimate alone. Whether the interval clears zero is
 # said in words, and the interval itself is in the appendix tables, where a reader can see it
 # beside every other term of the same model rather than the one the sentence happens to quote.
+# What the measure reports where the language holds NO interaction at all: the level a learner
+# registers when there is nothing to register. Quoted by width, because it is not constant.
+.add <- function(w, armv) {
+  cv <- toy$converged %in% c(TRUE, "True", "TRUE")
+  toy[toy$w_int == 0 & toy$act == armv & toy$d == w & cv, ]
+}
+addint  <- function(w, armv = "ReLU", dig = 4) g(median(.add(w, armv)$size_interaction, na.rm = TRUE), dig)
+addflag <- function(w, armv = "ReLU") sprintf("%.0f%%", 100 * mean(.add(w, armv)$ez, na.rm = TRUE))
+
+# Overlap at the deepest layer as a multiple of its own chance level, across models and categories.
+ovr <- function(col = "leak", dig = 1) {
+  v <- llm_deep[[col]] / llm_deep[[paste0(col, "_null_med")]]
+  v <- v[is.finite(v)]
+  sprintf("%s to %s", g(min(v), dig), g(max(v), dig))
+}
+
+# How closely the learners reproduce the language: cross-entropy at convergence minus the entropy
+# of the target, which is the Kullback-Leibler divergence to the truth. Quoted so the shares are
+# read as how a representation is organised, not as how much of the language was learned.
+kl <- function(w, armv = "ReLU", dig = 4) {
+  cv <- toy$converged %in% c(TRUE, "True", "TRUE")
+  g(median(toy$fit_gap[toy$act == armv & toy$d == w & cv], na.rm = TRUE), dig)
+}
+
 b <- function(comp, lab, armv = "relu", kindv = "size", dig = 3) {
   r <- rcoef[rcoef$component == comp & rcoef$label == lab &
              rcoef$arm == armv & rcoef$kind == kindv, ]
@@ -635,13 +659,13 @@ Lexical representations are deceptively complex: a single word can carry vastly 
 
 [^1]: In *Jacobellis v. Ohio* (1964), Justice Stewart famously addressed the difficulty of defining obscenity, remarking that while he may not be able to formulate a precise definition, he could still recognize obscene material when he saw it.
 
-This central tradeoff, that representations are simultaneously context-specific yet broadly generalizable, has fueled long-standing debates over the nature of lexical representations [@pierrehumbert2016phonological; @kapatsinski2010whatisit]. The two leading frameworks offer distinct solutions: abstraction theories posit that humans construct generalized mental representations stripped of specific context, while exemplar theories argue that representations are built from distinct, context-rich memory traces.
+This central tradeoff, that representations are simultaneously context-specific yet broadly generalizable, has fueled long-standing debates over the nature of lexical representations [@goldinger1998echoes; @mcqueen2006phonological; @pierrehumbert2016phonological; @kapatsinski2010whatisit]. The two leading frameworks offer distinct solutions: abstraction theories posit that humans construct generalized mental representations stripped of specific context, while exemplar theories argue that representations are built from distinct, context-rich memory traces.
 
 In the present study, we investigate how Large Language Models (LLMs) navigate this tradeoff. Specifically, we examine the extent to which lexical representations in LLMs comprise abstract, generalizable features versus context-specific exemplars.
 
 ## Evidence for Abstractions
 
-Abstraction theories offer an intuitive account of the context invariance of language. At every level of language, there is substantial variability across contexts, from phonetic differences between speakers, to syntactic constructions that can take on a variety of lexical items, to words whose meaning depends very much on the context that they occur in. Positing the existence of abstractions helps account for the ability of humans to generalize across these contexts and recognize the same underlying representation despite this variability. Indeed, researchers have throughout the years compiled an abundance of evidence for abstractions.
+Abstraction theories offer an intuitive account of the context invariance of language. At every level of language, there is substantial variability in context, from phonetic differences between speakers, to syntactic constructions that can take on a variety of lexical items, to words whose meaning depends very much on the context that they occur in. Positing the existence of abstractions helps account for the ability of humans to generalize across these contexts and recognize the same underlying representation despite this variability. Indeed, researchers have throughout the years compiled an abundance of evidence for abstractions.
 
 Productivity is the most direct evidence for abstractions. @berkoChildsLearningEnglish1958 showed that young children can produce the correct plural of a word they have never encountered before, such as correctly producing *wugs* after learning the singular version, *wug*. Since *wugs* was never encountered before, it could not possibly have been stored in memory and it instead must have been built from an abstract representation of the plural. The same conclusion has been reached from neural evidence. Using MEG, @stockallMarantz2006singleroute found that irregular forms such as *gave* prime their root as strongly as regular forms do, while pairs that merely look and sound similar without being morphologically related don't prime them at all. Because the priming tracks morphological structure rather than surface similarity, the representations of irregular forms appear to have an abstract component as well.
 
@@ -649,9 +673,9 @@ Abstract knowledge also shapes something as deceptively simple as word order pre
 
 ## Evidence for Exemplars
 
-Exemplar theories, in contrast, argue that abstract representations are not necessary. Instead, linguistic knowledge may be stored as context-rich memory traces whose properties vary with experience. Much of the evidence for this comes from the phonetics literature, showing that phonetic representations are surprisingly rich, as well as the psycholinguistic literature's line of research demonstrating the holistic storage of multi-morphemic and multi-word phrases [@bybee1999usagebasedphonology; @houghton2025roleabstractrepresentations; @houghton2026holisticstorageverb+up; @houghton2023doespredictabilitydrive; @stembergerAreInflectedForms2004; @stembergerFrequencyLexicalStorage1986; @schreuderBaayen1997complexsimplex].
+Exemplar theories, in contrast, argue that abstract representations are not necessary. Instead, linguistic knowledge may be stored as context-rich memory traces whose properties vary with experience. Much of the evidence for this comes from the phonetics literature, showing that phonetic representations are surprisingly rich [@goldinger1998echoes; @palmeri1993episodicencoding], as well as the psycholinguistic literature's line of research demonstrating the holistic storage of multi-morphemic and multi-word phrases [@bybee1999usagebasedphonology; @houghton2025roleabstractrepresentations; @houghton2026holisticstorageverb+up; @houghton2023doespredictabilitydrive; @stembergerAreInflectedForms2004; @stembergerFrequencyLexicalStorage1986].
 
-The strongest evidence for exemplars comes from frequency in favorable context effects [FFC, @raymondBrown2012frequency; @kapatsinski2026lexicalfrequency]. FFC effects describe a phenomenon in which a form's behavior is predicted by how often it has occurred in a context that conditions a change rather than by how often it has occurred overall [@kapatsinski2026lexicalfrequency]. FFC effects show that it is not raw frequency, but rather frequency in a specific *context*, that is stored. For example, @raymondBrownHealy2016cumulative found that English words ending in /t/ or /d/ were more likely to be deleted if they were words that frequently occurred before a consonant (the conditioning context for that deletion), regardless of the word's *overall* frequency. Crucially, this deletion was observed even when the word occurred outside of a context that favored the conditioning [@bybee2002wordfrequency]. While we consider FFC effects to be the clearest evidence for exemplars, they are by no means the only evidence: context-specific storage is also evidenced by phonetic reduction [@bybeeScheibman1999constituency], gradient phonetic representations [@mcmurrayGradientSensitivityWithincategory2008; @palmeri1993episodicencoding; @miller1994internalstructure], reading times for binomials [@siyanova-chanturia2011seeingphrasetime], word-order preferences [@morgan2016abstractknowledgedirect; @morganModelingIdiosyncraticPreferences2015; @morgan2024productiveknowledgeitemspecific], and recognition times [@kapatsinskiRadicke2009prefabs; @houghton2025multiwordrepresentationsminds].
+The strongest evidence for exemplars comes from frequency in favorable context effects [FFC, @raymondBrown2012frequency; see @kapatsinski2026lexicalfrequency for a review]. FFC effects describe a phenomenon in which a form's behavior is predicted by how often it has occurred in a context that conditions a change rather than by how often it has occurred overall. FFC effects show that it is not raw frequency, but rather frequency in a specific *context*, that is stored. For example, @raymondBrownHealy2016cumulative found that English words ending in /t/ or /d/ were more likely to be deleted if they were words that frequently occurred before a consonant (the conditioning context for that deletion), regardless of the word's *overall* frequency. Crucially, this deletion was observed even when the word occurred outside the conditioning context [@bybee2002wordfrequency]. While we consider FFC effects to be the clearest evidence for exemplars, they are by no means the only evidence: context-specific storage is also evidenced by word-specific patterns of phonetic reduction [@bybeeScheibman1999constituency], the persistence of subphonemic phonetic detail in memory [@mcmurrayGradientSensitivityWithincategory2008; @palmeri1993episodicencoding; @miller1994internalstructure], phrase-specific influences on reading times [@siyanova-chanturia2011seeingphrasetime], lexically specific word-order preferences [@morgan2016abstractknowledgedirect; @morganModelingIdiosyncraticPreferences2015; @morgan2024productiveknowledgeitemspecific], and phrase frequency effects on the recognition of their component units [@kapatsinskiRadicke2009prefabs; @houghton2025multiwordrepresentationsminds].
 
 FFC effects demonstrate that lexical representations can encode information about the contexts in which a word occurs. This raises a more specific question: can a particular use of a word have its own representation, rather than being represented entirely in terms of representations that are shared across words or uses? Consider *walk*, which can function as both a noun and a verb: if its representation as a verb were fully determined by a representation of *walk* and a representation of the verb category, then nothing in its representation would be specific to the *walk*-verb combination. If, instead, *walk* as a verb had a representation of its own, that representation would contain information that cannot be reduced to its constituent parts. Word embeddings offer a way of asking this directly, since they give a separate representation of a word in each category it occurs in. Recent work has targeted a version of this question and demonstrated that abstractions can be narrower than might be expected [@shafaeiBajestan2024pluralization; @nikolaev2025casenumber], but such narrowness still reflects information shared across words within a specific class (just one that is narrower than the classes traditionally proposed). What remains unclear is whether individual word–category combinations have representations of their own.
 
@@ -701,7 +725,7 @@ The weights $w_\alpha$, $w_\beta$, and $w_\gamma$ in @eq-toy control how much of
 
 ### The learner
 
-The learner model is a multi-layer perceptron (MLP) with a single hidden layer of width $d$ and either a linear or a ReLU activation function.`\codefootnote{}`{=latex} The model takes as its input three pieces of information: form, class, and context. Each has its own embedding, and the three are concatenated and passed through the model which then outputs a probability distribution over the vocabulary (@fig-training). The training objective is thus to minimize cross-entropy between the model's predicted distribution over the vocabulary and the ground-truth distribution.
+The learner model is a multi-layer perceptron (MLP) with a single hidden layer of width $d$ and either a linear or a ReLU activation function.`\codefootnote{}`{=latex} The model takes as its input three pieces of information: form, class, and context. Each has its own embedding, and the three are concatenated and passed through the model which then outputs a probability distribution over the vocabulary (@fig-training). The training objective is thus to minimize cross-entropy between the model's predicted distribution over the vocabulary and the exact ground-truth distribution.
 
 ![Structure of our model. Every form is observed 24 times at each class, each time in a different context; that variation across contexts is what the measurement later splits in two.](fig-training.pdf){#fig-training width="100%" fig-env="figure*"}
 
@@ -731,7 +755,7 @@ It's important to note that the weights in @eq-toy describe the ground-truth dis
 
 ### Analysis {#sec-exp1-analysis}
 
-We model our data using an ordered beta regression [@kubinec2023ordbeta] for the sizes and a Gaussian model for the overlaps, both in *brms* [@burkner2017brms] with weakly informative priors, given in Appendix \ref{sec-appendix-grid}. For the sizes we fit a single model over all three components (@eq-ordbeta): a component's fraction of the representation is predicted by all three planted effect sizes, the hidden width, and the total rank of the planted structure, with every term crossed with component so that the architecture effects are free to differ between the item, the class and the interaction. All predictors are centered. A language here is one combination of the four weights and the interaction rank, `r cm(length(unique(paste(toy$key, toy$r_int))))` in all; the five seeds for a language are re-realizations of the same specification rather than different languages, so they share an intercept. Width is the only predictor that varies within a language, and so the only one that can carry a random slope: the effect sizes and the rank are properties of the language itself and are constant across its runs. A random intercept by run lets the three components measured from one trained model covary.
+We model our data using an ordered beta regression [@kubinec2023ordbeta] for the sizes and a Gaussian model for the overlaps, both in *brms* [@burkner2017brms] with weakly informative priors, given in Appendix \ref{sec-appendix-grid}. For the sizes we fit a single model over all three components (@eq-ordbeta): a component's fraction of the representation is predicted by all three planted effect sizes, the hidden width, and the total rank of the planted structure, which is the item, class and interaction ranks summed (`r min(toy$rank)` to `r max(toy$rank)` across the grid), with every term crossed with component so that the architecture effects are free to differ between the item, the class and the interaction. All predictors are centered. A language here is one combination of the four weights and the interaction rank, `r cm(length(unique(paste(toy$key, toy$r_int))))` in all; the five seeds for a language are re-realizations of the same specification rather than different languages, so they share an intercept. Width is the only predictor that varies within a language, and so the only one that can carry a random slope: the effect sizes and the rank are properties of the language itself and are constant across its runs. A random intercept by run lets the three components measured from one trained model covary.
 
 $$
 \begin{aligned}
@@ -749,21 +773,20 @@ $$ {#eq-overlap}
 
 ## Results {#sec-exp1-results}
 
-Results are visualized in @fig-toy, with the full coefficient results included in Appendix \ref{sec-appendix-capacity}.
+Results are visualized in @fig-toy, with the full coefficient results included in Appendix \ref{sec-appendix-capacity}. Where the hidden layer is wide enough, the learners reproduce the language closely (median Kullback-Leibler divergence of `r kl(max(toy$d))` at the widest, against `r kl(min(toy$d))` at the narrowest; @fig-toy-fit reports the fit across the whole grid). The shares below therefore say what proportion of the representation each component accounts for, not how much of the language the model captured: the hidden layer has to carry each component in some form a linear readout can combine into the output distribution, not in the language's proportions.
 
 ```{r}
 #| label: fig-toy
 #| fig-width: 3.05
 #| fig-height: 2.4
 #| out-width: "100%"
-#| fig-cap: "Ground-truth effect size of each component in the language (x) against its size in the MLP's representations (y). Points are runs; lines are fitted values from @eq-ordbeta with 95% intervals, colored by hidden width. The dashed diagonal marks exact recovery."
+#| fig-cap: "Ground-truth effect size of each component in the language (x) against its size in the MLP's representations (y). Points are runs; lines are fitted values from @eq-ordbeta with 95% intervals, colored by hidden width."
 #|
 .fit <- rpred |>
   filter(kind == "size", grid == "planted") |>
   mutate(component = factor(component, c("item", "class", "interaction")),
          act = factor(arm, c("relu", "linear"), c("ReLU", "linear")))
 ggplot(toy_learn_both, aes(planted, measured, color = factor(d), fill = factor(d))) +
-  geom_abline(slope = 1, intercept = 0, linetype = 2, linewidth = .3, color = UO[["grey"]]) +
   geom_point(size = .18, alpha = .14, stroke = 0) +
   geom_ribbon(data = .fit, aes(x = own, y = epred, ymin = lo, ymax = hi, fill = factor(width)),
               inherit.aes = FALSE, alpha = .16) +
@@ -785,13 +808,15 @@ ggplot(toy_learn_both, aes(planted, measured, color = factor(d), fill = factor(d
 
 Unsurprisingly, the effect size for each component increases as a function of the size of the effect planted in the language (and since the three components sum to 1, the other 2 components definitionally decrease). Of the three components, the item effect is strongest across every width (@fig-toy).
 
-The effect size of the interaction does not depend on its rank in the language (`r b("interaction", "rank")`). Instead, it is the size of the hidden layer that determines how much of the interaction is encoded (`r b("interaction", "width")`): the larger the hidden layer, the larger the size of the interaction it encodes. This is not the case for the item effect, which decreases as the hidden layer grows (`r b("item", "width")`), or for the class effect, which barely changes (`r b("class", "width")`). In the linear condition width is spent on the item effect at the class effect's expense (`r b("item", "width", "linear")` against `r b("class", "width", "linear")`); the interaction grows with width there too (`r b("interaction", "width", "linear")`) but stays small throughout.
+The size of the interaction barely depends on its rank on its own (`r b("interaction", "rank")`), which is by design: the interaction is scaled to the same variance at every rank, so raising its rank spreads it over more directions rather than making it larger. What governs how much of the interaction is encoded is the width of the hidden layer (`r b("interaction", "width")`). Rank enters by changing how much that width recovers (`r b("interaction", "width x rank")`): at narrow widths a higher-rank interaction needs more directions than the layer has and the excess is lost, while once the layer is wide enough the model represents more of it, and does. This is not the case for the item effect, which decreases as the hidden layer grows (`r b("item", "width")`), or for the class effect, which barely changes (`r b("class", "width")`). In the linear condition width is spent on the item effect at the class effect's expense (`r b("item", "width", "linear")` against `r b("class", "width", "linear")`); the interaction grows with width there too (`r b("interaction", "width", "linear")`) but stays small throughout.
+
+Where no interaction is planted, a ReLU learner still represents one: the measured value is small (median `r addint(max(toy$d))` at the widest layer) but its interval excludes zero in `r addflag(max(toy$d))` of runs, against a nominal 5%. The linear arm cannot do this at any width, since a linear map of additive inputs is additive.
 
 The amount of overlap is also affected by the width of the hidden layer as well: For the ReLU models, the wider the hidden layer, the less the item and class effects share directions (`r b("item_class", "width", kindv = "overlap")`). Similarly, the overlap between the interaction and the item-class subspace follows the same pattern (`r b("int_margins", "width", kindv = "overlap")`). The linear models show a different pattern, however. The item-class overlap shows no effect as a function of width, and the interaction effect's overlap with the item-class space grows as a function of the width (`r b("int_margins", "width", armv = "linear", kindv = "overlap")`), climbing from `r fv("int_margins", 8, "linear", "overlap")` to `r fv("int_margins", 256, "linear", "overlap")` times chance. It approaches chance without reaching it, and both overlaps stay below chance at every width under the linear learner (Appendix \ref{sec-appendix-capacity}). Smaller hidden layers thus do not merely represent less of the interaction, they also force the components onto shared directions.
 
 # Experiment 2: Language Models {#sec-exp2}
 
-Experiment 1 established that if the language a learner model encounters is not purely additive, the model will represent the language in a non-separable manner, with the extent governed by the width of the model. Experiment 2 applies the same decomposition to the contextual representations of pretrained language models, across two linguistic categories: part of speech and grammatical role.
+Experiment 1 asks what a learner represents when we control the composition of its language; Appendix \ref{sec-appendix-validate} separately demonstrates that the measure recovers structure planted directly in a representation. Neither speaks to how a transformer represents real language, which is the question Experiment 2 asks. Experiment 2 applies the same decomposition to the contextual representations of pretrained language models, across two linguistic categories: part of speech and grammatical role.
 
 ## Dataset {#sec-exp2-data}
 
@@ -826,6 +851,8 @@ Both the class effect and the interaction effect increase as a function of layer
 Turning to how those components are oriented, the class direction carries almost none of the item effect. At the deepest layer, item-class overlap runs `r ldrng("POS (noun/verb)", "leak")` for part of speech and `r ldrng("role (subject/object)", "leak")` for grammatical role, so projecting out the class direction leaves more than 99% of the item effect intact. While both overlaps are technically less orthogonal than a random subspace, the overlap itself is tiny, so the two are near-orthogonal rather than exactly orthogonal.
 
 In contrast to the main effects, the interaction effect is not orthogonal to class or item. Across the six models, `r ldrng("POS (noun/verb)", "leak_int", 3)` of the interaction for part of speech is in the span of the two main effects, and for grammatical role `r ldrng("role (subject/object)", "leak_int", 3)` is, against nulls whose upper ends run `r ldrng("POS (noun/verb)", "leak_int_null", 3)` and `r ldrng("role (subject/object)", "leak_int_null", 3)` respectively. The smallest of these overlaps exceeds the largest of the nulls, so the pattern holds in every model. In other words, the small departure from orthogonality between item and class becomes a large one for the interaction.
+
+In the artificial learner the components become meaningfully orthogonal once the hidden layer is wide enough for the structure, but LLMs don't follow that same pattern: their components remain meaningfully non-orthogonal at every scale (`r ovr("leak")` times chance for the item effect into the class direction and `r ovr("leak_int")` for the interaction into the margins), and increasingly so as width grows. Added width there is spent representing more of the language rather than giving the same structure more room.
 
 ```{r}
 #| label: fig-llm
@@ -917,11 +944,11 @@ dec |>
   kable_styling(latex_options = c("HOLD_position"), font_size = 7)
 ```
 
-The results demonstrate that $\gamma$ carries class information rather than generic correlated context. It does not show that $\gamma$ is *only* the class label: context correlated with the class within a word survives both removals, so the interaction remains an upper bound.
+The results demonstrate that $\gamma$ carries class information rather than generic correlated context.
 
 # Discussion and Conclusion {#sec-discussion}
 
-The present study examined whether a word's representation in a language model is exemplar-like or abstract and found that it contains elements of both. We decomposed a word's representation in a class into an item effect, a class effect, and a word-class interaction. The first two capture information shared across classes or words, respectively, while the interaction captures information specific to a particular word-class combination. In a model trained on an artificial language, we found that there is an interaction effect which increases as a function of layer width. Additionally, across six pretrained language models and two linguistic categories, we found a similar interaction effect in every model and category. The abstract components were nearly orthogonal, whereas the interaction overlapped with both, indicating that abstract and item-specific information are represented together rather than on separate axes.
+The present study examined whether a word's representation in a language model is exemplar-like or abstract and found that it contains elements of both. We decomposed a word's representation in a class into an item effect, a class effect, and a word-class interaction. The first two capture information shared across classes or words, respectively, while the interaction captures information specific to a particular word-class combination. In a model trained on an artificial language, we found an interaction effect even where the language itself was additive, so some of this structure comes from the architecture rather than from the language. Additionally, across six pretrained language models and two linguistic categories, we found a similar interaction effect in every model and category. The abstract components were nearly orthogonal, whereas the interaction overlapped with both, indicating that abstract and item-specific information are represented together rather than on separate axes.
 
 Overall, the present results indicate that language model representations encode both abstract and item-specific structure, supporting generalization across words and classes while retaining information about specific combinations.
 
