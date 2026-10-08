@@ -189,11 +189,22 @@ COMPS <- levels(d$component)
 want_draws <- CHAINS * ((if (DEMO) 600 else ITER) - (if (DEMO) 300 else WARMUP))
 rds_path <- file.path(CACHE, paste0(MODEL, ".rds"))
 if (file.exists(rds_path)) {
+  # NEVER delete a fit. brms's file_refit = "on_change" hashes the formula, the data and
+  # the priors but NOT the sampling budget, so a cached fit would be reused verbatim after
+  # raising ITER and the script would report the old draws as if it had honoured the new
+  # setting. That is worth catching, but a sampling-budget mismatch is nearly always a
+  # forgotten environment variable rather than an intended refit, and deleting a fit that
+  # cost hours to sample is never the right response to it. Stop and say so instead; the
+  # caller can move the file aside themselves if they really do want to resample.
   got <- tryCatch(brms::ndraws(readRDS(rds_path)), error = function(e) NA_integer_)
   if (is.na(got) || got != want_draws) {
-    cat(sprintf("  cached fit has %s draws, want %d -- refitting\n",
-                ifelse(is.na(got), "unreadable", as.character(got)), want_draws))
-    file.remove(rds_path)
+    stop(sprintf(paste0(
+      "cached fit %s has %s draws but this run wants %d.\n",
+      "  Refusing to touch it. Either match the budget that produced it, e.g.\n",
+      "    CHAINS=6 ITER=8000 WARMUP=2000 ADAPT_DELTA=0.9 (what run_toy_models.sh sets),\n",
+      "  or move the file aside yourself if you intend to resample."),
+      rds_path, ifelse(is.na(got), "unreadable", as.character(got)), want_draws),
+      call. = FALSE)
   }
 }
 
