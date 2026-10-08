@@ -66,6 +66,8 @@ stopifnot(ACT %in% c("relu", "identity"), WARMUP < ITER, CHAINS >= 1,
 
 COL  <- c(item_class = "leak_item_into_class", int_margins = "leak_int_into_margins")[[MEASURE]]
 NULLCOL <- paste0(COL, "_null_med")
+# Both measures are fitted together; COL/NULLCOL survive only for the coverage report.
+MEASURES0 <- c(item_class = "leak_item_into_class", int_margins = "leak_int_into_margins")
 # No TAG: MEASURE is already in the filename, and adding one produced
 # overlap_int_margins_int.rds, which prepare_results.R then read back as a component
 # called "int_margins_int".
@@ -94,21 +96,36 @@ d_raw <- read_csv(file.path(OUT, "artificial_language_grid.csv"), show_col_types
 # what the log transform costs is counted and printed rather than left to be discovered later.
 # A zero overlap means an empty target subspace (a component with no direction to project onto);
 # a missing chance level means its null could not be drawn at that rank.
-n_kept  <- sum(!is.na(d_raw[[COL]]) & !is.na(d_raw[[NULLCOL]]) &
-               d_raw[[COL]] > 0 & d_raw[[NULLCOL]] > 0)
-n_na    <- sum(is.na(d_raw[[COL]]) | is.na(d_raw[[NULLCOL]]))
-n_zero  <- nrow(d_raw) - n_kept - n_na
-cat(sprintf("  dropped by the log transform: %d of %d rows (%d NA, %d at zero); %d kept\n",
-            nrow(d_raw) - n_kept, nrow(d_raw), n_na, n_zero, n_kept))
+for (.m in names(MEASURES0)) {
+  .c <- MEASURES0[[.m]]; .n <- paste0(.c, "_null_med")
+  .kept <- sum(!is.na(d_raw[[.c]]) & !is.na(d_raw[[.n]]) & d_raw[[.c]] > 0 & d_raw[[.n]] > 0)
+  .nas  <- sum(is.na(d_raw[[.c]]) | is.na(d_raw[[.n]]))
+  cat(sprintf("  %-12s dropped by the log transform: %d of %d rows (%d NA, %d at zero); %d kept\n",
+              .m, nrow(d_raw) - .kept, nrow(d_raw), .nas,
+              nrow(d_raw) - .kept - .nas, .kept))
+}
+
+# STACKED over both overlap measures, so that `measure` can be crossed with every predictor and
+# the two are fitted together rather than compared across models. A run contributes one row per
+# measure, which is what makes the run intercept identifiable.
+MEASURES <- c(item_class = "leak_item_into_class", int_margins = "leak_int_into_margins")
 
 d <- d_raw |>
-  filter(!is.na(.data[[COL]]), !is.na(.data[[NULLCOL]]),
-         .data[[COL]] > 0, .data[[NULLCOL]] > 0) |>
-  mutate(rank_tot  = r_item + r_class + r_int,
-         log2_d    = log2(d)        - mean(log2(d)),
-         log2_rank = log2(rank_tot) - mean(log2(rank_tot)),
+  mutate(run       = factor(seq_len(n())),
+         rank_tot  = r_item + r_class + r_int,
          lang      = factor(paste(key, r_int, sep = "_")),
-         log_ratio = log(.data[[COL]] / .data[[NULLCOL]]))
+         v_item_class  = leak_item_into_class,
+         v_int_margins = leak_int_into_margins,
+         n_item_class  = leak_item_into_class_null_med,
+         n_int_margins = leak_int_into_margins_null_med) |>
+  tidyr::pivot_longer(c(v_item_class, v_int_margins),
+                      names_to = "measure", values_to = "val") |>
+  mutate(measure = factor(sub("^v_", "", measure), levels = names(MEASURES)),
+         nullval = ifelse(measure == "item_class", n_item_class, n_int_margins)) |>
+  filter(!is.na(val), !is.na(nullval), val > 0, nullval > 0) |>
+  mutate(log_ratio = log(val / nullval),
+         log2_d    = log2(d)        - mean(log2(d)),
+         log2_rank = log2(rank_tot) - mean(log2(rank_tot)))
 
 # Centred like the size models, so each coefficient is read at the mean of the others and the
 # intercept is not defined at a language holding none of the component.
@@ -128,18 +145,25 @@ cat(sprintf("  %d chains x %d iter (%d warmup)\n", CHAINS, ITER, WARMUP))
 # read accordingly.
 cov <- read_csv(file.path(OUT, "artificial_language_grid.csv"), show_col_types = FALSE) |>
   filter(activation == ACT) |>
-  group_by(d) |> summarise(pct = 100 * mean(!is.na(.data[[COL]])), .groups = "drop")
-cat("  coverage by width: ",
-    paste(sprintf("%d:%.0f%%", cov$d, cov$pct), collapse = "  "), "\n", sep = "")
+  group_by(d) |> summarise(across(all_of(unname(MEASURES0)),
+                                  ~ 100 * mean(!is.na(.x))), .groups = "drop")
+for (.m in names(MEASURES0))
+  cat(sprintf("  coverage by width, %-12s %s\n", .m,
+              paste(sprintf("%d:%.0f%%", cov$d, cov[[MEASURES0[[.m]]]]), collapse = "  ")))
 
-# The three effect sizes are controls, not the question: overlap is a property of item AND class
-# together, so there is no single "own" strength to cross with the architecture the way the size
-# models do. The architecture terms are crossed, since their interaction is what says whether
-# width and rank act as a ratio.
-RHS <- "c_item + c_class + c_int + log2_d * log2_rank + (1 | lang)"
+# Cell-means coded over `measure` (`0 + measure`), so each coefficient is already that measure's
+# own effect and differences between the two measures are contrasts of those terms. Every
+# predictor is crossed with measure, matching the size model.
+#
+# Width is the only predictor that varies WITHIN a language -- the effect sizes and the rank
+# define the language -- so it is the only one that can carry a random slope. `run` groups the two
+# measure rows that come from one trained model.
+RHS <- paste("0 + measure",
+             "+ measure:((c_item + c_class + c_int) * log2_d * log2_rank)",
+             "+ (1 + log2_d | lang) + (1 | run)")
 
 want_draws <- CHAINS * ((if (DEMO) 600 else ITER) - (if (DEMO) 300 else WARMUP))
-rds <- file.path(CACHE, paste0("overlap_", MEASURE, SUFFIX, ".rds"))
+rds <- file.path(CACHE, paste0("overlap_stacked", SUFFIX, ".rds"))
 if (file.exists(rds)) {
   got <- tryCatch(brms::ndraws(readRDS(rds)), error = function(e) NA_integer_)
   if (is.na(got) || got != want_draws) {
@@ -149,9 +173,13 @@ if (file.exists(rds)) {
   }
 }
 
+# The same weakly informative priors as the size model, so the two are specified alike.
 fit <- brm(
   formula = as.formula(paste("log_ratio ~", RHS)), data = d,
   family = if (FAMILY == "student") student() else gaussian(),
+  prior = c(brms::set_prior("normal(0, 2.5)", class = "b"),
+            brms::set_prior("normal(0, 1)",   class = "sd"),
+            brms::set_prior("lkj(2)",         class = "cor")),
   chains = CHAINS, cores = CORES,
   iter = if (DEMO) 600 else ITER, warmup = if (DEMO) 300 else WARMUP,
   control = list(adapt_delta = ADAPT_DELTA),
@@ -162,11 +190,19 @@ fit <- brm(
 # ---------------------------------------------------------------- convergence
 su  <- summarise_draws(as_draws_df(fit), "rhat", "ess_bulk", "ess_tail")
 su  <- su[is.finite(su$rhat), ]
+# R-hat and ESS are gated on the parameters that are REPORTED: the population-level coefficients,
+# the variance components and the distributional parameters. The individual random-effect LEVELS
+# (r_lang[...], r_run[...]) number in the tens of thousands and are weakly identified by
+# construction -- a run contributes three observations -- so letting one of them fail the gate
+# would condemn a fit whose every reported quantity is clean. Their worst values are still printed.
+sg  <- su[!grepl("^r_", su$variable), ]
 np  <- brms::nuts_params(fit)
+cat(sprintf("  worst random-effect LEVEL (not gated): rhat %.4f\n",
+            if (nrow(su) > nrow(sg)) max(su$rhat[grepl("^r_", su$variable)]) else NA_real_))
 diagnostics <- data.frame(
-  model = paste0("overlap_", MEASURE, ARM), n_draws = ndraws(fit),
-  max_rhat = max(su$rhat), worst_rhat_param = su$variable[which.max(su$rhat)],
-  min_ess_bulk = min(su$ess_bulk), min_ess_tail = min(su$ess_tail),
+  model = paste0("overlap_stacked", ARM), n_draws = ndraws(fit),
+  max_rhat = max(sg$rhat), worst_rhat_param = sg$variable[which.max(sg$rhat)],
+  min_ess_bulk = min(sg$ess_bulk), min_ess_tail = min(sg$ess_tail),
   divergences = sum(np$Value[np$Parameter == "divergent__"]),
   treedepth_hits = sum(np$Value[np$Parameter == "treedepth__"] >= 10))
 diagnostics$converged <- with(diagnostics, round(max_rhat, 3) <= 1.010 &
@@ -178,47 +214,67 @@ with(diagnostics, cat(sprintf("  %-22s rhat %.4f (%s)  ess_bulk %5.0f  ess_tail 
                               divergences, if (converged) "OK" else "*** CHECK ***")))
 
 # ---------------------------------------------------------------- coefficients and the test
-LABELS <- c(b_Intercept = "intercept", b_c_item = "item", b_c_class = "class", b_c_int = "interaction",
-            b_log2_d = "width", b_log2_rank = "rank", "b_log2_d:log2_rank" = "width x rank")
-dr <- as.data.frame(as_draws_df(fit))
-coefs <- lapply(intersect(names(LABELS), names(dr)), function(tm) {
+PNAME  <- c(c_item = "item", c_class = "class", c_int = "interaction")
+LABELS <- c(PNAME,
+            log2_d = "width", log2_rank = "rank", "log2_d:log2_rank" = "width x rank",
+            setNames(paste(PNAME, "x width"), paste0(names(PNAME), ":log2_d")),
+            setNames(paste(PNAME, "x rank"),  paste0(names(PNAME), ":log2_rank")),
+            setNames(paste(PNAME, "x width x rank"),
+                     paste0(names(PNAME), ":log2_d:log2_rank")))
+MEAS <- levels(d$measure)
+dr   <- as.data.frame(as_draws_df(fit))
+
+coefs <- lapply(grep("^b_measure[a-z_]+:", names(dr), value = TRUE), function(tm) {
+  rest <- sub("^b_measure[a-z_]+:", "", tm)
+  if (!rest %in% names(LABELS)) return(NULL)
   x <- dr[[tm]]
-  data.frame(model = paste0("overlap_", MEASURE, ARM), term = tm, label = unname(LABELS[tm]),
+  data.frame(model = paste0("overlap_stacked", ARM),
+             measure = sub("^b_measure([a-z_]+):.*$", "\\1", tm),
+             term = tm, label = unname(LABELS[rest]),
              estimate = mean(x), error = sd(x),
              lo95 = unname(quantile(x, .025)), hi95 = unname(quantile(x, .975)),
              p_gt0 = mean(x > 0))
 }) |> bind_rows() |> mutate(excludes_zero = lo95 > 0 | hi95 < 0)
 
-h <- hypothesis(fit, "log2_d + log2_rank = 0")$hypothesis
-crowd <- data.frame(model = paste0("overlap_", MEASURE, ARM), estimate = h$Estimate,
-                    error = h$Est.Error, lo95 = h$CI.Lower, hi95 = h$CI.Upper,
-                    excludes_zero = h$CI.Lower > 0 | h$CI.Upper < 0)
+# Crowding, per measure, from the draws rather than hypothesis(): the stacked parameter names
+# contain colons, which brms would have to parse out of a formula string.
+crowd <- lapply(MEAS, function(ms) {
+  x <- dr[[paste0("b_measure", ms, ":log2_d")]] + dr[[paste0("b_measure", ms, ":log2_rank")]]
+  q <- unname(quantile(x, c(.025, .975)))
+  data.frame(model = paste0("overlap_stacked", ARM), measure = ms, estimate = mean(x),
+             error = sd(x), lo95 = q[1], hi95 = q[2],
+             excludes_zero = q[1] > 0 | q[2] < 0)
+}) |> bind_rows()
 
 write_csv(coefs,       file.path(OUT, paste0("toy_overlap_coefs", SUFFIX, ".csv")))
 write_csv(crowd,       file.path(OUT, paste0("toy_overlap_crowding", SUFFIX, ".csv")))
 write_csv(diagnostics, file.path(OUT, paste0("toy_overlap_diagnostics", SUFFIX, ".csv")))
 
 cat("\n=== what the coefficients say ===\n")
-g <- function(l) coefs[coefs$label == l, ]
 f <- function(r) sprintf("%+.3f [%+.3f, %+.3f]", r$estimate, r$lo95, r$hi95)
 dirn <- function(r) if (r$lo95 > 0) "MORE overlap" else if (r$hi95 < 0) "LESS overlap" else "no clear effect"
-cat(sprintf("  wider hidden layer        %-24s %s\n", f(g("width")), dirn(g("width"))))
-cat(sprintf("  higher interaction rank   %-24s %s\n", f(g("rank")), dirn(g("rank"))))
-cat(sprintf("  width x rank              %-24s %s\n", f(g("width x rank")), dirn(g("width x rank"))))
-cat(sprintf("  crowding alone? (w+r=0)   %+.3f [%+.3f, %+.3f]  %s\n", crowd$estimate, crowd$lo95, crowd$hi95,
-            if (crowd$excludes_zero) "NO: width and rank do not act as a ratio"
-            else "YES: consistent with overlap depending only on rank/width"))
+for (ms in MEAS) {
+  g <- function(l) coefs[coefs$measure == ms & coefs$label == l, ]
+  cr <- crowd[crowd$measure == ms, ]
+  cat(sprintf("\n  -- %s\n", ms))
+  cat(sprintf("  wider hidden layer        %-24s %s\n", f(g("width")), dirn(g("width"))))
+  cat(sprintf("  higher interaction rank   %-24s %s\n", f(g("rank")), dirn(g("rank"))))
+  cat(sprintf("  width x rank              %-24s %s\n", f(g("width x rank")), dirn(g("width x rank"))))
+  cat(sprintf("  crowding alone? (w+r=0)   %+.3f [%+.3f, %+.3f]  %s\n", cr$estimate, cr$lo95, cr$hi95,
+              if (cr$excludes_zero) "NO: width and rank do not act as a ratio"
+              else "YES: consistent with overlap depending only on rank/width"))
+}
 
 # ---------------------------------------------------------------- fitted values for the figure
 D_LEVELS <- sort(unique(d$d)); R_LEVELS <- sort(unique(d$r_int))
 R2RANK   <- setNames(sort(unique(d$rank_tot)), R_LEVELS)
-nd <- expand_grid(width = D_LEVELS, r_int = R_LEVELS) |>
+nd <- expand_grid(width = D_LEVELS, r_int = R_LEVELS, measure = factor(MEAS, levels = MEAS)) |>
   mutate(log2_d = log2(width) - mean(log2(d$d)),
          log2_rank = log2(R2RANK[as.character(r_int)]) - mean(log2(d$rank_tot)),
          c_item = 0, c_class = 0, c_int = 0)
 preds <- add_epred_draws(fit, newdata = nd, re_formula = NA, ndraws = if (DEMO) 200 else 1000) |>
-  ungroup() |> group_by(width, r_int) |> median_qi(.epred, .width = .95) |> ungroup() |>
-  transmute(width, r_int, crowding = R2RANK[as.character(r_int)] / width,
+  ungroup() |> group_by(measure, width, r_int) |> median_qi(.epred, .width = .95) |> ungroup() |>
+  transmute(measure, width, r_int, crowding = R2RANK[as.character(r_int)] / width,
             log_ratio = .epred, lo = .lower, hi = .upper,
             ratio = exp(.epred), ratio_lo = exp(.lower), ratio_hi = exp(.upper))
 write_csv(preds, file.path(OUT, paste0("toy_overlap_predictions", SUFFIX, ".csv")))

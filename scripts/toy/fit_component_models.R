@@ -71,10 +71,14 @@ stopifnot(WARMUP < ITER, CHAINS >= 1)
 # keep rank varying within a cluster, and rank is a property OF the language: it belongs in the
 # between-language block with the effect sizes, whatever that costs its precision.
 GROUPING <- Sys.getenv("GROUPING", "lang")
+# Width is the only predictor that varies WITHIN a language: the three effect sizes and the
+# interaction rank DEFINE the language and are constant across its runs, so a random slope for
+# them is not identifiable and only width can carry one. `run` groups the three component rows
+# that come from a single trained model.
 RE_TERM  <- switch(GROUPING,
-                   lang   = "(1 | lang)",
-                   key    = "(1 | key)",
-                   nested = "(1 | key) + (1 | lang)",
+                   lang   = "(1 + log2_d | lang) + (1 | run)",
+                   key    = "(1 + log2_d | key) + (1 | run)",
+                   nested = "(1 + log2_d | key) + (1 | lang) + (1 | run)",
                    stop("GROUPING must be one of: lang, key, nested"))
 CACHE  <- file.path(REPO, "model_cache", "toy"); dir.create(CACHE, recursive = TRUE, showWarnings = FALSE)
 FIGDIR <- file.path(REPO, "paper");             dir.create(FIGDIR, recursive = TRUE, showWarnings = FALSE)
@@ -133,6 +137,17 @@ if (DEMO) {
   set.seed(SEED)
   d <- d |> group_by(d, r_int) |> slice_sample(n = 60) |> ungroup()
 }
+
+# STACKED: one row per run per component. Fitting the three shares as separate models could not
+# test whether width acts differently on the interaction than on the item -- it compared three
+# posteriors by eye. Crossing `component` with every predictor makes those differences estimable
+# contrasts.
+d <- d |>
+  mutate(run = factor(seq_len(n()))) |>
+  tidyr::pivot_longer(c(size_item, size_class, size_interaction),
+                      names_to = "component", values_to = "share") |>
+  mutate(component = factor(sub("^size_", "", component),
+                            levels = c("item", "class", "interaction")))
 cat(sprintf("  grouping: %s  ->  %s
 ", GROUPING, RE_TERM))
 cat(sprintf("  %d chains x %d iter (%d warmup), adapt_delta %.2f
@@ -145,60 +160,69 @@ cat(sprintf("  %d cells, %d %s%s\n", nrow(d), n_grp,
             if (GROUPING == "key") "weight combinations" else "languages",
             if (DEMO) "  [DEMO: subsampled, few iterations, DO NOT REPORT]" else ""))
 
-# The component's OWN planted strength is crossed with width and rank: a * b * c expands to all
-# three main effects, all three two-way terms and the three-way, so the model asks whether the
-# architecture effects depend on how much of that component the language actually held.
+# ONE model over all three components, cell-means coded (`0 + component`) so that every
+# coefficient is already that component's own effect rather than a difference from a reference
+# level: b_componentitem:log2_d IS the width effect on the item share. Differences between
+# components are then contrasts of those terms, which three separate models could not provide.
 #
-# The other two planted strengths enter as main effects only. They are the specificity check: a
-# measure that attributed item structure to the interaction would show a non-zero off-diagonal,
-# which is the failure the generator itself had before the interaction was decoupled.
-# Which planted-strength column belongs to which measured component.
-OWN <- c(size_item = "c_item", size_class = "c_class", size_interaction = "c_int")
+# All three planted strengths are crossed with both architecture terms, not just the component's
+# own strength. That subsumes the per-component models, whose own-strength crossing is now the
+# diagonal of the block (component = item with c_item), and it additionally asks whether a
+# component's share responds to ANOTHER component's planted strength differently at different
+# widths -- a specificity question the separate models could only ask as a main effect.
+RHS <- paste("0 + component",
+             "+ component:((c_item + c_class + c_int) * log2_d * log2_rank)",
+             "+", RE_TERM)
 
-rhs_for <- function(v) {
-  other <- setdiff(unname(OWN), OWN[[v]])
-  paste0(OWN[[v]], " * log2_d * log2_rank + ", paste(other, collapse = " + "), " + ", RE_TERM)
-}
+MODEL <- paste0("ordbeta_size_stacked", SUFFIX)
+COMPS <- levels(d$component)
+bterm <- function(cp, rest) paste0("b_component", cp, if (nzchar(rest)) paste0(":", rest) else "")
 
-# brms's file_refit = "on_change" hashes the formula, the data and the priors, but
-# NOT the sampling budget. A cached fit would therefore be reused verbatim after raising ITER,
-# and the script would report the old, unconverged draws while appearing to honour the new
-# setting. Drop any cached fit whose draw count is not the one being asked for.
+# brms's file_refit = "on_change" hashes the formula, the data and the priors, but NOT the
+# sampling budget. A cached fit would therefore be reused verbatim after raising ITER, and the
+# script would report the old, unconverged draws while appearing to honour the new setting.
 want_draws <- CHAINS * ((if (DEMO) 600 else ITER) - (if (DEMO) 300 else WARMUP))
-for (v in names(COMPONENTS)) {
-  rds <- file.path(CACHE, paste0("ordbeta_", v, SUFFIX, ".rds"))
-  if (file.exists(rds)) {
-    got <- tryCatch(brms::ndraws(readRDS(rds)), error = function(e) NA_integer_)
-    if (is.na(got) || got != want_draws) {
-      cat(sprintf("  cached %s has %s draws, want %d -- refitting\n", v,
-                  ifelse(is.na(got), "unreadable", as.character(got)), want_draws))
-      file.remove(rds)
-    }
+rds_path <- file.path(CACHE, paste0(MODEL, ".rds"))
+if (file.exists(rds_path)) {
+  got <- tryCatch(brms::ndraws(readRDS(rds_path)), error = function(e) NA_integer_)
+  if (is.na(got) || got != want_draws) {
+    cat(sprintf("  cached fit has %s draws, want %d -- refitting\n",
+                ifelse(is.na(got), "unreadable", as.character(got)), want_draws))
+    file.remove(rds_path)
   }
 }
 
-fits <- list()
-for (v in names(COMPONENTS)) {
-  cat(sprintf("\n=== %s ===\n", v)); flush.console()
-  fits[[v]] <- ordbetareg(
-    formula = as.formula(paste(v, "~", rhs_for(v))), data = d,
-    chains = CHAINS, cores = CORES,
-    iter = if (DEMO) 600 else ITER, warmup = if (DEMO) 300 else WARMUP,
-    control = list(adapt_delta = ADAPT_DELTA),
-    backend = "cmdstanr", seed = SEED, refresh = 0,
-    file = file.path(CACHE, paste0("ordbeta_", v, SUFFIX)), file_refit = "on_change"
-  )
-}
+cat(sprintf("\n=== %s ===\n", MODEL)); flush.console()
+# WEAKLY INFORMATIVE PRIORS, not the package defaults. normal(0, 2.5) on the coefficients is
+# tighter than ordbetareg's normal(0, 5) but still comfortably covers the largest effects the
+# model estimates (the planted-strength terms reach about 2.8 on the logit scale, a little over
+# one prior SD). normal(0, 1) on the standard deviations is far wider than any variance component
+# the data support, so it regularises without prejudging whether run-to-run variance exists.
+fit <- ordbetareg(
+  formula = as.formula(paste("share ~", RHS)), data = d,
+  coef_prior_mean = 0, coef_prior_SD = 2.5,
+  intercept_prior_mean = 0, intercept_prior_SD = 2.5,
+  extra_prior = brms::set_prior("normal(0, 1)", class = "sd") +
+                brms::set_prior("lkj(2)", class = "cor"),
+  chains = CHAINS, cores = CORES,
+  iter = if (DEMO) 600 else ITER, warmup = if (DEMO) 300 else WARMUP,
+  control = list(adapt_delta = ADAPT_DELTA),
+  backend = "cmdstanr", seed = SEED, refresh = 0,
+  file = file.path(CACHE, MODEL), file_refit = "on_change"
+)
 
 # ---------------------------------------------------------------- the crowding hypothesis
+# Computed from the draws rather than through hypothesis(), because the stacked parameter names
+# contain colons and brms would have to parse them out of a formula string.
 cat("\n=== crowding test: does only rank/d matter?  (b_width + b_rank = 0) ===\n")
-crowd <- lapply(names(fits), function(v) {
-  h <- hypothesis(fits[[v]], "log2_d + log2_rank = 0")$hypothesis
-  cat(sprintf("  %-17s %+.3f  CI [%+.3f, %+.3f]  %s\n", COMPONENTS[[v]],
-              h$Estimate, h$CI.Lower, h$CI.Upper,
-              ifelse(h$CI.Lower > 0 | h$CI.Upper < 0,
+DR <- as.data.frame(as_draws_df(fit))
+crowd <- lapply(COMPS, function(cp) {
+  x <- DR[[bterm(cp, "log2_d")]] + DR[[bterm(cp, "log2_rank")]]
+  q <- unname(quantile(x, c(.025, .975)))
+  cat(sprintf("  %-17s %+.3f  CI [%+.3f, %+.3f]  %s\n", cp, mean(x), q[1], q[2],
+              ifelse(q[1] > 0 | q[2] < 0,
                      "EXCLUDES 0 -> not a pure ratio", "includes 0 -> consistent with a ratio")))
-  data.frame(component = COMPONENTS[[v]], est = h$Estimate, lo = h$CI.Lower, hi = h$CI.Upper)
+  data.frame(component = cp, est = mean(x), lo = q[1], hi = q[2])
 }) |> bind_rows()
 
 # ---------------------------------------------------------------- main figure: predicted shares
@@ -225,28 +249,30 @@ NDRAWS   <- if (DEMO) 200 else 1000
 # epred, not predict: the expectation of the ordered-beta outcome, which already folds in the
 # probability mass at 0 and 1, so it is directly "the share we expect to measure".
 # re_formula = NA marginalises the language random intercept, giving the average language.
-epred_for <- function(v, nd, xvar, group) {
-  own <- OWN[[v]]
+OWNC <- c(item = "c_item", class = "c_class", interaction = "c_int")
+
+epred_for <- function(cp, nd, xvar, group) {
+  nd$component <- factor(cp, levels = COMPS)
   for (a in names(AT_MEAN)) if (is.null(nd[[a]])) nd[[a]] <- AT_MEAN[[a]]
-  tidybayes::add_epred_draws(fits[[v]], newdata = nd, re_formula = NA, ndraws = NDRAWS) |>
+  tidybayes::add_epred_draws(fit, newdata = nd, re_formula = NA, ndraws = NDRAWS) |>
     ungroup() |>
-    mutate(component = COMPONENTS[[v]], x = .data[[xvar]], grp = factor(.data[[group]]))
+    mutate(component = cp, x = .data[[xvar]], grp = factor(.data[[group]]))
 }
 
 # --- row 1: own planted strength, one line per width
-nd_planted <- expand_grid(own = seq(0, 1, length.out = 30), width = D_LEVELS) |>
+nd_planted <- expand_grid(own_raw = seq(0, 1, length.out = 30), width = D_LEVELS) |>
   mutate(log2_d = log2(width) - MU_D, log2_rank = 0)
-pred_planted <- lapply(names(fits), function(v) {
+pred_planted <- lapply(COMPS, function(cp) {
   nd <- nd_planted
-  nd[[OWN[[v]]]] <- nd$own - MU_ACH[[sub("^c_", "", OWN[[v]])]]
-  epred_for(v, nd, "own", "width")
-}) |> bind_rows() |> mutate(component = factor(component, levels = COMPONENTS))
+  nd[[OWNC[[cp]]]] <- nd$own_raw - MU_ACH[[sub("^c_", "", OWNC[[cp]])]]
+  epred_for(cp, nd, "own_raw", "width")
+}) |> bind_rows() |> mutate(component = factor(component, levels = COMPS))
 
 # --- row 2: hidden width, one line per planted interaction rank
 nd_arch <- expand_grid(width = D_LEVELS, r_int = R_LEVELS) |>
   mutate(log2_d = log2(width) - MU_D, log2_rank = log2(R2RANK[as.character(r_int)]) - MU_RANK)
-pred_arch <- lapply(names(fits), function(v) epred_for(v, nd_arch, "width", "r_int")) |>
-  bind_rows() |> mutate(component = factor(component, levels = COMPONENTS))
+pred_arch <- lapply(COMPS, function(cp) epred_for(cp, nd_arch, "width", "r_int")) |>
+  bind_rows() |> mutate(component = factor(component, levels = COMPS))
 
 # University of Oregon palette. Both variables are ordered, so each gets one ramp that darkens
 # monotonically rather than a set of hues. Width uses the same green ramp as the descriptive
@@ -306,26 +332,29 @@ BLOCK  <- setNames(c(rep("planted strength", 3), rep("architecture", 6)), LEVELS
 
 # Maps this model's raw coefficient names onto those labels. The own planted strength keeps its
 # own label ("planted item" in the item model) so the specificity block still reads as a 3x3.
-label_map <- function(v) {
-  own <- OWN[[v]]
-  c(PLANTED, SHARED,
-    setNames("effect size x width",        paste0("b_", own, ":log2_d")),
-    setNames("effect size x rank",         paste0("b_", own, ":log2_rank")),
-    setNames("effect size x width x rank", paste0("b_", own, ":log2_d:log2_rank")))
-}
+# Maps a stacked coefficient name onto the shared labels. Every term is "b_component<c>:<rest>",
+# so the component falls out of the name and `rest` is what the old per-component models called
+# the term. The own-strength crossings are named with `own`, which is how they stay comparable
+# across the three panels.
+PNAME <- c(c_item = "item", c_class = "class", c_int = "interaction")
+REST  <- c(PNAME,
+           log2_d = "width", log2_rank = "rank", "log2_d:log2_rank" = "width x rank",
+           setNames(paste(PNAME, "x width"),       paste0(names(PNAME), ":log2_d")),
+           setNames(paste(PNAME, "x rank"),        paste0(names(PNAME), ":log2_rank")),
+           setNames(paste(PNAME, "x width x rank"),
+                    paste0(names(PNAME), ":log2_d:log2_rank")))
 
-draws <- lapply(names(fits), function(v) {
-  map <- label_map(v)
-  as_draws_df(fits[[v]]) |>
-    as.data.frame() |>
-    select(any_of(names(map))) |>
-    pivot_longer(everything(), names_to = "term", values_to = "value") |>
-    mutate(component = COMPONENTS[[v]], label = unname(map[term]))
-}) |> bind_rows() |>
+draws <- as.data.frame(as_draws_df(fit)) |>
+  select(matches("^b_component[a-z]+:")) |>
+  pivot_longer(everything(), names_to = "term", values_to = "value") |>
+  mutate(component = sub("^b_component([a-z]+):.*$", "\\1", term),
+         rest      = sub("^b_component[a-z]+:", "", term),
+         label     = unname(REST[rest])) |>
+  filter(!is.na(label)) |>
   mutate(label = factor(label, levels = rev(LEVELS)),
          block = factor(BLOCK[as.character(label)],
                         levels = c("planted strength", "architecture")),
-         component = factor(component, levels = COMPONENTS))
+         component = factor(component, levels = COMPS))
 
 # Two stacked blocks, not one panel. The planted-strength coefficients span about +-2.5 while
 # the architecture ones are far smaller, so on a shared axis the architecture terms -- the result

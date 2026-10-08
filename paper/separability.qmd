@@ -675,7 +675,7 @@ In Experiment 1 we test our measurement on an artificial language whose features
 
 ## Dataset {#sec-exp1-data}
 
-In order to examine the separability of linguistic representations, we constructed an artificial language which comprises a probability distribution over a vocabulary of `r cm(600)` tokens. Every observation is a combination of a **form** (one of `r max(toy$n_form)`), a **class** (one of `r max(toy$n_class)`), and a **context** (drawn from a pool of 400). The motivation for this setup is to give each word a naturalistic environment: each word occurs in a context that favors a specific class-membership (e.g., *walk* as a verb occurs in a different context than *walk* as a noun). Each form is observed `r max(toy$n_obs)` times in each class, each time in a different context, mirroring the patterns of human language. Consider *walk* used as a verb in one of those contexts. Four things determine the distribution over the next token. *Walk* itself contributes the same amount regardless of the class it is used in, and the verb class also contributes the same amount for every item. The third contribution is what is specific to *walk*-as-a-verb over and above those two: every form and every class has its own random vector, and this term multiplies *walk*'s by the verb's, entry by entry. The context contributes the rest, which is noise as far as our question goes, though the model still has to encode it in order to accurately learn the language. The four are weighted, summed and passed through a softmax layer in order to create the ground truth probability distribution over next tokens for a given input:
+In order to examine the separability of linguistic representations, we constructed an artificial language which comprises a probability distribution over a vocabulary of `r cm(600)` tokens. Every observation is a combination of a **form** (one of `r max(toy$n_form)`), a **class** (one of `r max(toy$n_class)`), and a **context** (drawn from a pool of 400). The motivation for this setup is to give each word a naturalistic environment: each word occurs in a context that favors a specific class-membership (e.g., *walk* as a verb occurs in a different context than *walk* as a noun). Each form is observed `r max(toy$n_obs)` times in each class, each time in a different context, mirroring the patterns of human language. Consider *walk* used as a verb in one of those contexts. Four things determine the distribution over the next token. *Walk* itself contributes the same amount regardless of the class it is used in, and the verb class also contributes the same amount for every item. The third contribution is what is specific to *walk*-as-a-verb over and above those two: each pairing of a form with a class has its own random vector, drawn independently of the first two and then centered across forms and across classes, so that nothing in it can be attributed to *walk* alone or to the verb class alone. The context contributes the rest, which is noise as far as our question goes, though the model still has to encode it in order to accurately learn the language. The four are weighted, summed and passed through a softmax layer in order to create the ground truth probability distribution over next tokens for a given input:
 
 $$
 \begin{aligned}
@@ -687,13 +687,15 @@ $$
 \end{aligned}
 $$ {#eq-toy}
 
-Each term is isotropically scaled to unit variance before being weighted,[^2] so changing the weights changes the mix of the three effects without changing how much signal there is in total.
+Each term is isotropically scaled to unit variance before being weighted,[^2] so changing the weights changes the mix of the three effects without changing how much signal there is in total; the constant $s = 3$ then scales that sum before the softmax, setting how peaked the resulting distribution is.
 
 [^2]: Specifically, each observation consists of a form in a specific class and a context, paired with that term's contribution to the next-token distribution for that observation. We normalize this dataset by dividing each value by the total standard deviation across all observations.
 
-The weights $w_\alpha$, $w_\beta$, and $w_\gamma$ in @eq-toy control how much of the true distribution each of the three effects contributes, and we cross them factorially over $\{0, 0.5, 1, 2\}$: zero removes an effect from the language altogether, and the other three values make an effect half as strong as another, equal to it, or twice it. Similarly, $w_{\text{ctx}}$ governs how much the context contributes, so we cross those languages with three context weights: $\{0.5, 2.0, 6.0\}$, ranging from context being a minor part of the true distribution to the dominant one. The four weights are subsequently rescaled together to unit length, such that $w_\alpha^2 + w_\beta^2 + w_\gamma^2 + w_{\text{ctx}}^2 = 1$.[^3] The ranks of the item and class are held fixed at `r unique(toy$r_item)` and `r unique(toy$r_class)` respectively but each language is crossed with four interaction effect ranks: $\{4, 16, 64, 177\}$. Additionally, we train a model on each of the resulting languages at hidden widths of `r paste(sort(unique(toy$d)), collapse = ", ")`, with either a linear or a ReLU activation. The whole grid is then run with five random seeds giving `r format(nrow(toy), big.mark = ",")` runs in all, of which `r sprintf("%.1f%%", 100 * mean(toy$converged))` trained to convergence; Appendix \ref{sec-appendix-grid} lists every factor and its levels.
+The weights $w_\alpha$, $w_\beta$, and $w_\gamma$ in @eq-toy control how much of the true distribution each of the three effects contributes, and we cross them factorially over $\{0, 0.5, 1, 2\}$: zero removes an effect from the language altogether, and the other three values make an effect half as strong as another, equal to it, or twice it. Similarly, $w_{\text{ctx}}$ governs how much the context contributes, so we cross those languages with three context weights: $\{0.5, 2.0, 6.0\}$, ranging from context being a minor part of the true distribution to the dominant one. The four weights are subsequently rescaled together to unit length, such that $w_\alpha^2 + w_\beta^2 + w_\gamma^2 + w_{\text{ctx}}^2 = 1$.[^3] The ranks of the item and class are held fixed at `r unique(toy$r_item)` and `r unique(toy$r_class)` respectively but each language is crossed with four interaction effect ranks: $\{4, 16, 64, 177\}$, the highest of which is the ceiling that centering imposes ($(60-1)(4-1) = 177$). Additionally, we train a model on each of the resulting languages at hidden widths of `r paste(sort(unique(toy$d)), collapse = ", ")`, with either a linear or a ReLU activation. Each model is trained with the Adam optimizer at a learning rate of 0.01, with early stopping.[^conv] The whole grid is then run with five random seeds giving `r format(nrow(toy), big.mark = ",")` runs in all, of which `r sprintf("%.1f%%", 100 * mean(toy$converged))` trained to convergence. Full training details are listed in Appendix \ref{sec-appendix-grid}.
 
 [^3]: This makes the resulting languages more comparable by enforcing the same total signal (i.e., the variance of the weighted sum in @eq-toy is held constant), despite individual differences in the amount that each individual term contributes.
+
+[^conv]: A run counts as converged when the cross-entropy fails to improve by more than $10^{-5}$ over 40 consecutive iterations; runs still improving after 3,000 iterations are recorded as not converged. Stopping never depends on anything derived from the measurement, so it cannot bias the components we report.
 
 ## Method {#sec-exp1-method}
 
@@ -715,7 +717,7 @@ where $\mu$ is the grand mean; $\alpha(i)$ is item $i$'s mean across classes min
 
 Each of these averages is taken over a sample of observations that differ only in context, so each carries some of the context term of @eq-toy as noise. We remove it by dividing the observations into two evenly sized splits, running the decomposition on each split separately, and estimating each component's size as the dot product of its two split estimates, which is large when the splits agree about the component and near zero when they do not. As a result, noise that differs between the splits is independent and cancels.
 
-For each representation we report two measurements. The first measure is the fraction of the representation accounted for by lexical, class, and idiosyncratic information: each component's squared length, summed over its vectors and divided by the total, so that the three fractions sum to one. The second measure quantifies the extent to which those components occupy the same geometric directions. Specifically, we project the item vectors onto the class direction and record the fraction of their squared length that survives, and we project the interaction onto the smallest subspace containing both the item and the class vectors (i.e., the span of the two subspaces).[^4]
+For each representation we report two measurements. The first, which we call the *size* of a component, is the fraction of the representation accounted for by lexical, class, and idiosyncratic information: each component's squared length, summed over its vectors and divided by the total, so that the three fractions sum to one. The second, the *overlap* between components, quantifies the extent to which they occupy the same geometric directions. Specifically, we project the item vectors onto the class direction and record the fraction of their squared length that survives, and we project the interaction onto the smallest subspace containing both the item and the class vectors (i.e., the span of the two subspaces).[^4]
 
 [^4]: The class effect spans at most one direction fewer than the number of classes, so it is low-dimensional in both experiments: one direction in Experiment 2 and at most three in Experiment 1. Its projection into the item subspace, which has many more dimensions, has high overlap by chance; we therefore do not report it.
 
@@ -729,19 +731,19 @@ It's important to note that the weights in @eq-toy describe the ground-truth dis
 
 ### Analysis {#sec-exp1-analysis}
 
-We model our data using an ordered beta regression [@kubinec2023ordbeta] for the first measurement and a Gaussian model for the second measurement, both in *brms* [@burkner2017brms] with default priors. For the first measurement, we modeled each component's fraction of the representation as a function of its own effect size in the language, the hidden width, and the total rank of the planted structure (with interactions between each), with the other two components as controls, and random intercepts by language (language here refers to the 5 languages that share parameter settings but differ by seed). @eq-ordbeta demonstrates the model for the item effect; the class and interaction models are analogous, but with their own effect being included as an interaction term rather than the item effect. All predictors are centered. Coefficient values here indicate how much a specific parameter affects the amount that the model represents either item, class, or the interaction.
+We model our data using an ordered beta regression [@kubinec2023ordbeta] for the sizes and a Gaussian model for the overlaps, both in *brms* [@burkner2017brms] with weakly informative priors, given in Appendix \ref{sec-appendix-grid}. For the sizes we fit a single model over all three components (@eq-ordbeta): a component's fraction of the representation is predicted by all three planted effect sizes, the hidden width, and the total rank of the planted structure, with every term crossed with component so that the architecture effects are free to differ between the item, the class and the interaction. All predictors are centered. A language here is one combination of the four weights and the interaction rank, `r cm(length(unique(paste(toy$key, toy$r_int))))` in all; the five seeds for a language are re-realizations of the same specification rather than different languages, so they share an intercept. Width is the only predictor that varies within a language, and so the only one that can carry a random slope: the effect sizes and the rank are properties of the language itself and are constant across its runs. A random intercept by run lets the three components measured from one trained model covary.
 
 $$
 \begin{aligned}
-& \text{ItemFraction} \sim \text{ItemEffect} * \text{log2(Width)} \\ & \quad * \text{log2(TotalRank)} \\ & \quad + \text{ClassEffect} + \text{InteractionEffect} \\ & \quad + (1 \mid \text{Language})
+& \text{Share} \sim \text{Component} * \big( \text{ItemEffect} \\ & \quad + \text{ClassEffect} + \text{InteractionEffect} \\ & \quad + \text{log2(Width)} * \text{log2(TotalRank)} \big) \\ & \quad + (1 + \text{log2(Width)} \mid \text{Language}) \\ & \quad + (1 \mid \text{Run})
 \end{aligned}
 $$ {#eq-ordbeta}
 
-For our second measure, we modeled each overlap as a logged multiple of its own chance level with fixed-effects for each component, width, and total rank, with a random intercept for language (@eq-overlap). All predictors are centered for this model as well. Coefficient values here indicate the extent to which each parameter causes the item, class, and interaction dimensions to be orthogonal or non-orthogonal.
+For the overlaps we likewise fit one model over both overlap measures, each expressed as a logged multiple of its own chance level, with the same crossing and the same random-effects structure (@eq-overlap). Coefficient values here indicate the extent to which each parameter causes the item, class, and interaction dimensions to be orthogonal or non-orthogonal.
 
 $$
 \begin{aligned}
-& \text{log(Overlap/Chance)} \sim \text{ItemEffect} \\ & \quad + \text{ClassEffect} + \text{InteractionEffect} \\ & \quad + \text{log2(Width)} * \text{log2(TotalRank)} \\ & \quad + (1 \mid \text{Language})
+& \text{log(Overlap/Chance)} \sim \text{Measure} * \big( \text{ItemEffect} \\ & \quad + \text{ClassEffect} + \text{InteractionEffect} \\ & \quad + \text{log2(Width)} * \text{log2(TotalRank)} \big) \\ & \quad + (1 + \text{log2(Width)} \mid \text{Language}) \\ & \quad + (1 \mid \text{Run})
 \end{aligned}
 $$ {#eq-overlap}
 
@@ -983,6 +985,50 @@ tibble::tribble(
 ```
 
 Item rank is fixed at `r unique(toy$r_item)` and class rank at `r unique(toy$r_class)`, so the structure a language requires is `r unique(toy$r_item) + unique(toy$r_class)` directions plus the interaction's rank, running from `r min(toy$rank)` to `r max(toy$rank)`. Of the `r cm(nrow(toy))` runs, `r sprintf("%.1f%%", 100 * mean(toy$converged))` trained to convergence.
+
+
+Every learner is trained in full batch with the Adam optimizer at a learning rate of 0.01, minimizing cross-entropy against the exact ground-truth distribution until the loss plateaus, on one GPU with twelve worker processes.
+
+Both the size and the overlap models use weakly informative priors rather than the package defaults: a normal distribution with mean zero and standard deviation 2.5 on every population-level coefficient, a normal distribution with mean zero and standard deviation 1 on the standard deviations of the random effects, and an LKJ(2) prior on their correlation. The coefficient prior still covers the largest effects either model estimates, which reach about 2.8 on the logit scale, and the prior on the standard deviations is much wider than any variance component the data support, so neither prejudges a result.
+
+@fig-toy-fit reports how well that training succeeded, and what it did not buy. The left panel is the Kullback-Leibler divergence from the learner's predictions to the ground-truth distribution, which is the cross-entropy at convergence minus the entropy of the target; the entropy floor itself varies across the grid, so the raw cross-entropy is not comparable between languages but this difference is. The right panel is the share of the item-by-class structure that the hidden layer actually carries, as a fraction of the share planted in the language. Both are restricted to the languages in which the interaction is more than 30% of the planted structure, which are the languages where the question has teeth.
+
+```{r}
+#| label: fig-toy-fit
+#| fig-width: 6.3
+#| fig-height: 2.6
+#| out-width: "100%"
+#| fig-cap: "Fit and recovery against hidden width, for languages whose planted structure is more than 30% interaction. Left: Kullback-Leibler divergence from the learner to the ground-truth distribution, so zero is a perfect fit. Right: the interaction share measured in the hidden layer as a fraction of the share planted in the language, so one would be full recovery and the plotted values are the fraction of it reached. Lines are medians over runs with interquartile bands, which show how much the languages in the grid differ from one another rather than measurement error."
+#|
+ARMC <- c(ReLU = UO[["gold"]], linear = UO[["green2"]])
+
+.fit <- toy |>
+  filter(converged) |>
+  mutate(planted_int = ach_int / (ach_item + ach_class + ach_int)) |>
+  filter(planted_int > 0.30) |>
+  mutate(recovered = size_interaction / planted_int,
+         wpos = as.integer(factor(d, sort(unique(d)))))
+
+bind_rows(
+  transmute(.fit, act, wpos, panel = "divergence from the language (0 = perfect fit)", y = fit_gap),
+  transmute(.fit, act, wpos, panel = "interaction recovered (1 = all of it)",         y = recovered)) |>
+  mutate(panel = factor(panel, c("divergence from the language (0 = perfect fit)",
+                                 "interaction recovered (1 = all of it)"))) |>
+  group_by(act, panel, wpos) |>
+  summarize(med = median(y), lo = quantile(y, .25), hi = quantile(y, .75), .groups = "drop") |>
+  ggplot(aes(wpos, med, color = act, fill = act)) +
+  geom_ribbon(aes(ymin = lo, ymax = hi), alpha = .16, color = NA) +
+  geom_line(linewidth = .7) + geom_point(size = 1.4) +
+  facet_wrap(~ panel, nrow = 1, scales = "free_y") +
+  scale_color_manual(values = ARMC, name = NULL) +
+  scale_fill_manual(values = ARMC, guide = "none") +
+  scale_x_continuous(breaks = seq_along(sort(unique(toy$d))),
+                     labels = sort(unique(toy$d))) +
+  labs(x = "hidden width", y = NULL) +
+  theme_paper(9) + theme(legend.position = "top",
+                         legend.margin = margin(0, 0, -6, 0),
+                         panel.grid.minor = element_blank())
+```
 
 {{< pagebreak >}}
 
