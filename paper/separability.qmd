@@ -686,19 +686,19 @@ These debates about the nature of lexical representations create an important di
 
 ## Present study
 
-The present study asks how item-specific information is represented and how widespread it is. We focus on representations of words in grammatical classes and decompose a word-in-class representation into three components: a class component (e.g., a verb component), an item component (e.g., *walk* regardless of the part of speech), and an item-of-a-specific-class component (e.g., *walk* as a verb).
+The present study asks how item-specific information is represented, and what properties of the input give rise to item-specific representations. We focus on representations of words in grammatical classes and decompose a word-in-class representation into three components: an item component (e.g., *walk* regardless of the part of speech), a class component (e.g., a verb component), and an idiosyncratic component, which is the item-of-a-specific-class information (e.g., *walk* as a verb).
 
 These questions are difficult to settle behaviorally, since a learner with no item-specific representations can look like one that has them [@houghton2026exemplars]. The question is fundamentally about the structure of a representation, and unlike in humans, model representations can be examined directly [@pluthInterpretabilityWhisperEncodings2026; @hinton1986distributed; @elhage2022superposition]. This makes neural network models a useful setting in which to ask what properties of the input give rise to item-specific representations. In particular, do such representations emerge only when a form has item-specific properties, or can they also arise for forms whose properties are fully predictable from their constituent parts?
 
-We first validate this decomposition on an artificial language in which we independently control the amount of information associated with the item, the class, and their interaction. This allows us to ask how a learner represents genuinely item-specific information when it is present in the input, and whether item-specific structure appears even when no interaction is present in the input. We then apply the same decomposition to six pretrained language models across two linguistic constructions to ask how much item-specific information is present in naturally occurring linguistic representations.
+We first validate this decomposition on an artificial language in which we independently control the amount of information associated with the item, the class, and their interaction, then apply it to six pretrained language models across two linguistic constructions.
 
 Our main contributions are as follows:
 
--   We introduce a method for decomposing word-in-context representations into lexical, grammatical, and word-class components, and validate it on an artificial language.
+-   We introduce a method for decomposing word-in-context representations into item, class, and idiosyncratic components, and validate it on an artificial language.
 
--   Across six pretrained models, the word-class component is consistently present and grows with depth; in the artificial language its size is governed more by representational capacity than by the language's composition. The lexical and grammatical components are nearly orthogonal, while the word-class component overlaps with both.
+-   Across six pretrained models, the idiosyncratic component is consistently present and grows with depth; in the artificial language its size is governed more by representational capacity than by the language's composition. The item and class components are nearly orthogonal, while the idiosyncratic component overlaps with both.
 
--   We show that the word-class component contains information about the class itself beyond the shared class representation.
+-   We show that the idiosyncratic component contains information about the class itself beyond the shared class representation.
 
 # Experiment 1: Artificial Languages {#sec-exp1}
 
@@ -738,7 +738,7 @@ The learner model is a multi-layer perceptron (MLP) with a single hidden layer o
 
 ### Decomposing a representation {#sec-measure}
 
-In order to measure the item-specific part of the representation, we decompose a word-in-context representation into a lexical component, a class component, and an idiosyncratic component. In Experiment 1, the representation we decompose is the MLP's hidden layer representation. Let $M[i,c] \in \mathbb{R}^d$ be the mean of those hidden states for item $i$ used at class $c$ (Appendix \ref{sec-appendix-math}). We decompose those item-by-class means by centering, so that:
+In order to measure the item-specific part of the representation, we decompose a word-in-context representation into an item component, a class component, and an idiosyncratic component. In Experiment 1, the representation we decompose is the MLP's hidden layer representation. Let $M[i,c] \in \mathbb{R}^d$ be the mean of those hidden states for item $i$ used at class $c$ (Appendix \ref{sec-appendix-math}). We decompose those item-by-class means by centering, so that:
 
 $$
 M[i,c] \;=\; \mu + \alpha(i) + \beta(c) + \gamma(i,c),
@@ -748,7 +748,7 @@ where $\mu$ is the grand mean; $\alpha(i)$ is item $i$'s mean across classes min
 
 Each of these averages is taken over a sample of observations that differ only in context, so each carries some of the context term of @eq-toy as noise. We remove it by dividing the observations into two evenly sized splits, running the decomposition on each split separately, and estimating each component's size as the dot product of its two split estimates, which is large when the splits agree about the component and near zero when they do not. As a result, noise that differs between the splits is independent and cancels.
 
-For each representation we report two measurements. The first, which we call the *size* of a component, is the fraction of the representation accounted for by lexical, class, and idiosyncratic information: each component's squared length, summed over its vectors and divided by the total, so that the three fractions sum to one. The second, the *overlap* between components, quantifies the extent to which they occupy the same geometric directions. Specifically, we project the item vectors onto the class direction and record the fraction of their squared length that survives, and we project the interaction onto the smallest subspace containing both the item and the class vectors (i.e., the span of the two subspaces).[^4]
+For each representation we report two measurements. The first, which we call the *size* of a component, is the fraction of the representation accounted for by item, class, and idiosyncratic information: each component's squared length, summed over its vectors and divided by the total, so that the three fractions sum to one. The second, the *overlap* between components, quantifies the extent to which they occupy the same geometric directions. Specifically, we project the item vectors onto the class direction and record the fraction of their squared length that survives, and we project the interaction onto the smallest subspace containing both the item and the class vectors (i.e., the span of the two subspaces).[^4]
 
 [^4]: The class effect spans at most one direction fewer than the number of classes, so it is low-dimensional in both experiments: one direction in Experiment 2 and at most three in Experiment 1. Its projection into the item subspace, which has many more dimensions, has high overlap by chance; we therefore do not report it.
 
