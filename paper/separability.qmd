@@ -1296,7 +1296,7 @@ rcoef |> filter(kind == "overlap") |>
   collapse_rows(1, latex_hline = "major", valign = "top")
 ```
 
-![Model results for the size model (@eq-model). Columns are the three measured components and lines are hidden widths, with 95% intervals.](fig-toy-effects-full.pdf){#fig-toy-effects-full width="100%"}
+![Model results for the size model (@eq-model). Columns are the three measured components, rows are the planted interaction rank, and lines are hidden widths, with 95% intervals. Holding rank fixed within a row is what separates the width effect from the width-by-rank term; the near-identical rows show how little the rank changes it.](fig-toy-effects-full.pdf){#fig-toy-effects-full width="100%"}
 
 ```{r}
 #| label: fig-toy-overlap
