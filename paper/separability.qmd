@@ -613,6 +613,13 @@ llm <- bind_rows(
 
 llm_deep <- llm |> group_by(construction, model) |> filter(layer == max(layer)) |> ungroup()
 
+# The same measure applied after the unembedding as well as at the final hidden layer, on
+# identical tokens, written by scripts/llm/measure_output_layer.py. Both members of a pair are
+# point estimates from one run, which is what makes them comparable to each other and what puts
+# them about 0.003 from the re-split medians `llm` carries.
+outl <- rd("llm_output_layer.csv") |>
+  mutate(where = factor(where, c("hidden", "output")))
+
 # A construction measured on fewer than six models would silently report a median over whatever
 # happened to finish, so say so loudly instead.
 local({
@@ -1444,6 +1451,33 @@ llm |> group_by(construction, model) |>
                     "interaction overlap", "its null")) |>
   kable_styling(font_size = 7) |>
   collapse_rows(1, latex_hline = "major", valign = "top")
+```
+
+Table \ref{tbl-output} reports each component's share at the final hidden layer alongside the same measurement after the unembedding, on the same tokens. A hidden layer is only meaningful relative to what reads it, and a linear map whose gain differs across directions does not preserve shares, so the two need not agree. The interaction's share is close to stable in both categories, moving by at most 0.045, so the claims we make about it do not depend on where it was measured. The division between the two main effects is less stable: for part of speech the unembedding moves roughly 0.06 to 0.08 of the structure from the item effect into the class effect, while for grammatical role every component moves by less than 0.02 on average.
+
+```{r}
+#| label: tbl-output
+#| tbl-cap: "Each component's share of the item-by-class structure at the final hidden layer and after the unembedding, measured on identical tokens. Both members of a pair are point estimates from one run, which is what makes them comparable to each other; they therefore sit about 0.003 from the re-split medians quoted elsewhere."
+# Built from the hidden and output rows joined side by side, rather than pivoted, so that each
+# component's pair sits together and the table reads as six comparisons rather than twelve rows.
+local({
+  w <- function(k) outl |> filter(where == k) |>
+    select(model, construction, item = size_item, cls = size_class, int = size_interaction)
+  inner_join(w("hidden"), w("output"), by = c("model", "construction"),
+             suffix = c("_h", "_o")) |>
+    left_join(MODELS, by = "model") |>
+    arrange(construction, family, scale) |>
+    transmute(class = shortname(construction), model = paste(family, size),
+              i_h = g(item_h, 3), i_o = g(item_o, 3),
+              c_h = g(cls_h, 3),  c_o = g(cls_o, 3),
+              n_h = g(int_h, 3),  n_o = g(int_o, 3)) |>
+    kbl(booktabs = TRUE, align = "llrrrrrr", linesep = "",
+        col.names = c("class", "model", rep(c("hidden", "output"), 3))) |>
+    kable_styling(latex_options = c("HOLD_position"), font_size = 7) |>
+    add_header_above(c(" " = 2, "item effect" = 2, "class effect" = 2,
+                       "interaction" = 2)) |>
+    collapse_rows(1, latex_hline = "major", valign = "top")
+})
 ```
 
 ## How much of a token the components account for {#sec-appendix-gain}
