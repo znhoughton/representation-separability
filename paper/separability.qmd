@@ -754,7 +754,7 @@ For each representation we report two measurements. The first, which we call the
 
 To quantify whether a size is meaningful, we redraw the split two hundred times and estimate how often its confidence interval excludes zero; for components whose value is exactly zero this flags an effect about 5% of the time (Appendix \ref{sec-appendix-validate}), the false-positive rate expected of a 95% confidence interval.
 
-To quantify whether an overlap is meaningful, we project the effect, held exactly as measured, onto two hundred random subspaces of the same rank, which gives the distribution of overlaps an unrelated subspace would yield. An overlap below that baseline indicates meaningful orthogonality; an overlap above the baseline indicates meaningful non-orthogonality. We report each overlap as a multiple of the baseline's median, with how many measurements fall outside its 95% interval.
+To quantify whether an overlap is meaningful, we project the effect, held exactly as measured, onto two hundred random subspaces of the same rank, which gives its chance level: the distribution of overlaps an unrelated subspace of the same rank would yield. An overlap below its chance level indicates meaningful orthogonality; an overlap above it indicates meaningful non-orthogonality. We report each overlap as a multiple of that chance level's median, with how many measurements fall outside its 95% interval.
 
 ![The four item-by-class means formed by two items in two classes. The arrow is $\gamma(i,c)$.](fig-measurement.pdf){#fig-measurement width="78%"}
 
@@ -762,21 +762,15 @@ It's important to note that the weights in @eq-toy describe the ground-truth dis
 
 ### Analysis {#sec-exp1-analysis}
 
-We model our data using an ordered beta regression [@kubinec2023ordbeta] for the sizes and a Gaussian model for the overlaps, both in *brms* [@burkner2017brms] with weakly informative priors, given in Appendix \ref{sec-appendix-grid}. For the sizes we fit a single model over all three components (@eq-ordbeta): a component's fraction of the representation is predicted by all three planted effect sizes, the hidden width, and the total rank of the planted structure, which is the item, class and interaction ranks summed (`r min(toy$rank)` to `r max(toy$rank)` across the grid), with every term crossed with component so that the architecture effects are free to differ between the item, the class and the interaction. All predictors are centered. A language here is one combination of the four weights and the interaction rank, `r cm(length(unique(paste(toy$key, toy$r_int))))` in all; the five seeds for a language are re-realizations of the same specification rather than different languages, so they share an intercept. Width is the only predictor that varies within a language, and so the only one that can carry a random slope: the effect sizes and the rank are properties of the language itself and are constant across its runs. A random intercept by run lets the three components measured from one trained model covary.
+We model our data using an ordered beta regression [@kubinec2023ordbeta] for the sizes and a Gaussian model for the overlaps, both in *brms* [@burkner2017brms] with weakly informative priors, given in Appendix \ref{sec-appendix-grid}. Both quantities are fit with the single structure in @eq-model. For the sizes we fit one model over all three components, with Outcome a component's share of the representation and Group that component, predicted by all three planted effect sizes, the hidden width, and the total rank of the planted structure, which is the item, class and interaction ranks summed (`r min(toy$rank)` to `r max(toy$rank)` across the grid), with every term crossed with component so that the architecture effects are free to differ between the item, the class and the interaction. All predictors are centered. A language here is one combination of the four weights and the interaction rank, `r cm(length(unique(paste(toy$key, toy$r_int))))` in all; the five seeds for a language are re-realizations of the same specification rather than different languages, so they share an intercept. Width is the only predictor that varies within a language, and so the only one that can carry a random slope: the effect sizes and the rank are properties of the language itself and are constant across its runs. A random intercept by run lets the three components measured from one trained model covary.
 
 $$
 \begin{aligned}
-& \text{Share} \sim \text{Component} * \big( \text{ItemEffect} \\ & \quad + \text{ClassEffect} + \text{InteractionEffect} \\ & \quad + \text{log2(Width)} * \text{log2(TotalRank)} \big) \\ & \quad + (1 + \text{log2(Width)} \mid \text{Language}) \\ & \quad + (1 \mid \text{Run})
+& \text{Outcome} \sim \text{Group} * \big( \text{ItemEffect} \\ & \quad + \text{ClassEffect} + \text{InteractionEffect} \\ & \quad + \text{log2(Width)} * \text{log2(TotalRank)} \big) \\ & \quad + (1 + \text{log2(Width)} \mid \text{Language}) \\ & \quad + (1 \mid \text{Run})
 \end{aligned}
-$$ {#eq-ordbeta}
+$$ {#eq-model}
 
-For the overlaps we likewise fit one model over both overlap measures, each expressed as a logged multiple of its own chance level, with the same crossing and the same random-effects structure (@eq-overlap). Coefficient values here indicate the extent to which each parameter causes the item, class, and interaction dimensions to be orthogonal or non-orthogonal.
-
-$$
-\begin{aligned}
-& \text{log(Overlap/Chance)} \sim \text{Measure} * \big( \text{ItemEffect} \\ & \quad + \text{ClassEffect} + \text{InteractionEffect} \\ & \quad + \text{log2(Width)} * \text{log2(TotalRank)} \big) \\ & \quad + (1 + \text{log2(Width)} \mid \text{Language}) \\ & \quad + (1 \mid \text{Run})
-\end{aligned}
-$$ {#eq-overlap}
+The overlaps are likewise fit as one model over both overlap measures, with the same structure. Outcome is the log of an overlap divided by its own chance level, and Group is the overlap measure: the item effect's overlap with the class direction, or the interaction's overlap with the span of the item and class subspaces. Dividing each by its own chance level is what lets the two measures share one response, since a raw overlap's chance level depends on the rank of the subspace it is projected onto, which differs between the two measures and moves with width. Both models are fit separately for the ReLU and the linear learner, giving four fits in all. Coefficient values here indicate the extent to which each parameter causes the item, class, and interaction dimensions to be orthogonal or non-orthogonal.
 
 ## Results {#sec-exp1-results}
 
@@ -787,7 +781,7 @@ Results are visualized in @fig-toy, with the full coefficient results included i
 #| fig-width: 3.05
 #| fig-height: 2.4
 #| out-width: "100%"
-#| fig-cap: "Ground-truth effect size of each component in the language (x) against its size in the MLP's representations (y). Points are runs; lines are fitted values from @eq-ordbeta with 95% intervals, colored by hidden width."
+#| fig-cap: "Ground-truth effect size of each component in the language (x) against its size in the MLP's representations (y). Points are runs; lines are fitted values from the size model (@eq-model) with 95% intervals, colored by hidden width."
 #|
 .fit <- rpred |>
   filter(kind == "size", grid == "planted") |>
@@ -859,7 +853,7 @@ Turning to how those components are oriented, the class direction carries almost
 
 In contrast to the main effects, the interaction effect is not orthogonal to class or item. Across the six models, `r ldrng("POS (noun/verb)", "leak_int", 3)` of the interaction for part of speech is in the span of the two main effects, and for grammatical role `r ldrng("role (subject/object)", "leak_int", 3)` is, against nulls whose upper ends run `r ldrng("POS (noun/verb)", "leak_int_null", 3)` and `r ldrng("role (subject/object)", "leak_int_null", 3)` respectively. The smallest of these overlaps exceeds the largest of the nulls, so the pattern holds in every model. In other words, the small departure from orthogonality between item and class becomes a large one for the interaction.
 
-In the artificial learner the components become meaningfully orthogonal once the hidden layer is wide enough for the structure, but LLMs don't follow that same pattern: their components remain meaningfully non-orthogonal at every scale (`r ovr("leak")` times chance for the item effect into the class direction and `r ovr("leak_int")` for the interaction into the margins), and increasingly so as width grows. Added width there is spent representing more of the language rather than giving the same structure more room.
+In the artificial learner the components become meaningfully orthogonal once the hidden layer is wide enough for the structure, but LLMs don't follow that same pattern: their components remain meaningfully non-orthogonal at every scale (`r ovr("leak")` times chance for the item effect into the class direction and `r ovr("leak_int")` for the interaction into the span of both), and increasingly so as width grows. Added width there is spent representing more of the language rather than giving the same structure more room.
 
 ```{r}
 #| label: fig-llm
@@ -1259,7 +1253,7 @@ Results for our statistical analysis are presented in Tables \ref{tbl-component-
 
 ```{r}
 #| label: tbl-component-coefs
-#| tbl-cap: "Coefficient values of @eq-ordbeta with error and 95% CIs, ReLU arm."
+#| tbl-cap: "Coefficient values of the size model (@eq-model) with error and 95% CIs, ReLU arm."
 rcoef |> filter(kind == "size", arm == "relu") |>
   transmute(component, term = label,
             estimate = g(estimate, 2), error = g(error, 2),
@@ -1273,7 +1267,7 @@ rcoef |> filter(kind == "size", arm == "relu") |>
 
 ```{r}
 #| label: tbl-component-coefs-lin
-#| tbl-cap: "Coefficient values of @eq-ordbeta with error and 95% CIs, linear arm."
+#| tbl-cap: "Coefficient values of the size model (@eq-model) with error and 95% CIs, linear arm."
 rcoef |> filter(kind == "size", arm == "linear") |>
   transmute(component, term = label,
             estimate = g(estimate, 2), error = g(error, 2),
@@ -1285,15 +1279,15 @@ rcoef |> filter(kind == "size", arm == "linear") |>
   collapse_rows(1, latex_hline = "major", valign = "top")
 ```
 
-![Coefficient estimates from @eq-ordbeta, one panel per measured component. The upper block holds the planted effect sizes and the lower the architecture terms, which are on a much smaller scale and so are drawn on their own axis. Points are posterior medians with 95% intervals.](fig-toy-coefs.pdf){#fig-toy-coefs width="100%"}
+![Coefficient estimates from the size model (@eq-model), one panel per measured component. The upper block holds the planted effect sizes and the lower the architecture terms, which are on a much smaller scale and so are drawn on their own axis. Points are posterior medians with 95% intervals.](fig-toy-coefs.pdf){#fig-toy-coefs width="100%"}
 
 ## Overlap models {#sec-appendix-overlap-models}
 
-Table \ref{tbl-overlap-coefs} reports every coefficient of @eq-overlap.
+Table \ref{tbl-overlap-coefs} reports every coefficient of the overlap model (@eq-model).
 
 ```{r}
 #| label: tbl-overlap-coefs
-#| tbl-cap: "Every coefficient of @eq-overlap, with Estimate, Estimated error, and 95% CIs."
+#| tbl-cap: "Every coefficient of the overlap model (@eq-model), with Estimate, Estimated error, and 95% CIs."
 rcoef |> filter(kind == "overlap") |>
   transmute(arm, measure = component, term = label,
             estimate = g(estimate, 2), error = g(error, 2),
@@ -1305,7 +1299,7 @@ rcoef |> filter(kind == "overlap") |>
   collapse_rows(1, latex_hline = "major", valign = "top")
 ```
 
-![Model results for @eq-ordbeta. Columns are the three measured components and lines are hidden widths, with 95% intervals.](fig-toy-effects-full.pdf){#fig-toy-effects-full width="100%"}
+![Model results for the size model (@eq-model). Columns are the three measured components and lines are hidden widths, with 95% intervals.](fig-toy-effects-full.pdf){#fig-toy-effects-full width="100%"}
 
 ```{r}
 #| label: fig-toy-overlap
