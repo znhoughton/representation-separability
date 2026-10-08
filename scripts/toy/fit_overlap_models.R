@@ -38,6 +38,12 @@ suppressMessages({
 if (!file.exists(file.path(".", "data", "artificial_language_grid.csv")))
   stop("run me from the repo root: data/artificial_language_grid.csv not found")
 
+# SUM CODING for every factor, so the intercept is the grand mean across the levels of the
+# grouping factor and each level's term is a deviation from it. Under treatment coding the
+# intercept would instead be whichever level happened to sort first, and the architecture main
+# effects would be that level's effects rather than the average.
+options(contrasts = c("contr.sum", "contr.sum"))
+
 DEMO        <- nzchar(Sys.getenv("DEMO"))
 SEED        <- 964
 CHAINS      <- as.integer(Sys.getenv("CHAINS", "12"))
@@ -151,15 +157,14 @@ for (.m in names(MEASURES0))
   cat(sprintf("  coverage by width, %-12s %s\n", .m,
               paste(sprintf("%d:%.0f%%", cov$d, cov[[MEASURES0[[.m]]]]), collapse = "  ")))
 
-# Cell-means coded over `measure` (`0 + measure`), so each coefficient is already that measure's
-# own effect and differences between the two measures are contrasts of those terms. Every
-# predictor is crossed with measure, matching the size model.
+# Sum coded over `measure`, matching the size model: the intercept is the grand mean across the
+# two measures, each main effect is their average, and the measure term is a deviation. A measure's
+# own effect is the main effect plus its deviation.
 #
 # Width is the only predictor that varies WITHIN a language -- the effect sizes and the rank
 # define the language -- so it is the only one that can carry a random slope. `run` groups the two
 # measure rows that come from one trained model.
-RHS <- paste("0 + measure",
-             "+ measure:((c_item + c_class + c_int) * log2_d * log2_rank)",
+RHS <- paste("measure * ((c_item + c_class + c_int) * log2_d * log2_rank)",
              "+ (1 + log2_d | lang) + (1 | run)")
 
 want_draws <- CHAINS * ((if (DEMO) 600 else ITER) - (if (DEMO) 300 else WARMUP))
@@ -224,22 +229,34 @@ LABELS <- c(PNAME,
 MEAS <- levels(d$measure)
 dr   <- as.data.frame(as_draws_df(fit))
 
-coefs <- lapply(grep("^b_measure[a-z_]+:", names(dr), value = TRUE), function(tm) {
-  rest <- sub("^b_measure[a-z_]+:", "", tm)
-  if (!rest %in% names(LABELS)) return(NULL)
-  x <- dr[[tm]]
-  data.frame(model = paste0("overlap_stacked", ARM),
-             measure = sub("^b_measure([a-z_]+):.*$", "\\1", tm),
-             term = tm, label = unname(LABELS[rest]),
-             estimate = mean(x), error = sd(x),
-             lo95 = unname(quantile(x, .025)), hi95 = unname(quantile(x, .975)),
-             p_gt0 = mean(x > 0))
+# Sum coding: a measure's effect is the average effect plus its deviation, and the last level's
+# deviation is minus the sum of the others, which contr.sum supplies as -1 weights.
+MMAT <- contr.sum(length(MEAS)); rownames(MMAT) <- MEAS
+meff <- function(ms, term) {
+  x <- dr[[paste0("b_", term)]]
+  for (j in seq_len(ncol(MMAT))) {
+    nm <- paste0("b_measure", j, ":", term)
+    if (nm %in% names(dr)) x <- x + MMAT[ms, j] * dr[[nm]]
+  }
+  x
+}
+
+coefs <- lapply(names(LABELS), function(rest) {
+  if (!paste0("b_", rest) %in% names(dr)) return(NULL)
+  lapply(MEAS, function(ms) {
+    x <- meff(ms, rest)
+    data.frame(model = paste0("overlap_stacked", ARM), measure = ms,
+               term = rest, label = unname(LABELS[rest]),
+               estimate = mean(x), error = sd(x),
+               lo95 = unname(quantile(x, .025)), hi95 = unname(quantile(x, .975)),
+               p_gt0 = mean(x > 0))
+  }) |> bind_rows()
 }) |> bind_rows() |> mutate(excludes_zero = lo95 > 0 | hi95 < 0)
 
 # Crowding, per measure, from the draws rather than hypothesis(): the stacked parameter names
 # contain colons, which brms would have to parse out of a formula string.
 crowd <- lapply(MEAS, function(ms) {
-  x <- dr[[paste0("b_measure", ms, ":log2_d")]] + dr[[paste0("b_measure", ms, ":log2_rank")]]
+  x <- meff(ms, "log2_d") + meff(ms, "log2_rank")
   q <- unname(quantile(x, c(.025, .975)))
   data.frame(model = paste0("overlap_stacked", ARM), measure = ms, estimate = mean(x),
              error = sd(x), lo95 = q[1], hi95 = q[2],

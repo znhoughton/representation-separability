@@ -50,11 +50,19 @@ describe <- function(f) {
   else                           list(name = b, kind = "overlap", arm = arm, gvar = "measure")
 }
 
-# "b_componentitem:log2_d" -> level "item", term "log2_d"
-split_term <- function(tm, gvar) {
-  rx <- paste0("^b_", gvar, "([A-Za-z_]+):(.*)$")
-  if (!grepl(rx, tm)) return(NULL)
-  list(level = sub(rx, "\\1", tm), rest = sub(rx, "\\2", tm))
+# Sum coding: a level's effect is the average effect plus that level's deviation, and the last
+# level's deviation is minus the sum of the others -- exactly the contr.sum weights. So a reported
+# per-level coefficient is a contrast of draws, not a single parameter.
+level_effect <- function(dr, gvar, levs, lv, term) {
+  base <- paste0("b_", term)
+  if (!base %in% names(dr)) return(NULL)
+  cm <- contr.sum(length(levs)); rownames(cm) <- levs
+  x <- dr[[base]]
+  for (j in seq_len(ncol(cm))) {
+    nm <- paste0("b_", gvar, j, ":", term)
+    if (nm %in% names(dr)) x <- x + cm[lv, j] * dr[[nm]]
+  }
+  x
 }
 
 OWNC <- c(item = "c_item", class = "c_class", interaction = "c_int")
@@ -121,15 +129,15 @@ for (f in rds) {
 
   # ---- coefficients
   dr <- as.data.frame(as_draws_df(fit))
-  keep <- grep(paste0("^b_", m$gvar, "[A-Za-z_]+:"), names(dr), value = TRUE)
-  coef_all[[m$name]] <- lapply(keep, function(tm) {
-    s <- split_term(tm, m$gvar)
-    if (is.null(s) || !s$rest %in% names(LAB2)) return(NULL)
-    x <- dr[[tm]]
-    data.frame(model = m$name, kind = m$kind, arm = m$arm, component = s$level,
-               term = tm, label = unname(LAB2[s$rest]), estimate = mean(x), error = sd(x),
-               lo95 = unname(quantile(x, .025)), hi95 = unname(quantile(x, .975)),
-               p_gt0 = mean(x > 0))
+  coef_all[[m$name]] <- lapply(names(LAB2), function(rest) {
+    lapply(GLEV, function(lv) {
+      x <- level_effect(dr, m$gvar, GLEV, lv, rest)
+      if (is.null(x)) return(NULL)
+      data.frame(model = m$name, kind = m$kind, arm = m$arm, component = lv,
+                 term = rest, label = unname(LAB2[rest]), estimate = mean(x), error = sd(x),
+                 lo95 = unname(quantile(x, .025)), hi95 = unname(quantile(x, .975)),
+                 p_gt0 = mean(x > 0))
+    }) |> bind_rows()
   }) |> bind_rows() |> mutate(excludes_zero = lo95 > 0 | hi95 < 0)
   LEVELS_HERE <- GLEV
 
@@ -138,9 +146,10 @@ for (f in rds) {
   # measure depends on the item and class subspaces, which need a fixed 12 dimensions at every
   # cell of the grid, so crowding there is 12/width and is width by another name.
   crowd_all[[m$name]] <- lapply(LEVELS_HERE, function(lv) {
-    a <- paste0("b_", m$gvar, lv, ":log2_d"); b2 <- paste0("b_", m$gvar, lv, ":log2_rank")
-    if (!all(c(a, b2) %in% names(dr))) return(NULL)
-    x <- dr[[a]] + dr[[b2]]
+    xa <- level_effect(dr, m$gvar, GLEV, lv, "log2_d")
+    xb <- level_effect(dr, m$gvar, GLEV, lv, "log2_rank")
+    if (is.null(xa) || is.null(xb)) return(NULL)
+    x <- xa + xb
     q <- unname(quantile(x, c(.025, .975)))
     data.frame(model = m$name, kind = m$kind, arm = m$arm, component = lv,
                estimate = mean(x), error = sd(x), lo95 = q[1], hi95 = q[2],

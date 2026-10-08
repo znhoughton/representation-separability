@@ -35,6 +35,12 @@ REPO <- "."
 if (!file.exists(file.path(REPO, "data", "artificial_language_grid.csv")))
   stop("run me from the repo root: data/artificial_language_grid.csv not found")
 
+# SUM CODING for every factor, so the intercept is the grand mean across the levels of the
+# grouping factor and each level's term is a deviation from it. Under treatment coding the
+# intercept would instead be whichever level happened to sort first, and the architecture main
+# effects would be that level's effects rather than the average.
+options(contrasts = c("contr.sum", "contr.sum"))
+
 DEMO   <- nzchar(Sys.getenv("DEMO"))
 SEED   <- 964
 
@@ -160,23 +166,22 @@ cat(sprintf("  %d cells, %d %s%s\n", nrow(d), n_grp,
             if (GROUPING == "key") "weight combinations" else "languages",
             if (DEMO) "  [DEMO: subsampled, few iterations, DO NOT REPORT]" else ""))
 
-# ONE model over all three components, cell-means coded (`0 + component`) so that every
-# coefficient is already that component's own effect rather than a difference from a reference
-# level: b_componentitem:log2_d IS the width effect on the item share. Differences between
-# components are then contrasts of those terms, which three separate models could not provide.
+# ONE model over all three components, sum coded. The intercept is the grand mean across the
+# three, each architecture main effect is the AVERAGE effect over them, and each component term is
+# that component's deviation from the average -- so "does width act differently on the interaction
+# than on the item" is a deviation, which three separate models could not estimate at all. A
+# component's own effect is the main effect plus its deviation, recovered as a contrast.
 #
 # All three planted strengths are crossed with both architecture terms, not just the component's
 # own strength. That subsumes the per-component models, whose own-strength crossing is now the
 # diagonal of the block (component = item with c_item), and it additionally asks whether a
 # component's share responds to ANOTHER component's planted strength differently at different
 # widths -- a specificity question the separate models could only ask as a main effect.
-RHS <- paste("0 + component",
-             "+ component:((c_item + c_class + c_int) * log2_d * log2_rank)",
+RHS <- paste("component * ((c_item + c_class + c_int) * log2_d * log2_rank)",
              "+", RE_TERM)
 
 MODEL <- paste0("ordbeta_size_stacked", SUFFIX)
 COMPS <- levels(d$component)
-bterm <- function(cp, rest) paste0("b_component", cp, if (nzchar(rest)) paste0(":", rest) else "")
 
 # brms's file_refit = "on_change" hashes the formula, the data and the priors, but NOT the
 # sampling budget. A cached fit would therefore be reused verbatim after raising ITER, and the
@@ -216,8 +221,19 @@ fit <- ordbetareg(
 # contain colons and brms would have to parse them out of a formula string.
 cat("\n=== crowding test: does only rank/d matter?  (b_width + b_rank = 0) ===\n")
 DR <- as.data.frame(as_draws_df(fit))
+CMAT <- contr.sum(length(COMPS)); rownames(CMAT) <- COMPS
+# A component's effect is the main (average) effect plus its sum-coded deviation; the last level's
+# deviation is minus the sum of the others, which contr.sum supplies as -1 weights.
+ceff <- function(cp, term) {
+  x <- DR[[paste0("b_", term)]]
+  for (j in seq_len(ncol(CMAT))) {
+    nm <- paste0("b_component", j, ":", term)
+    if (nm %in% names(DR)) x <- x + CMAT[cp, j] * DR[[nm]]
+  }
+  x
+}
 crowd <- lapply(COMPS, function(cp) {
-  x <- DR[[bterm(cp, "log2_d")]] + DR[[bterm(cp, "log2_rank")]]
+  x <- ceff(cp, "log2_d") + ceff(cp, "log2_rank")
   q <- unname(quantile(x, c(.025, .975)))
   cat(sprintf("  %-17s %+.3f  CI [%+.3f, %+.3f]  %s\n", cp, mean(x), q[1], q[2],
               ifelse(q[1] > 0 | q[2] < 0,
@@ -344,13 +360,14 @@ REST  <- c(PNAME,
            setNames(paste(PNAME, "x width x rank"),
                     paste0(names(PNAME), ":log2_d:log2_rank")))
 
-draws <- as.data.frame(as_draws_df(fit)) |>
-  select(matches("^b_component[a-z]+:")) |>
-  pivot_longer(everything(), names_to = "term", values_to = "value") |>
-  mutate(component = sub("^b_component([a-z]+):.*$", "\\1", term),
-         rest      = sub("^b_component[a-z]+:", "", term),
-         label     = unname(REST[rest])) |>
-  filter(!is.na(label)) |>
+# Under sum coding a component's effect is the average effect plus its deviation, so each panel
+# is built from a contrast of the draws rather than read off a single coefficient.
+draws <- lapply(names(REST), function(rest) {
+  if (!paste0("b_", rest) %in% names(DR)) return(NULL)
+  lapply(COMPS, function(cp) data.frame(component = cp, term = rest,
+                                        label = unname(REST[rest]), value = ceff(cp, rest))) |>
+    bind_rows()
+}) |> bind_rows() |>
   mutate(label = factor(label, levels = rev(LEVELS)),
          block = factor(BLOCK[as.character(label)],
                         levels = c("planted strength", "architecture")),
