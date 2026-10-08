@@ -1,11 +1,5 @@
 model,kind,arm,component,n_draws,max_rhat,worst_rhat_param,min_ess_bulk,min_ess_tail,divergences,treedepth_hits,converged
-ordbeta_size_class,size,relu,class,36000,1.0100191867392851,b_Intercept,1751.88299348401,3860.854245495418,0,0,TRUE
-ordbeta_size_class_linear,size,linear,class,108000,1.0060279004556447,Intercept,1802.1559044155497,3995.002790561054,0,0,TRUE
-ordbeta_size_interaction,size,relu,interaction,36000,1.008000991011656,b_c_int,1951.6773253431586,4303.751851533958,0,0,TRUE
-ordbeta_size_interaction_linear,size,linear,interaction,108000,1.0005747879125986,lp__,18309.958634978288,36256.4287923899,0,0,TRUE
-ordbeta_size_item,size,relu,item,36000,1.0075698166653204,b_Intercept,2238.1018682391386,4463.4170760567695,0,0,TRUE
-ordbeta_size_item_linear,size,linear,item,108000,1.007830741966215,b_c_int,1555.5394973350094,3298.0845627513077,0,0,TRUE
-overlap_int_margins,overlap,relu,int_margins,36000,1.0014701425609527,lp__,7580.518618689191,14170.814801226474,0,0,TRUE
-overlap_int_margins_linear,overlap,linear,int_margins,108000,1.0007524079370398,b_c_item,19712.39622793849,36649.366629623866,0,0,TRUE
-overlap_item_class,overlap,relu,item_class,36000,1.0012543540123675,b_Intercept,7284.270803461685,13685.375710023281,0,0,TRUE
-overlap_item_class_linear,overlap,linear,item_class,108000,1.0004304232731949,"r_lang[0_0_0.5_2.0_4,Intercept]",21487.34933238318,38029.60904523375,0,0,TRUE
+ordbeta_size_stacked,size,relu,all,36000,1.000615322323834,b_c_class:log2_d,14536.087121663777,12328.795413163523,0,0,TRUE
+ordbeta_size_stacked_linear,size,linear,all,36000,1.0005001666581443,cor_lang__Intercept__log2_d,12245.997008348502,14870.066341530885,0,0,TRUE
+overlap_stacked,overlap,relu,all,36000,1.0013343036290565,lprior,4992.705624320447,10595.41982399228,0,0,TRUE
+overlap_stacked_linear,overlap,linear,all,36000,1.001210985026682,lp__,5691.892494753783,10641.47774507056,0,0,TRUE
