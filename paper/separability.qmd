@@ -19,7 +19,11 @@ author:
     affiliations:
       - name: "University of Oregon"
 abstract: |
-  Lexical representations are central to linguistic theory, yet to what extent they're memorized or abstract remains a core debate. In the present study, we investigate this question in LLMs by decomposing contextual word representations into three additive components: an item component, a class component, and an idiosyncratic word-class interaction. After validating our measurement on an artificial language, we evaluate six pretrained transformers across two linguistic categories: part of speech and grammatical role. We find that the idiosyncratic interaction term is consistently positive and grows substantially across layers. Crucially, while item and class axes remain nearly orthogonal, the interaction term systematically overlaps with both. Together, our results demonstrate that LLMs learn representations that are simultaneously both abstract and holistic.
+  Lexical representations can encode both abstract information and information specific to particular contexts. We investigate how these forms of information are organized in language models by decomposing contextual word representations into item, class, and word–class interaction components. Across six pretrained transformers and two linguistic categories, we find that the interaction is consistently present, grows across layers, and contains information associated with both item and class. Unlike the nearly orthogonal item and class effects, the interaction overlaps with both and encodes class information beyond the shared class effect. An interaction also emerges in artificial-language learners even when the input contains only additive structure. Together, these findings show that lexical representations combine abstract information with structure specific to particular word–class combinations.
+
+
+
+
   
 bibliography: refs.bib
 acl-mode: review
@@ -680,13 +684,13 @@ These findings establish that linguistic representations can encode information 
 
 There is little doubt that idiosyncratic words or phrases, such as idioms, must be stored in some form, since their properties are not reducible to those of their individual component parts. However, it is less clear to what extent forms that could in principle be represented compositionally (i.e., fully regular forms) are, in fact, represented compositionally.
 
-Usage-based theories have argued that even regular forms are stored holistically as a function of usage. Bybee [@bybee2001] and later Goldberg [@goldberg2019explain] have proposed that frequent words and phrases can be stored even when their properties are fully predictable. From this view, storage need not be a consequence of idiosyncrasy. In fact, it has even been argued that storage is a prerequisite to a representation becoming idiosyncratic in the first place [@bybee2001; @goldberg2019explain].
+Usage-based theories have argued that even regular forms are stored holistically as a function of usage. Bybee [@bybee2001] and later Goldberg [@goldberg2019explain] have proposed that frequent words and phrases can be stored even when their properties are fully predictable. From this view, storage need not be a consequence of idiosyncrasy. In fact, it has even been argued that storage is a prerequisite for a representation to become idiosyncratic in the first place [@bybee2001; @goldberg2019explain].
 
-These debates about the nature of lexical representations create an important distinction between two possibilities. If item-specific representations arise primarily because linguistic forms have properties that cannot be predicted from their component parts, then regular forms should not necessarily have representations that contain information irreducible to those parts. If frequent forms are stored with information specific to their use, however, item-specific representations may emerge even when a form's behavior is fully predictable from its component parts.
+These debates about the nature of lexical representations often center around two competing possible explanations. On one hand, if item-specific representations arise primarily because linguistic forms have properties that cannot be predicted from their component parts, then regular forms should not necessarily have representations that contain information irreducible to those parts. On the other hand, if frequent forms are stored with information specific to their use, item-specific representations may emerge even when a form's behavior is fully predictable from its component parts.
 
 ## Present study
 
-The present study asks how item-specific information is represented and what properties of the input give rise to item-specific representations. We focus on representations of words in grammatical classes and decompose a word-in-class representation into three components: an item component (e.g., *walk* regardless of the part of speech), a class component (e.g., a verb component), and an idiosyncratic component, which captures information specific to the item-in-class combination (e.g., *walk* as a verb). These questions are difficult to settle behaviorally, since a learner with no item-specific representations can look like one that has them [@houghton2026exemplars]. Model representations, in contrast, can be examined directly [@pluthInterpretabilityWhisperEncodings2026; @hinton1986distributed; @elhage2022superposition], making neural network models a useful setting in which to ask what properties of the input give rise to item-specific representations. In particular, do such representations emerge only when a form has item-specific properties, or can they also arise for forms whose properties are fully predictable from their constituent parts? We first validate this decomposition on an artificial language in which we independently control the amount of information associated with the item, the class, and their interaction, then apply it to six pretrained language models across two linguistic constructions.
+The present study asks how item-specific information is represented and what properties of the input give rise to item-specific representations. We focus on representations of words in grammatical classes and decompose a word-in-class representation into three components: an item component (e.g., *walk* regardless of the part of speech), a class component (e.g., a verb component), and an idiosyncratic component, which captures information specific to the item-in-class combination (e.g., *walk* as a verb). A central challenge is that a learner's predictions can conceal the underlying representations: pure exemplar models can look, from their predictions alone, like they have learned abstractions [@houghton2026exemplars]. Representations, in contrast, can be examined directly [@pluthInterpretabilityWhisperEncodings2026; @hinton1986distributed; @elhage2022superposition], and in a model the input can be controlled as well, so we can ask which properties of it produce item-specific structure. In particular, do such representations emerge only when a form has item-specific properties, or can they also arise for forms whose properties are fully predictable from their constituent parts? We first validate this decomposition on an artificial language in which we independently control the amount of information associated with the item, the class, and their interaction, then apply it to six pretrained language models across two linguistic constructions.
 
 Our main contributions are as follows:
 
@@ -698,7 +702,7 @@ Our main contributions are as follows:
 
 # Experiment 1: Artificial Languages {#sec-exp1}
 
-In Experiment 1 we test our measurement on an artificial language whose features we control. This allows us to validate our measurement while simultaneously examining how different features of the language affect a model's representations.
+In Experiment 1, we test our measurement on an artificial language whose features we control. This allows us to validate our measurement while simultaneously examining how different features of the language affect a model's representations.
 
 ## Dataset {#sec-exp1-data}
 
@@ -750,7 +754,7 @@ For each representation we report two measurements. The first, which we call the
 
 To quantify whether a size is meaningful, we redraw the split two hundred times and estimate how often its confidence interval excludes zero; for components whose value is exactly zero this flags an effect about 5% of the time (Appendix \ref{sec-appendix-validate}), the false-positive rate expected of a 95% confidence interval.
 
-To quantify whether an overlap is meaningful, we project the effect, held exactly as measured, onto two hundred random subspaces of the same rank, which gives its chance level: the distribution of overlaps an unrelated subspace of the same rank would yield. An overlap below its chance level indicates meaningful orthogonality; an overlap above it indicates meaningful non-orthogonality.
+To quantify whether an overlap is meaningful, we project the effect, held exactly as measured, onto two hundred random subspaces of the same rank, which gives its chance level: the distribution of overlaps that an unrelated subspace of the same rank would yield. An overlap below its chance level indicates meaningful orthogonality; an overlap above it indicates meaningful non-orthogonality.
 
 ![The four item-by-class means formed by two items in two classes. The arrow is $\gamma(i,c)$.](fig-measurement.pdf){#fig-measurement width="78%"}
 
@@ -758,7 +762,7 @@ It's important to note that the weights in @eq-toy describe the ground-truth dis
 
 ### Analysis {#sec-exp1-analysis}
 
-We model our data using an ordered beta regression [@kubinec2023ordbeta] for the sizes and a Gaussian model for the overlaps, both in *brms* [@burkner2017brms] with weakly informative priors (See Appendix \ref{sec-appendix-grid} for full details). For the sizes we fit one model over all three components, where the outcome variable is the component's share of the representation and group is that component. Fixed-effects for each component, the width of the hidden-layer, and total rank of the language were included along with maximal random effects [@barr2013maximal]. @eq-model gives the full model equation. All predictors are centered. A language here is one combination of the four weights and the interaction rank, `r cm(length(unique(paste(toy$key, toy$r_int))))` in all; A run here are the five seeds for a given language.
+We model our data using an ordered beta regression [@kubinec2023ordbeta] for the sizes and a Gaussian model for the overlaps, both in *brms* [@burkner2017brms] with weakly informative priors (See Appendix \ref{sec-appendix-grid} for full details). For the sizes we fit one model over all three components, where the outcome variable is the component's share of the representation and group is that component. Fixed-effects for each component, the width of the hidden-layer, and total rank of the language were included along with maximal random effects [@barr2013maximal]. @eq-model gives the full model equation. All predictors are centered. A language here is one combination of the four weights and the interaction rank; A run here are the five seeds for a given language.
 
 The overlaps are likewise fit as one model over both overlap measures, with the same structure. Outcome is the log of an overlap divided by its own chance level, and Group is the overlap measure: the item effect's overlap with the class direction, or the interaction's overlap with the span of the item and class subspaces.
 
@@ -805,7 +809,7 @@ ggplot(toy_learn_both, aes(planted, measured, color = factor(d), fill = factor(d
 
 Unsurprisingly, the effect size for each component increases as a function of the size of the effect planted in the language (and since the three components sum to 1, the other 2 components definitionally decrease). Of the three components, the item effect is strongest across every width (@fig-toy).
 
-The size of the interaction barely depends on its rank on its own (`r b("interaction", "rank")`), which is by design: the interaction is scaled to the same variance at every rank, so raising its rank spreads it over more directions rather than making it larger. What governs how much of the interaction is encoded is the width of the hidden layer (`r b("interaction", "width")`). Rank enters by changing how much that width recovers (`r b("interaction", "width x rank")`): at narrow widths a higher-rank interaction needs more directions than the layer has and the excess is lost, while once the layer is wide enough the model represents more of it, and does. This is not the case for the item effect, which decreases as the hidden layer grows (`r b("item", "width")`), or for the class effect, which barely changes (`r b("class", "width")`). In the linear condition width is spent on the item effect at the class effect's expense (`r b("item", "width", "linear")` against `r b("class", "width", "linear")`); the interaction grows with width there too (`r b("interaction", "width", "linear")`) but stays small throughout.
+The size of the interaction barely depends on its rank on its own (`r b("interaction", "rank")`), which is by design: the interaction is scaled to the same variance at every rank, so raising its rank spreads it over more directions rather than making it larger. What governs how much of the interaction is encoded is the width of the hidden layer (`r b("interaction", "width")`). While rank alone does not affect the size of the interaction, it does interact with width (`r b("interaction", "width x rank")`): at narrow widths a higher-rank interaction needs more directions than the layer has and the excess is lost, while once the layer is wide enough the model represents more of it, and does. This is not the case for the item effect, which decreases as the hidden layer grows (`r b("item", "width")`), or for the class effect, which barely changes (`r b("class", "width")`). In the linear condition width is spent on the item effect at the class effect's expense (`r b("item", "width", "linear")` against `r b("class", "width", "linear")`); the interaction grows with width there too (`r b("interaction", "width", "linear")`) but stays small throughout.
 
 Where no interaction is planted, a ReLU learner still represents one: the measured value is small (median `r addint(max(toy$d))` at the widest layer) but its interval excludes zero in `r addflag(max(toy$d))` of runs, against a nominal 5%. The linear arm cannot do this at any width, since a linear map of additive inputs is additive.
 
@@ -825,7 +829,7 @@ Our stimuli comprise two linguistic categories: part of speech ([noun]{.smallcap
 
 [^6]: OPT-BabyLM's tokenizer is uncased, so this choice has no effect for that family of models. On the other hand, Pythia's tokenizer is not uncased; however, lowercasing the input would be the larger distortion, since a sentence-initial word is capitalized in written English which the model was trained on.
 
-An item is included only if it occurs at least ten times in each class. This yields `r max(llm$n_items[llm$construction == "POS (noun/verb)"])` items for part of speech and `r max(llm$n_items[llm$construction == "role (subject/object)"])` for grammatical role, with median counts per class running from `r stimrange()` (Appendix \ref{sec-appendix-stimuli}), inside the range we validated for the measurement (Appendix \ref{sec-appendix-validate}).
+An item is included only if it occurs at least ten times in each class. This yields `r max(llm$n_items[llm$construction == "POS (noun/verb)"])` items for part of speech and `r max(llm$n_items[llm$construction == "role (subject/object)"])` for grammatical role, with median counts per class spanning from `r stimrange()` (Appendix \ref{sec-appendix-stimuli}), inside the range we validated for the measurement (Appendix \ref{sec-appendix-validate}).
 
 ## Method {#sec-exp2-method}
 
@@ -973,6 +977,7 @@ Our evaluation is restricted to English and relies on two linguistic categories 
 \renewcommand{\bibliography}[1]{}
 \clearpage
 ```
+
 \onecolumn
 
 \appendix
@@ -992,6 +997,7 @@ Our evaluation is restricted to English and relies on two linguistic categories 
 \floatplacement{figure}{H}
 \floatplacement{table}{H}
 ```
+
 # The Artificial-Language Grid {#sec-appendix-grid}
 
 Table \ref{tbl-grid} describes the language and the MLP parameters.
