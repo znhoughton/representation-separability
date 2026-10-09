@@ -87,6 +87,13 @@ RE_TERM  <- switch(GROUPING,
                    nested = "(1 + log2_d | key) + (1 | lang) + (1 | run)",
                    stop("GROUPING must be one of: lang, key, nested"))
 CACHE  <- file.path(REPO, "model_cache", "toy"); dir.create(CACHE, recursive = TRUE, showWarnings = FALSE)
+# cmdstan streams one CSV per chain while sampling, and this model saves ~40k values per
+# iteration (a slope and intercept for each of 756 languages, plus run intercepts), so a
+# six-chain run writes well over 10 GB. Left to itself cmdstanr puts those in R's tempdir,
+# which on Windows is on C:, and the run dies partway through sampling when that fills.
+# Keep them next to the fit they belong to, on the same volume as the repo.
+STANOUT <- file.path(CACHE, "stan_out")
+dir.create(STANOUT, recursive = TRUE, showWarnings = FALSE)
 FIGDIR <- file.path(REPO, "paper");             dir.create(FIGDIR, recursive = TRUE, showWarnings = FALSE)
 # Both activations get the same treatment. The linear arm was previously excluded on the
 # grounds that it cannot synthesise an interaction by construction, but the paper's own result
@@ -224,6 +231,7 @@ fit <- ordbetareg(
   iter = if (DEMO) 600 else ITER, warmup = if (DEMO) 300 else WARMUP,
   control = list(adapt_delta = ADAPT_DELTA),
   backend = "cmdstanr", seed = SEED, refresh = 0,
+  output_dir = STANOUT,
   file = file.path(CACHE, MODEL), file_refit = "on_change"
 )
 

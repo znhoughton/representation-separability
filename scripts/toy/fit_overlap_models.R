@@ -82,6 +82,13 @@ TAG  <- ""
 ARM    <- if (ACT == "relu") "" else "_linear"
 SUFFIX <- paste0(TAG, ARM, if (DEMO) "_demo" else "")
 CACHE  <- file.path(".", "model_cache", "toy"); dir.create(CACHE, recursive = TRUE, showWarnings = FALSE)
+# cmdstan streams one CSV per chain while sampling, and this model saves ~40k values per
+# iteration (a slope and intercept for each of 756 languages, plus run intercepts), so a
+# six-chain run writes well over 10 GB. Left to itself cmdstanr puts those in R's tempdir,
+# which on Windows is on C:, and the run dies partway through sampling when that fills.
+# Keep them next to the fit they belong to, on the same volume as the repo.
+STANOUT <- file.path(CACHE, "stan_out")
+dir.create(STANOUT, recursive = TRUE, showWarnings = FALSE)
 OUT    <- file.path(".", "data")
 
 # Same inclusion rule as the component models. `resolved` means at least one of the three
@@ -200,6 +207,7 @@ fit <- brm(
   iter = if (DEMO) 600 else ITER, warmup = if (DEMO) 300 else WARMUP,
   control = list(adapt_delta = ADAPT_DELTA),
   backend = "cmdstanr", seed = SEED, refresh = 0,
+  output_dir = STANOUT,
   file = sub("[.]rds$", "", rds), file_refit = "on_change"
 )
 
