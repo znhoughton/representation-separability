@@ -33,7 +33,7 @@ representation-separability/
 │   ├── check_paper_data.py         # columns the paper reads vs the data; and what goes unreported
 │   ├── check_paper_renders.R       # runs the paper's R against the data, no LaTeX needed
 │   ├── check_between_bias.py       # why the between-grid share is a variance component, not raw
-│   ├── dev/                        # developer tooling, not part of the pipeline (GPU benchmarks)
+│   ├── dev/                        # developer tooling, not part of the pipeline (GPU benchmarks, diagnostics)
 │   ├── toy/
 │   │   ├── artificial_language_grid.py  # Experiment 1
 │   │   ├── remeasure_from_runs.py       # re-measures the grid from saved states, no retraining
@@ -44,11 +44,14 @@ representation-separability/
 │       ├── extract_ud.py                # drive extraction over UD for the model set (GPU)
 │       ├── extract_vua.py               # the same for VUA20 metaphor (GPU; not used by the paper)
 │       ├── measure.py                    # constructions: pos, role, morphology (also metaphor, unused by the paper)
+│       ├── measure_output_layer.py      # Appendix: the same measure after the unembedding (output-layer table)
 │       ├── decode_from_interaction.py   # Experiment 3
+│       ├── residual_test.py             # Appendix: context control -- is the interaction predictable from context?
+│       ├── run_residual_test.sh         # driver for residual_test.py over the model set
+│       ├── run_prev_context_control.sh  # the context-only magnitude control (supports the appendix)
+│       ├── summarize_prev_context.py    #   its summary table
 │       ├── dataset_stats.py             # the counts quoted in the Dataset/Stimuli sections,
 │       │                                #   plus the per-item stimulus lists (stimuli_items.csv)
-│       ├── run_position_ablation.sh     # Appendix: the ablation end to end, everything to CSV
-│       ├── finalize_position_ablation.sh  # its post-processing, runnable on its own
 │       └── test_measurement_pipeline.py # regression test for the chain (seconds, no GPU)
 ├── data/                           # result CSVs are tracked; reps and corpora are gitignored
 ├── notes/                          # drawio sources for the appendix figures (exports gitignored)
@@ -58,8 +61,8 @@ representation-separability/
 
 ## Which script produced which result
 
-All of these are produced by `scripts/run_all_measurements.sh`; the third column is what to run
-if you want just one of them.
+Most of these are produced by `scripts/run_all_measurements.sh`; the context control is a separate
+command. The third column is what to run for just one of them.
 
 | paper element | data file | script |
 |:--|:--|:--|
@@ -70,7 +73,7 @@ if you want just one of them.
 | Dataset counts | `methods_grid_stats.csv`, `stimuli_items.csv` | `llm/dataset_stats.py` |
 | Appendix: validation | `validate_measure.csv.gz` (uncompressed is gitignored) | `toy/validate_measure.py` |
 | Appendix: morphology | `llm_morph.csv` | `llm/measure.py morphology` |
-| Appendix: position ablation | `llm_*_ablation.csv`, `position_ablation_*.csv` | `llm/run_position_ablation.sh` |
+| Appendix: ruling out context | `llm_residual_pos.csv`, `llm_residual_role.csv` | `llm/run_residual_test.sh` (separate from `run_all`) |
 
 ## The measure
 
@@ -112,10 +115,10 @@ nohup setsid bash scripts/run_all_measurements.sh > logs/all.out 2>&1 &
 tail -f logs/all.out
 ```
 
-That produces all ten data files, runs Experiment 1 on the GPU, and finishes by reporting how many
-values landed in each column and whether every construction covers all six models. It is resumable
-and deletes nothing: a superseded file is moved to `old/` with a timestamp. `ABLATION=1` adds the
-position-ablation appendix, which is off by default because it re-extracts.
+That produces the data files the paper reads, runs Experiment 1 on the GPU, and finishes by reporting
+how many values landed in each column and whether every construction covers all six models. It is
+resumable and deletes nothing: a superseded file is moved to `old/` with a timestamp. (The context
+control is run separately; see below.)
 
 It also writes two directories of artefacts, both gitignored:
 
@@ -147,13 +150,13 @@ python scripts/llm/decode_from_interaction.py --reps-dir data/llm_reps --conllu 
        --out data/llm_decode_interaction.csv
 ```
 
-**The position-ablation appendix**, one command, everything to CSV:
+**The context control (residual-test appendix)**, measured on the existing word reps (no re-extraction):
 ```bash
-nohup setsid bash scripts/llm/run_position_ablation.sh > logs/ablation.out 2>&1 &
+bash scripts/llm/run_residual_test.sh          # writes data/llm_residual_{pos,role}.csv
 ```
-It re-extracts the OPT-BabyLM models with `decoder.embed_positions` zeroed (Pythia has no such
-module), verifies per model that the ablation applied, measures all three constructions, and writes
-the summary. It deletes nothing and is resumable: re-running skips finished extractions.
+It asks, per layer, how much of the item×class interaction is predicted by an item-independent
+carry-over of the left context; the residual is the part the context cannot supply. CPU-only and
+resumable per model. `MAP=mlp` repeats it with a nonlinear carry-over as a robustness check.
 
 `python scripts/llm/test_measurement_pipeline.py` checks that whole chain on synthetic data in a few
 seconds without a GPU. Worth running before spending hours on an extraction.
@@ -174,7 +177,7 @@ seconds without a GPU. Worth running before spending hours on an extraction.
 - **Item keying:** every construction in the paper keys the item on the **surface form**, so the
   token is identical at both levels of a distinction. Keying part of speech on the lemma instead
   pools inflected forms and inflates the layer-0 interaction by 50–100×, which is a fact about
-  tokenization rather than representation. `measure_pos.py` defaults accordingly.
+  tokenization rather than representation. `measure.py` defaults accordingly.
 - **Reps carry their extraction parameters.** Token order depends on `batch_size`, `seed` and
   `max_length`, so those are saved in each `.npz` and used when labels are re-derived. Files written
   before that change are handled by trying the batch sizes this project has used and keeping the one

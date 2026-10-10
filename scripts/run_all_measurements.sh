@@ -21,10 +21,6 @@
 #   data/toy_runs/*.npz                 per cell: hidden states + raw null draws  (~8 GB)
 #   data/llm_nulls/*.npz                per model/init/construction: raw null draws
 #
-# NOT run by default: the position ablation, which re-extracts representations with the position
-# embeddings zeroed and so costs as much as extraction itself. ABLATION=1 includes it, or run
-# scripts/llm/run_position_ablation.sh on its own.
-#
 # It assumes the representations already exist in data/llm_reps and data/vua_reps. Extraction is
 # a separate step because it downloads models and is the one part that is not idempotent:
 #   python scripts/llm/extract_ud.py --conllu data/ud/en_all-ud.conllu --max-tokens 300000
@@ -79,7 +75,6 @@ SKIP_TOY="${SKIP_TOY:-0}"
 SKIP_LLM="${SKIP_LLM:-0}"
 SKIP_DERIVED="${SKIP_DERIVED:-0}"     # dataset counts and the decoding analysis
 SKIP_VALIDATE="${SKIP_VALIDATE:-0}"  # the appendix estimator-validation grid; longest step, runs LAST
-ABLATION="${ABLATION:-0}"             # re-extracts reps; off unless asked for
 
 # GPU backend for the MEASURE. SEP_DEVICE=cuda routes every measurement -- the validation (batched
 # by shape), the LLM measure and the toy re-measure (per-spec) -- through the torch backend. It
@@ -96,7 +91,7 @@ export SEP_DEVICE
 # The ~10 GB is these LLM workers, each also holding a model's representations -- see the CPU
 # RAM figure beside it. It is not what a CUDA context costs, and it does not carry over to the
 # toy re-measure, whose cells are ~12 MB with a 64 MB cap on the re-split working set; that
-# step runs several GPU workers too (REMEASURE_WORKERS in rerun_after_gate_removal.sh).
+# step runs several GPU workers too (set by REMEASURE_WORKERS).
 # The numpy path keeps the old CPU worker counts.
 if [ "$SEP_DEVICE" = "cuda" ]; then
   REMEASURE_WORKERS=1
@@ -429,15 +424,6 @@ if [ "$SKIP_VALIDATE" != "1" ]; then
   "$PY" scripts/toy/validate_measure.py --n-resplit "$N_RESPLIT" --workers "$TOY_WORKERS" 2>&1 | tee "$LOGDIR/validate.log"
   rc="${PIPESTATUS[0]}"; step_end validate
   [ "$rc" -eq 0 ] || { echo "[validate] FAILED (exit $rc)" >&2; rc_all=1; }
-fi
-
-# ---------------------------------------------------------------- position ablation
-if [ "$ABLATION" = "1" ]; then
-  echo
-  echo "[ablation] re-extracting with position embeddings zeroed"
-  bash scripts/llm/run_position_ablation.sh 2>&1 | tee "$LOGDIR/ablation.log"
-  rc="${PIPESTATUS[0]}"
-  [ "$rc" -eq 0 ] || { echo "[ablation] FAILED (exit $rc)" >&2; rc_all=1; }
 fi
 
 # ---------------------------------------------------------------- verify

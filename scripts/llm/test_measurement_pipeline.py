@@ -2,8 +2,7 @@
 
 Reproduces the condition that lost the last run: a reps directory holding BOTH the intact and the
 _noposemb file for each model. Verifies that the ablated files are measured rather than skipped,
-that an `init` column distinguishes them, and that finalize_position_ablation.sh then builds a 2x2 with a
-`zeroed` row.
+that an `init` column distinguishes them (the same resume/tagging logic the prevtok reps rely on).
 
 Three routes, chosen by what each script depends on:
   metaphor  -- measure_file needs no tokenizer, so main() runs for real, worker pool included.
@@ -168,29 +167,6 @@ def main():
               f"todo={todo} (want {n_ablated_files}), skipped={len(skipped)}")
         check(all("noposemb" not in s for s in skipped),
               f"{name}: no ablated file was skipped as already-done")
-
-    # --------------------------------------------------------------- finalize builds the 2x2
-    print("\nfinalize_position_ablation.sh (summary from the measurement CSVs):")
-    shutil.copy(data / "met.csv", data / "llm_metaphor_ablation.csv")
-    # a POS csv with both conditions, so the 2x2 has an intact and a zeroed row
-    with open(data / "llm_unified_form_ablation.csv", "w", newline="") as fh:
-        w = csv.writer(fh); w.writerow(["model", "init", "layer", "std_size_interaction"])
-        for init, val in [("random", 0.088), ("random_noposemb", 0.004),
-                          ("pretrained", 0.115), ("pretrained_noposemb", 0.091)]:
-            w.writerow([MODELS[0], init, 12, val])
-    sh = str(REPO / "scripts" / "llm" / "finalize_position_ablation.sh").replace("\\", "/")
-    bash = shutil.which("bash") or "C:/Program Files/Git/bin/bash.exe"
-    rc = subprocess.run([bash, sh, "summary"],
-                        capture_output=True, text=True, cwd=str(SCRATCH))
-    twox2 = SCRATCH / "data" / "position_ablation_2x2.csv"
-    check(twox2.exists(), "2x2 written", rc.stdout.strip().splitlines()[-1] if rc.stdout else rc.stderr[:60])
-    if twox2.exists():
-        rows = list(csv.DictReader(open(twox2)))
-        pos_vals = {r["positions"] for r in rows}
-        check("zeroed" in pos_vals, "2x2 contains a `zeroed` row", ",".join(sorted(pos_vals)))
-        bl = [r for r in rows if r["trained"] == "no" and r["positions"] == "zeroed"]
-        check(bool(bl), "the decisive cell (untrained + zeroed) is present",
-              f"interaction={bl[0]['interaction']}" if bl else "MISSING")
 
     print("\n" + ("ALL CHECKS PASSED" if not FAILURES else f"{len(FAILURES)} FAILED: {FAILURES}"))
     return 0 if not FAILURES else 1

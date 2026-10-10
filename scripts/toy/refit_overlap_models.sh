@@ -31,7 +31,7 @@ set -uo pipefail
 RSCRIPT="${RSCRIPT:-Rscript}"
 OLDDIR="${OLDDIR:-old}"
 LOGDIR="${LOGDIR:-logs/refit_overlap}"
-# The budgets each arm converged at; see rerun_after_gate_removal.sh for why they differ.
+# The budgets each arm converged at.
 RELU_ITER="${RELU_ITER:-6000}";  RELU_WARMUP="${RELU_WARMUP:-3000}"
 LIN_ITER="${LIN_ITER:-18000}";   LIN_WARMUP="${LIN_WARMUP:-9000}"
 
