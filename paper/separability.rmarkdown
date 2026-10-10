@@ -1593,3 +1593,4 @@ rd("llm_unified_form.csv") |>
 ```
 
 Removing the position embeddings makes these representations *less* separable, not more. The portable fraction falls in every model, from `r pf("125m", "intact")` to `r pf("125m", "zeroed")`, from `r pf("350m", "intact")` to `r pf("350m", "zeroed")`, and from `r pf("1.3B", "intact")` to `r pf("1.3B", "zeroed")` (Table \ref{tbl-posabl}). Whatever the absolute position embedding contributes, it is contributing to the part of class structure that *is* carried by a shared direction. Take it away and what remains is more word-specific, not less. The interaction is not an artifact of position.
+
