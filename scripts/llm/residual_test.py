@@ -57,7 +57,7 @@ FIELDS = ["model", "init", "task", "map", "layer", "rel_depth", "d", "n_items", 
           "explained", "explained_lo", "explained_hi", "residual", "residual_lo", "residual_hi",
           "explained_identity", "explained_identity_lo", "explained_identity_hi",
           "null", "null_lo", "null_hi", "mag_ratio", "word_reliable_frac",
-          "ridge_alpha", "ridge_beta", "ridge_eff_params", "mlp_hidden", "mlp_val_mse"]
+          "ridge_alpha", "ridge_beta", "ridge_eff_params", "mlp_hidden", "mlp_val_mse", "linear_val_mse"]
 
 
 # ------------------------------------------------------------------ Bayesian ridge (evidence)
@@ -134,10 +134,16 @@ def mlp_carryover(Xp_fit, Yw_fit, Xc_pred, args, seed=0):
     va, tr = perm[:nval], perm[nval:]
     Xtr, Ytr = Xp[tr].to(dev), Yw[tr].to(dev)
     Xva, Yva = Xp[va].to(dev), Yw[va].to(dev)
+    import copy
     net = _Carry().to(dev)
     opt = torch.optim.Adam(net.parameters(), lr=args.mlp_lr, weight_decay=args.mlp_wd)
-    best, bad, bs = float("inf"), 0, args.mlp_batch
-    for _ep in range(args.mlp_epochs):
+    net.eval()
+    with torch.no_grad():
+        val0 = float(((net(Xva) - Yva) ** 2).mean())   # net==linear at init, so this is the linear baseline
+    best, bad, bs = val0, 0, args.mlp_batch
+    best_state = copy.deepcopy(net.state_dict())        # restore the best-val weights, not the last
+    stop_ep = args.mlp_epochs
+    for ep in range(args.mlp_epochs):
         net.train()
         order = torch.randperm(Xtr.shape[0], device=dev)
         for i in range(0, Xtr.shape[0], bs):
@@ -150,14 +156,22 @@ def mlp_carryover(Xp_fit, Yw_fit, Xc_pred, args, seed=0):
             v = float(((net(Xva) - Yva) ** 2).mean())
         if v < best - 1e-5:
             best, bad = v, 0
+            best_state = copy.deepcopy(net.state_dict())
         else:
             bad += 1
             if bad >= args.mlp_patience:
+                stop_ep = ep + 1
                 break
+    net.load_state_dict(best_state)                     # use the best-val net for prediction
+    # One line per cell so the log shows the map actually LEARNED a better-than-linear carry-over
+    # (best < linear), not just sat at the linear init -- which is what makes explained(mlp) ~
+    # explained(linear) meaningful rather than an under-training artefact.
+    print(f"    mlp fit: linear_val={val0:.4f} best_val={best:.4f} "
+          f"(improvement {100*(val0-best)/val0:.1f}%) stopped@ep{stop_ep}", flush=True)
     net.eval()
     with torch.no_grad():
         pred = net(torch.as_tensor(np.asarray(Xc_pred, np.float32)).to(dev)).cpu().numpy()
-    return pred, best
+    return pred, best, val0
 
 
 # ------------------------------------------------------------------ the comparison
@@ -305,8 +319,9 @@ def run_file(path, args):
         g = lambda rows: np.asarray(X[rows], np.float64) / sd
         extra = dict(map=args.map)
         if args.map == "mlp":
-            Xpred, val_mse = mlp_carryover(g(fit_idx - 1), g(fit_idx), g(t_idx - 1), args, args.seed)
+            Xpred, val_mse, lin_val = mlp_carryover(g(fit_idx - 1), g(fit_idx), g(t_idx - 1), args, args.seed)
             extra["mlp_hidden"] = args.mlp_hidden; extra["mlp_val_mse"] = round(val_mse, 5)
+            extra["linear_val_mse"] = round(lin_val, 5)
             res = compare(g(t_idx), g(t_idx - 1), form[t_idx], cls[t_idx], None, classes,
                           args.min_cell, args.n_resplit, args.n_bb, args.seed, Xpred=Xpred)
         else:
