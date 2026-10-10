@@ -1,0 +1,1 @@
+model,init,task,map,layer,rel_depth,d,n_items,n_fit,explained,explained_lo,explained_hi,residual,residual_lo,residual_hi,explained_identity,explained_identity_lo,explained_identity_hi,null,null_lo,null_hi,mag_ratio,word_reliable_frac,ridge_alpha,ridge_beta,ridge_eff_params,mlp_hidden,mlp_val_mse

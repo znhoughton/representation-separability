@@ -53,11 +53,11 @@ for _sub in ("", "llm"):
     sys.path.insert(0, str(REPO_ROOT / "scripts" / _sub))
 from separability import build_balanced_grid, _decompose  # noqa: E402
 
-FIELDS = ["model", "init", "task", "layer", "rel_depth", "d", "n_items", "n_fit",
+FIELDS = ["model", "init", "task", "map", "layer", "rel_depth", "d", "n_items", "n_fit",
           "explained", "explained_lo", "explained_hi", "residual", "residual_lo", "residual_hi",
           "explained_identity", "explained_identity_lo", "explained_identity_hi",
           "null", "null_lo", "null_hi", "mag_ratio", "word_reliable_frac",
-          "ridge_alpha", "ridge_beta", "ridge_eff_params"]
+          "ridge_alpha", "ridge_beta", "ridge_eff_params", "mlp_hidden", "mlp_val_mse"]
 
 
 # ------------------------------------------------------------------ Bayesian ridge (evidence)
@@ -92,6 +92,74 @@ def evidence_ridge(Xp, Yw, n_iter=500, tol=1e-8):
     return W, alpha, beta, float((beta * e / (alpha + beta * e)).sum())
 
 
+# ------------------------------------------------------------------ nonlinear carry-over (MLP)
+def mlp_carryover(Xp_fit, Yw_fit, Xc_pred, args, seed=0):
+    """Give the context its STRONGEST fair shot: an item-independent NONLINEAR carry-over
+    h_t ~ f(h_{t-1}), f a one-hidden-layer MLP, fit on the non-grid token pairs and then applied
+    to the grid items' context states. If the residual survives this, it is not an artifact of the
+    linear map being too weak to find context structure (the concern for a NEGATIVE claim).
+
+    Returns (Xpred, val_mse): predicted word states for Xc_pred (row-aligned with it), and the
+    held-out MSE the early-stopping used. Trains on a 90/10 split of the fit pool so the map is
+    chosen for generalization to UNSEEN items rather than fit-set memorization."""
+    import torch
+    dev = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
+    torch.manual_seed(seed)
+    d = Xp_fit.shape[1]; H = args.mlp_hidden
+    # Initialize the map at the LINEAR-ridge solution and add a nonlinear correction on top, so the
+    # hypothesis class strictly contains the linear one. The correction starts at zero (last layer
+    # zeroed), so the net begins exactly at the linear result and early stopping can only improve on
+    # it: explained(mlp) >= explained(linear) by construction. Without this a merely under-fit net
+    # predicts noise and the residual goes to ~1 for the wrong reason.
+    Wlin, *_ = evidence_ridge(Xp_fit, Yw_fit)
+
+    class _Carry(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.skip = torch.nn.Linear(d, d)
+            self.mlp = torch.nn.Sequential(torch.nn.Linear(d, H), torch.nn.ReLU(), torch.nn.Linear(H, d))
+            with torch.no_grad():
+                self.skip.weight.copy_(torch.as_tensor(Wlin.T, dtype=torch.float32))
+                self.skip.bias.zero_()
+                self.mlp[-1].weight.zero_(); self.mlp[-1].bias.zero_()   # correction starts at 0
+
+        def forward(self, x):
+            return self.skip(x) + self.mlp(x)
+
+    Xp = torch.as_tensor(np.asarray(Xp_fit, np.float32))
+    Yw = torch.as_tensor(np.asarray(Yw_fit, np.float32))
+    n = Xp.shape[0]
+    perm = torch.as_tensor(np.random.default_rng(seed).permutation(n))
+    nval = max(1000, n // 10)
+    va, tr = perm[:nval], perm[nval:]
+    Xtr, Ytr = Xp[tr].to(dev), Yw[tr].to(dev)
+    Xva, Yva = Xp[va].to(dev), Yw[va].to(dev)
+    net = _Carry().to(dev)
+    opt = torch.optim.Adam(net.parameters(), lr=args.mlp_lr, weight_decay=args.mlp_wd)
+    best, bad, bs = float("inf"), 0, args.mlp_batch
+    for _ep in range(args.mlp_epochs):
+        net.train()
+        order = torch.randperm(Xtr.shape[0], device=dev)
+        for i in range(0, Xtr.shape[0], bs):
+            b = order[i:i + bs]
+            opt.zero_grad()
+            loss = ((net(Xtr[b]) - Ytr[b]) ** 2).mean()
+            loss.backward(); opt.step()
+        net.eval()
+        with torch.no_grad():
+            v = float(((net(Xva) - Yva) ** 2).mean())
+        if v < best - 1e-5:
+            best, bad = v, 0
+        else:
+            bad += 1
+            if bad >= args.mlp_patience:
+                break
+    net.eval()
+    with torch.no_grad():
+        pred = net(torch.as_tensor(np.asarray(Xc_pred, np.float32)).to(dev)).cpu().numpy()
+    return pred, best
+
+
 # ------------------------------------------------------------------ the comparison
 def _dot(U, V):
     return (U * V).sum(axis=(1, 2))           # per item, summed over classes and dimensions
@@ -104,8 +172,15 @@ def _derangement(L, rng):
             return p
 
 
-def compare(Xw, Xc, item_of, class_of, W, classes, min_cell=10, n_resplit=50, n_bb=200, seed=0):
+def compare(Xw, Xc, item_of, class_of, W, classes, min_cell=10, n_resplit=50, n_bb=200, seed=0,
+            Xpred=None):
     """Xw, Xc: (N, d) states at the target word / at the preceding word, row-aligned.
+    The context's prediction of the word interaction is formed one of two ways:
+      linear  (Xpred is None): PA = gamma_ctx @ W, since a linear map commutes with the centring.
+      nonlinear (Xpred given): Xpred are the predicted WORD states from an item-independent MLP
+                 carry-over applied to the context states (row-aligned with Xw); a nonlinear map
+                 does NOT commute with the centring, so we decompose the predicted grid and read its
+                 interaction off directly. Everything downstream (the cross-split cosine) is identical.
     Returns the per-layer summary dict, or {'error': ...}."""
     rng = np.random.default_rng(seed)
     items, classes, cells = build_balanced_grid(item_of, class_of, min_cell, classes)
@@ -115,8 +190,9 @@ def compare(Xw, Xc, item_of, class_of, W, classes, min_cell=10, n_resplit=50, n_
     d = Xw.shape[1]
     keys = ("x", "rp", "rw", "xid", "rc", "xnull")
     acc = {k: np.zeros((n_resplit, L)) for k in keys}
+    nmat = 3 if Xpred is not None else 2
     for r in range(n_resplit):
-        MA = np.zeros((2, L, C, d)); MB = np.zeros((2, L, C, d))   # [word, ctx]
+        MA = np.zeros((nmat, L, C, d)); MB = np.zeros((nmat, L, C, d))   # [word, ctx, (pred)]
         for a, it in enumerate(items):
             for b, c in enumerate(classes):
                 idx = cells[(it, c)]
@@ -124,9 +200,14 @@ def compare(Xw, Xc, item_of, class_of, W, classes, min_cell=10, n_resplit=50, n_
                 A, B = idx[perm[:h]], idx[perm[h:]]
                 MA[0, a, b], MB[0, a, b] = Xw[A].mean(0), Xw[B].mean(0)
                 MA[1, a, b], MB[1, a, b] = Xc[A].mean(0), Xc[B].mean(0)
+                if Xpred is not None:
+                    MA[2, a, b], MB[2, a, b] = Xpred[A].mean(0), Xpred[B].mean(0)
         gwA, gwB = _decompose(MA[0])[3], _decompose(MB[0])[3]
         gcA, gcB = _decompose(MA[1])[3], _decompose(MB[1])[3]
-        PA, PB = gcA @ W, gcB @ W            # a linear map commutes with the centring
+        if Xpred is not None:
+            PA, PB = _decompose(MA[2])[3], _decompose(MB[2])[3]   # interaction of the predicted states
+        else:
+            PA, PB = gcA @ W, gcB @ W            # a linear map commutes with the centring
         acc["x"][r] = 0.5 * (_dot(PA, gwB) + _dot(PB, gwA))
         acc["rp"][r] = _dot(PA, PB)
         acc["rw"][r] = _dot(gwA, gwB)
@@ -222,14 +303,22 @@ def run_file(path, args):
         X = z[f"layer_{li}"]
         sd = _col_sd(X, sd_rows)
         g = lambda rows: np.asarray(X[rows], np.float64) / sd
-        W, a, b, geff = evidence_ridge(g(fit_idx - 1), g(fit_idx))
-        res = compare(g(t_idx), g(t_idx - 1), form[t_idx], cls[t_idx], W, classes,
-                      args.min_cell, args.n_resplit, args.n_bb, args.seed)
+        extra = dict(map=args.map)
+        if args.map == "mlp":
+            Xpred, val_mse = mlp_carryover(g(fit_idx - 1), g(fit_idx), g(t_idx - 1), args, args.seed)
+            extra["mlp_hidden"] = args.mlp_hidden; extra["mlp_val_mse"] = round(val_mse, 5)
+            res = compare(g(t_idx), g(t_idx - 1), form[t_idx], cls[t_idx], None, classes,
+                          args.min_cell, args.n_resplit, args.n_bb, args.seed, Xpred=Xpred)
+        else:
+            W, a, b, geff = evidence_ridge(g(fit_idx - 1), g(fit_idx))
+            extra["ridge_alpha"] = a; extra["ridge_beta"] = b; extra["ridge_eff_params"] = geff
+            res = compare(g(t_idx), g(t_idx - 1), form[t_idx], cls[t_idx], W, classes,
+                          args.min_cell, args.n_resplit, args.n_bb, args.seed)
         del X
         if "error" in res:
             print(f"  L{li}: {res['error']}", flush=True); continue
         row = dict(model=model, init=init, task=args.task, layer=li, rel_depth=round(li / top, 3),
-                   n_fit=len(fit_idx), ridge_alpha=a, ridge_beta=b, ridge_eff_params=geff, **res)
+                   n_fit=len(fit_idx), **extra, **res)
         out_rows.append({k: row.get(k, "") for k in FIELDS})
         flag = "" if res["word_reliable_frac"] >= 0.95 else \
             "  <- word interaction not reliably above zero here; ignore this layer"
@@ -302,11 +391,28 @@ def main():
                     help="measure this many reps files in parallel (the real speed lever). Total "
                          "cores ~ workers x threads; keep that under the box's free cores, and leave "
                          "headroom for any GPU measure also running its CPU workers.")
+    ap.add_argument("--map", choices=["linear", "mlp"], default="linear",
+                    help="context carry-over model. linear: evidence-ridge (fast, default). mlp: an "
+                         "item-independent NONLINEAR carry-over -- the robustness check that linear is "
+                         "not too weak to find context structure (matters for this NEGATIVE claim).")
+    ap.add_argument("--device", default="",
+                    help="mlp only: torch device (default: cuda if available, else cpu)")
+    ap.add_argument("--mlp-hidden", type=int, default=1024, help="mlp hidden width")
+    ap.add_argument("--mlp-epochs", type=int, default=60)
+    ap.add_argument("--mlp-lr", type=float, default=1e-3)
+    ap.add_argument("--mlp-wd", type=float, default=1e-4,
+                    help="mlp weight decay; regularizes the map toward generalizing to the held-out items")
+    ap.add_argument("--mlp-patience", type=int, default=8,
+                    help="early-stopping patience on the 10%% fit-pool validation split")
+    ap.add_argument("--mlp-batch", type=int, default=4096)
     args = ap.parse_args()
     if args.selftest:
         sys.exit(0 if selftest(args.seed) else 1)
-    if not (args.task and args.conllu and args.out and (args.reps_dir or args.files)):
-        ap.error("--task, --conllu, --out and --reps-dir/--files are required")
+    if not (args.task and args.conllu and (args.reps_dir or args.files)):
+        ap.error("--task, --conllu and --reps-dir/--files are required")
+    if not args.out:
+        suffix = "" if args.map == "linear" else f"_{args.map}"
+        args.out = str(REPO_ROOT / "data" / f"llm_residual_{args.task}{suffix}.csv")
     files = args.files or sorted(str(p) for p in Path(args.reps_dir).glob("*.npz")
                                  if not any(t in p.name for t in ("noposemb", "prevtok", "random")))
 

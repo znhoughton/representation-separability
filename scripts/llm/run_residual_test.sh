@@ -17,12 +17,19 @@ OUTDIR="${OUTDIR:-data}"
 # the shared box. Raise/lower via the environment. Resumable, so a restart with a new WORKERS is free.
 WORKERS="${WORKERS:-6}"
 THREADS="${THREADS:-2}"
+# MAP=linear (default, evidence-ridge) or MAP=mlp (nonlinear robustness check). For MAP=mlp set
+# DEVICE=cuda if the GPU is free overnight (much faster); on CPU keep WORKERS high instead.
+MAP="${MAP:-linear}"
+DEVICE="${DEVICE:-}"
+suffix=""; [ "$MAP" != "linear" ] && suffix="_$MAP"
+dev_arg=""; [ -n "$DEVICE" ] && dev_arg="--device $DEVICE"
 
 for con in pos role; do
-  echo "=== residual test: $con  (workers=$WORKERS x threads=$THREADS) ==="
+  echo "=== residual test: $con  map=$MAP  (workers=$WORKERS x threads=$THREADS) ==="
   python scripts/llm/residual_test.py --task "$con" \
       --reps-dir "$REPS_DIR" --conllu "$CONLLU" \
+      --map "$MAP" $dev_arg \
       --workers "$WORKERS" --threads "$THREADS" \
-      --out "$OUTDIR/llm_residual_${con}.csv"
+      --out "$OUTDIR/llm_residual_${con}${suffix}.csv"
 done
-echo "Done -> $OUTDIR/llm_residual_{pos,role}.csv"
+echo "Done -> $OUTDIR/llm_residual_{pos,role}${suffix}.csv"
