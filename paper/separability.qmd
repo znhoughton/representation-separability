@@ -370,16 +370,6 @@ cm <- function(x) format(x, big.mark = ",")
 SHORT <- c("POS (noun/verb)"               = "part of speech",
            "role (subject/object)"         = "grammatical role")
 shortname <- function(x) unname(SHORT[as.character(x)])
-# The portable fraction of @tbl-posabl, for one model size with positions intact or zeroed,
-# so the prose quotes the same numbers the table does rather than hardcoding them.
-pf <- function(size, positions) {
-  d <- rd("llm_unified_form.csv") |>
-    filter(grepl(size, model, fixed = TRUE), grepl("^pretrained", init)) |>
-    mutate(pos = ifelse(grepl("noposemb$", init), "zeroed", "intact")) |>
-    filter(pos == positions) |>
-    slice_max(layer, n = 1, with_ties = FALSE)
-  g(d$std_size_class / (d$std_size_class + d$std_size_interaction), 3)
-}
 
 capget <- function(a, cap, col) toy_cap[[col]][toy_cap$act == a & toy_cap$capacity == cap]
 
@@ -722,9 +712,7 @@ $$
 \end{aligned}
 $$ {#eq-toy}
 
-Each effect is constructed using a fixed random matrix whose columns define the directions in which that effect can vary. The coefficients determine how those directions combine to produce the effect's contribution to the next-token logits. For the interaction effect, each form–class pairing has its own randomly generated vector, independent of the item and class effects. These vectors are centered across forms and classes, ensuring that the interaction contains no additive item or class component. Before the effects are weighted and combined, each is scaled to unit variance across observations.[^2] The weights in @eq-toy therefore control the relative contributions of the four effects, rather than differences in their initial scale. The constant $s = 3$ scales the combined logits before the softmax, controlling how peaked the resulting probability distribution is.
-
-[^2]: Specifically, each observation consists of a form in a specific class and a context, paired with that term's contribution to the next-token distribution for that observation. We normalize this dataset by dividing each value by the total standard deviation across all observations.
+Each effect is constructed using a fixed random matrix whose columns define the directions in which that effect can vary. The coefficients determine how those directions combine to produce the effect's contribution to the next-token logits. For the interaction effect, each form–class pairing has its own randomly generated vector, independent of the item and class effects. These vectors are centered across forms and classes, ensuring that the interaction contains no additive item or class component. Before the effects are weighted and combined, each is scaled to unit variance across observations. The weights in @eq-toy therefore control the relative contributions of the four effects, rather than differences in their initial scale. The constant $s = 3$ scales the combined logits before the softmax, controlling how peaked the resulting probability distribution is.
 
 We vary the item, class, and interaction weights, $w_\alpha$, $w_\beta$, and $w_\gamma$, factorially over $\{0, 0.5, 1, 2\}$. A weight of zero removes the corresponding effect from the language, while the other values vary its strength relative to the other effects. We independently vary the context weight, $w_{\text{ctx}}$, over $\{0.5, 2.0, 6.0\}$, ranging from a relatively minor to a dominant contribution. We then rescale all four weights together to unit length, such that $w_\alpha^2 + w_\beta^2 + w_\gamma^2 + w_{\text{ctx}}^2 = 1$. This makes the resulting languages more comparable by enforcing the same total signal (i.e., the variance of the weighted sum in @eq-toy is held constant), despite individual differences in the amount that each individual term contributes.
 
@@ -853,9 +841,7 @@ The item effect is the largest component in both categories, running from `r ldr
 
 Another way to describe these results is with respect to the whole representation rather than the item-by-class structure: the item effect accounts for `r gr("ga")` of what varies in a token, the class effect `r gr("gb")`, and the interaction `r gr("gg")`, with the remaining `r gr("gctx")` being specific to the context a word appears in (See Appendix \ref{sec-appendix-llm}). The interaction is not, however, inherited from that context: at the deepest layer only a small fraction of it is attributable to the context the word appears in, the rest requiring word-dependent processing (Appendix \ref{sec-appendix-context}).
 
-Both the class effect and the interaction effect increase as a function of layer depth. The interaction is essentially absent at layer 0 in both categories, between `r allrange("size_int", deep = FALSE)` across every category and model, and rises to between `r allrange("size_int")` (@fig-llm). This is not surprising since at the first layer, the model has yet to integrate enough context to commit to the class of the representation.[^7]
-
-[^7]: The increase in the effect across layer depth is also not an artifact of the learned absolute position embeddings: zeroing OPT-BabyLM's leaves the class structure more word-specific rather than less, and Pythia, which encodes position with rotary embeddings inside attention rather than an additive input embedding, shows the interaction at least as strongly (Appendix \ref{sec-appendix-positions}).
+Both the class effect and the interaction effect increase as a function of layer depth. The interaction is essentially absent at layer 0 in both categories, between `r allrange("size_int", deep = FALSE)` across every category and model, and rises to between `r allrange("size_int")` (@fig-llm). This is not surprising since at the first layer, the model has yet to integrate enough context to commit to the class of the representation.
 
 Turning to how those components are oriented, the class direction carries almost none of the item effect. At the deepest layer, item-class overlap runs `r ldrng("POS (noun/verb)", "leak")` for part of speech and `r ldrng("role (subject/object)", "leak")` for grammatical role, so projecting out the class direction leaves more than 99% of the item effect intact. While both overlaps are technically less orthogonal than a random subspace, the overlap itself is tiny, so the two are near-orthogonal rather than exactly orthogonal.
 
@@ -1411,7 +1397,7 @@ tibble::tribble(
 
 The six models are listed in @tbl-models. The two families are matched on width rather than on parameter count, which is what the measure is sensitive to: the chance level for overlap is the class subspace rank over the width, so a comparison across models of different width has to be read against different chance levels. Pairing at 768, 1024, and 2048 removes that from the family comparison.
 
-They differ in two ways that matter elsewhere in the paper. The training corpora differ by more than two orders of magnitude in size, which is the manipulation of interest. They also use different mechanisms for representing the position of each token: Pythia uses rotary embeddings, applied inside attention, while OPT learns absolute position embeddings added at the input. Appendix \ref{sec-appendix-positions} uses that difference to rule out absolute position as the source of the interaction.
+Beyond width, the families differ in the size of their training corpora, by more than two orders of magnitude, which is the manipulation of interest.
 
 {{< pagebreak >}}
 
@@ -1534,7 +1520,7 @@ rrng <- function(col) sprintf("%.2f--%.2f", min(resid_deep[[col]]), max(resid_de
 babylm_shallow_ctx <- sprintf("%.2f", max(resid_shallow$explained[resid_shallow$family == "BabyLM"]))
 ```
 
-Across all six models and both categories, the context accounts for only a small part of the interaction. At the deepest layer the word-dependent share runs `r rrng("residual")` (@tbl-residual), with the context explaining `r rrng("explained")`, against a null, computed by mismatching items before the comparison, that is indistinguishable from zero (at most `r sprintf("%.3f", max(abs(resid_deep$null)))` in absolute value). The context-explained share is larger at shallow layers for the OPT-BabyLM models, up to `r babylm_shallow_ctx` at a quarter of the model's depth, and falls as depth increases, consistent with the learned-position artifact of Appendix \ref{sec-appendix-positions}; for Pythia it is small at every depth. Because the carry-over map is linear, this establishes that the interaction is not a linear image of the context, the same standard of linear decodability used for the probe in Experiment 3.
+Across all six models and both categories, the context accounts for only a small part of the interaction. At the deepest layer the word-dependent share runs `r rrng("residual")` (@tbl-residual), with the context explaining `r rrng("explained")`, against a null, computed by mismatching items before the comparison, that is indistinguishable from zero (at most `r sprintf("%.3f", max(abs(resid_deep$null)))` in absolute value). The context-explained share is larger at shallow layers for the OPT-BabyLM models, up to `r babylm_shallow_ctx` at a quarter of the model's depth, and falls as depth increases; for Pythia it is small at every depth. Because the carry-over map is linear, this establishes that the interaction is not a linear image of the context, the same standard of linear decodability used for the probe in Experiment 3.
 
 A simpler magnitude control agrees. Running the same decomposition on the pre-word state itself, the context with the target word removed, yields an interaction that is both smaller as a fraction of the whole representation and flat across depth, rather than growing with depth as it does at the word position.
 
@@ -1557,39 +1543,3 @@ local({
     pack_rows(index = setNames(r$lengths, r$values))
 })
 ```
-
-{{< pagebreak >}}
-
-# Positional Embeddings Are Not the Source {#sec-appendix-positions}
-
-In theory, one possible architectural explanation for the interaction could be the way in which position is represented within the models. Specifically, the BabyLMs add a *learned absolute position embedding*. The two classes of a linguistic category are not positionally interchangeable in a sentence, since subjects precede objects and nouns and verbs typically occupy different slots, so a representation that varies with position varies with the class. If that is what the decomposition is picking up, the interaction would be an artifact of the position rather than their representation.
-
-In order to rule this out, we re-extracted every OPT-BabyLM model with the positional embeddings zeroed out. Pythia encodes position with rotary embeddings applied inside attention rather than an additive input embedding, so this analysis was run only for the BabyLMs.
-
-We rule out the effect of position by comparing the class effect to the interaction for the models with positions intact and positions zeroed out. We operationalize this as the class effect divided by the sum of the class effect and the interaction, which we call the *portable fraction*. The three shares sum to one by construction, and zeroing the embeddings drives the item share up sharply, which pushes the class effect and the interaction down together for reasons unrelated to the split between them. Dividing one by their sum holds the item share out of the comparison. If positions were manufacturing the interaction, removing them should mitigate or eliminate the interaction effect and increase the effect of class, so the portable fraction should rise.
-
-```{r}
-#| label: tbl-posabl
-#| tbl-cap: "Trained OPT-BabyLM at the deepest layer, with absolute position embeddings intact and zeroed. Sizes are shares of the item-by-class structure and the portable fraction is the class effect divided by the sum of the class effect and the interaction."
-# Read from the main POS file. It carries the *_noposemb inits for every OPT-BabyLM
-# size under the current estimator, so this table is on the same footing as every
-# other table in the paper. (An older, separate ablation CSV used to hold these rows
-# but was written by a superseded measure.py; it has been removed.)
-rd("llm_unified_form.csv") |>
-  filter(grepl("babylm", model), grepl("^pretrained", init)) |>
-  group_by(model, init) |>
-  slice_max(layer, n = 1, with_ties = FALSE) |>
-  ungroup() |>
-  transmute(model = sub(".*/", "", sub("-20eps-seed964", "", model)),
-            positions = ifelse(grepl("noposemb$", init), "zeroed", "intact"),
-            class = std_size_class, interaction = std_size_interaction,
-            portable = std_size_class / (std_size_class + std_size_interaction)) |>
-  arrange(match(model, c("opt-babylm-125m", "opt-babylm-350m", "opt-babylm-1.3B")),
-          desc(positions)) |>
-  transmute(model, positions, `class` = g(class, 3), `interaction` = g(interaction, 3),
-            `portable fraction` = g(portable, 3)) |>
-  kbl(longtable = FALSE, booktabs = TRUE, align = "llrrr", linesep = "") |>
-  kable_styling(font_size = 9)
-```
-
-Removing the position embeddings makes these representations *less* separable, not more. The portable fraction falls in every model, from `r pf("125m", "intact")` to `r pf("125m", "zeroed")`, from `r pf("350m", "intact")` to `r pf("350m", "zeroed")`, and from `r pf("1.3B", "intact")` to `r pf("1.3B", "zeroed")` (Table \ref{tbl-posabl}). Whatever the absolute position embedding contributes, it is contributing to the part of class structure that *is* carried by a shared direction. Take it away and what remains is more word-specific, not less. The interaction is not an artifact of position.
