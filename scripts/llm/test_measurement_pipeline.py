@@ -1,16 +1,17 @@
-"""End-to-end check of the ablation measurement chain on synthetic reps.
+"""End-to-end check of the measurement pipeline on synthetic reps.
 
-Reproduces the condition that lost the last run: a reps directory holding BOTH the intact and the
-_noposemb file for each model. Verifies that the ablated files are measured rather than skipped,
-that an `init` column distinguishes them (the same resume/tagging logic the prevtok reps rely on).
+Exercises the case of a reps directory holding SEVERAL init-tagged files per model (e.g. a word file
+alongside a variant such as the prev-token reps). Verifies that every init-tagged file is measured
+rather than skipped, and that an `init` column distinguishes them -- the resume/tagging logic the
+whole sweep relies on.
 
 Three routes, chosen by what each script depends on:
   metaphor  -- measure_file needs no tokenizer, so main() runs for real, worker pool included.
   POS/role  -- measure_file re-derives labels with the model's tokenizer, which would download
                models. Those two are checked in two parts instead: measure_file is called
                in-process with the derivation stubbed (proving it records init), and main() is
-               run far enough to print its todo count (proving the resume check no longer treats
-               the ablated file as already done -- the actual bug).
+               run far enough to print its todo count (proving the resume check does not treat a
+               second init-tagged file as already done).
 """
 import contextlib
 import csv
@@ -18,16 +19,15 @@ import io
 import os
 import re
 import shutil
-import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
 import numpy as np
 
-REPO = Path(r"D:\PhD Stuff\Linguistics Stuff\representation-separability")
-SCRATCH = Path(tempfile.gettempdir()) / "abltest"
-for sub in ("lib", "llm", "toy"):
+REPO = Path(__file__).resolve().parents[2]
+SCRATCH = Path(tempfile.gettempdir()) / "pipeline_test"
+for sub in ("", "llm", "toy"):
     sys.path.insert(0, str(REPO / "scripts" / sub))
 
 RNG = np.random.default_rng(964)
