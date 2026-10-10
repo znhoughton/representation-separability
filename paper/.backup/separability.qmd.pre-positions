@@ -1,0 +1,1325 @@
+---
+title: "Everyone Was Right: Lexical Representations in Language Models Are Both Abstract and Holistic"
+author:
+  - name: "Zachary Nicholas Houghton"
+    affiliations:
+      - name: "Vail Systems, Inc."
+      - name: "University of Oregon"
+    email: znh@uoregon.edu
+abstract: |
+  Lexical representations are central to linguistic theory, yet to what extent they're memorized, item-specific representations or abstract, generalizable representations remains a core debate. In the present study, we investigate how Large Language Models (LLMs) navigate this distinction using a quantitative framework that decomposes contextual word representations into three additive components: an item component, a class component, and an idiosyncratic word-class interaction. After validating our measurement on an artificial language, we evaluate six pretrained transformers (OPT-BabyLM and Pythia families) across two linguistic categories: part of speech and grammatical role. We find that the idiosyncratic interaction term is consistently non-zero and grows substantially in deeper layers. Crucially, while abstract lexical and class axes remain nearly orthogonal, the interaction term systematically overlaps with both, allowing a probe to recover the class even after removing shared category directions. Together, our results demonstrate that LLMs do not commit exclusively to pure abstraction or exemplar storage; rather, they construct representations that are simultaneously both abstract and holistic.
+  
+bibliography: refs.bib
+acl-mode: review
+number-sections: true
+tbl-cap-location: bottom
+format:
+  acl-pdf:
+    keep-tex: true
+---
+
+```{r}
+#| label: setup
+#| include: false
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+# Force kable to emit raw LaTeX rather than markdown pipe tables. Without it pandoc builds the
+# longtable itself and puts \bottomrule in \endlastfoot, which longtable typesets after the body,
+# so the rule lands below the caption whenever tbl-cap-location is bottom.
+if (knitr::is_latex_output()) options(knitr.table.format = "latex")
+library(readr); library(dplyr); library(tidyr); library(ggplot2); library(kableExtra)
+library(patchwork); library(scales)
+
+DATA <- file.path("..", "data")
+# Reads a result CSV, falling back to the gzipped copy. validate_measure is 252,000 rows and is
+# tracked compressed, with the plain file gitignored, so a fresh clone has only the .gz; readr
+# decompresses transparently. Handled here rather than at the call site so any file can be
+# compressed later without the paper needing to know.
+rd <- function(f) {
+  p <- file.path(DATA, f)
+  if (!file.exists(p) && file.exists(paste0(p, ".gz"))) p <- paste0(p, ".gz")
+  suppressMessages(read_csv(p, show_col_types = FALSE))
+}
+
+# Fill in columns a CSV predates, as NA, so a file measured before a field existed still loads
+# and the affected numbers read as missing rather than bringing the whole render down.
+ensure <- function(df, ...) {
+  for (nm in c(...)) if (!nm %in% names(df)) df[[nm]] <- NA_real_
+  df
+}
+
+# Green and gold are the University of Oregon colours, as in the companion papers; grey,
+# amber and blue are supporting tones, not part of that palette. Green = the linear reference, gold = the
+# nonlinearity; amber and blue are held for the model families in Experiments 2-3.
+UO <- c(green = "#154733", green2 = "#007030", gold = "#F0B323",
+        amber = "#875E00", blue = "#005581", grey = "#6E6E6E")
+ACT_COL <- c(identity = UO[["green2"]], relu = UO[["gold"]])
+ACT_LAB <- c(identity = "linear", relu = "ReLU")
+
+theme_paper <- function(base = 9) {
+  theme_minimal(base_size = base) +
+    theme(panel.grid.minor = element_blank(),
+          panel.grid.major = element_line(linewidth = 0.25, color = "grey88"),
+          strip.text = element_text(face = "bold", size = base),
+          legend.position = "top", legend.margin = margin(0, 0, -4, 0),
+          legend.key.height = unit(9, "pt"),
+          axis.title = element_text(size = base))
+}
+
+# ---- Experiment 1: the artificial-language grid ----
+# 7,560 runs, measured with unified_split -- the SAME function and arguments Experiment 2
+# uses. The two independent estimates are two even-sized splits of the observations for each item in each class, so there is
+# no alignment step and no projection. Capacity is a reported variable, never a filter.
+toy <- rd("artificial_language_grid.csv") |>
+  ensure("obs_size_interaction", "size_interaction_excludes_zero",
+         "obs_size_class", "size_class_excludes_zero",
+         "size_item_excludes_zero") |>
+  mutate(act = factor(activation, c("identity", "relu"), c("linear", "ReLU")),
+         # An orthogonality reading means nothing on its own, so each overlap is carried
+         # alongside the upper tail of its own null: the largest value an arbitrary orientation
+         # produces in 97.5% of draws, from rotating the target subspace 200 times.
+         null_hi = leak_item_into_class_null_hi,
+         null_lo = leak_item_into_class_null_lo,
+         null_med = leak_item_into_class_null_med,
+         null_int = leak_int_into_margins_null_hi,
+         null_int_lo = leak_int_into_margins_null_lo,
+          null_int_med = leak_int_into_margins_null_med,
+          # `ez` is the test the results are quoted with: the re-split 95% interval excludes
+          # zero. `flagged` below keeps the older permutation test for continuity only.
+          ez = size_interaction_excludes_zero)
+
+# Where no interaction was planted the linear arm is the floor, and by algebra it should be
+# one: with additive inputs a linear map gives population means of the form A(f)+B(c), whose
+# interaction is zero however much the language contains. Where an interaction WAS planted it
+# is not at zero, because a trained linear model still carries whatever its contexts bring to
+# each cell -- see the Results. Both readings are the measure's at this exact width, sample
+# size and context level.
+toy_null <- toy |> group_by(act, planted = w_int > 0) |>
+  summarize(n = n(), med = median(size_interaction),
+            p95 = quantile(size_interaction, .95),
+            flagged = mean(sig_interaction),
+            flagged_ez = mean(ez, na.rm = TRUE), .groups = "drop")
+
+# Does the measured interaction track the planted one? Binned, because the achieved share is
+# continuous (neither the softmax nor the normalization is linear in the weights).
+toy_track <- toy |> filter(w_item > 0, w_class > 0) |>
+  mutate(bin = cut(ach_int, c(-Inf, .005, .05, .15, .30, .55, Inf),
+                   labels = c("none", ".005-.05", ".05-.15", ".15-.30", ".30-.55", ">.55"))) |>
+  group_by(act, bin) |>
+  summarize(n = n(), ach = median(ach_int), size_int = median(size_interaction),
+            lo = quantile(size_interaction, .25), hi = quantile(size_interaction, .75),
+            flagged = mean(sig_interaction),
+            flagged_ez = mean(ez, na.rm = TRUE), .groups = "drop")
+
+# ---- what the learner builds, by width --------------------------------------------------------
+# A run contributes only if the measure found structure for the three shares to divide: at least
+# one of the three components has a re-split interval excluding zero. Where none does, the shares
+# divide noise, whichever component lands slightly positive takes the whole of it, and the value
+# is arbitrary rather than small. Every run this removes is at the narrowest width, and how many
+# there are is reported in the Results rather than passed over.
+toy_relu <- toy |> filter(act == "ReLU", w_item > 0, w_class > 0) |>
+  mutate(resolved = size_item_excludes_zero | size_class_excludes_zero |
+                   size_interaction_excludes_zero)
+toy_unbuilt <- toy_relu |> group_by(d) |>
+  summarize(runs = n(), none = sum(!resolved), pct = none / n(), .groups = "drop")
+
+# Long form, one row per component, so the three can be drawn on one pair of axes. Intervals are
+# the 2.5th and 97.5th percentiles ACROSS RUNS: what the bar shows is how differently two runs of
+# the same language at the same width come out, which is itself one of the findings.
+toy_long <- toy_relu |> filter(resolved) |>
+  select(d, ach_int, item = size_item, class = size_class, interaction = size_interaction) |>
+  pivot_longer(c(item, class, interaction), names_to = "component", values_to = "share") |>
+  mutate(component = factor(component, c("item", "class", "interaction")))
+
+# One question asked three times: when the language holds a given amount of a component, how much
+# of it does the learner build? Each component is matched against its OWN planted share, so the
+# diagonal is a meaningful reference and the three panels are the same question about item, class
+# and interaction rather than three different ones.
+# The frame is `df`, not `d`: tibble() evaluates its arguments in order, so a column named `d`
+# would shadow the frame for every argument after it.
+.pair <- function(df, planted, measured, name) {
+  # The planted share is taken over the three components only, leaving context out of the
+  # denominator, because that is what the measured share divides too: context is averaged away in
+  # forming the item-by-class means and cannot appear in them. Left unmatched the two axes divide
+  # different things and the diagonal means nothing, since a faithful representation would sit
+  # above it by however much context the language held. Taken this way both axes are the
+  # component's share of the same three things and the diagonal is a faithful representation.
+  # Dividing by the three rather than by one minus the context is also the safer arithmetic: the
+  # four achieved shares sum to one only to within a percent, and this way the three always sum
+  # to exactly one.
+  tot <- df$ach_item + df$ach_class + df$ach_int
+  ok <- !is.na(tot) & tot > 1e-3
+  tibble(d = df$d[ok], component = name,
+         planted = df[[planted]][ok] / tot[ok],
+         measured = df[[measured]][ok])
+}
+.res <- toy_relu |> filter(resolved)
+toy_learn <- bind_rows(
+  .pair(.res, "ach_item", "size_item", "item"),
+  .pair(.res, "ach_class", "size_class", "class"),
+  .pair(.res, "ach_int", "size_interaction", "interaction")) |>
+  mutate(component = factor(component, c("item", "class", "interaction")),
+         bin = cut(planted, c(-Inf, .02, .06, .12, .22, .40, Inf))) |>
+  filter(!is.na(planted), !is.na(measured))
+# The binned summary stays for the prose; the figure draws the runs and a fit through them.
+toy_learn_bin <- toy_learn |> group_by(component, d, bin) |>
+  summarize(n = n(), x = median(planted), med = median(measured),
+            lo = quantile(measured, .025), hi = quantile(measured, .975), .groups = "drop") |>
+  filter(n >= 10)
+
+# The linear arm, prepared the same way, for the comparison the prose makes. It is not drawn in
+# @fig-toy, which would double the lines for one sentence.
+.lin <- toy |> filter(act == "linear", w_item > 0, w_class > 0) |>
+  mutate(resolved = size_item_excludes_zero | size_class_excludes_zero |
+                      size_interaction_excludes_zero) |>
+  filter(resolved)
+toy_learn_lin <- bind_rows(
+  .pair(.lin, "ach_item", "size_item", "item"),
+  .pair(.lin, "ach_class", "size_class", "class"),
+  .pair(.lin, "ach_int", "size_interaction", "interaction")) |>
+  mutate(component = factor(component, c("item", "class", "interaction"))) |>
+  filter(!is.na(planted), !is.na(measured))
+
+# Both arms in one frame for @fig-toy, which draws them as rows. toy_learn and toy_learn_lin are
+# left alone: the prose indexes them separately.
+toy_learn_both <- bind_rows(mutate(toy_learn, act = "ReLU"),
+                            mutate(toy_learn_lin, act = "linear")) |>
+  mutate(act = factor(act, c("ReLU", "linear")))
+
+# Colour carries width here, since the components are separated by panel. A single ramp from the
+# University of Oregon's green, because width is ordered and hues are not.
+# Built from the data rather than written out, so that adding a width to the grid cannot
+# silently drop its line for want of a color.
+WIDC <- setNames(colorRampPalette(c("#BFCFA8", UO[["green"]]))(length(unique(toy$d))),
+                 sort(unique(toy$d)))
+
+# The fitted slope of represented share against the language's share, which is the quantity the
+# prose quotes: how much of an increase in the language reaches the representation. Below one
+# means the component is represented at less than its rate in the language.
+slope <- function(dd, comp, dat = toy_learn) {
+  x <- dat[dat$d == dd & dat$component == comp, ]
+  unname(coef(stats::lm(measured ~ planted, data = x))[2])
+}
+slope_lin <- function(dd) slope(dd, "interaction", toy_learn_lin)
+
+# The linear arm's composition by width, for the contrast the prose draws.
+toy_comp_lin <- toy_learn_lin |> group_by(d, component) |>
+  summarize(med = median(measured), .groups = "drop")
+cmplin <- function(dd, comp) toy_comp_lin$med[toy_comp_lin$d == dd & toy_comp_lin$component == comp]
+
+# Reproducibility at a FIXED language. Within a cell of weights, context weight and width the
+# only thing that varies is the seed, so the spread across those runs is run-to-run variability.
+# Spread pooled over languages is not: it is dominated by the languages differing, which is the
+# horizontal axis of @fig-toy showing up on the vertical one.
+toy_seed <- toy_relu |> filter(resolved) |>
+  group_by(w_item, w_class, w_int, w_ctx, d) |>
+  filter(dplyr::n() >= 3) |>
+  summarize(item = max(size_item) - min(size_item),
+            class = max(size_class) - min(size_class),
+            interaction = max(size_interaction) - min(size_interaction), .groups = "drop") |>
+  group_by(d) |>
+  summarize(item = median(item), class = median(class),
+            interaction = median(interaction), .groups = "drop")
+seedspan <- function(dd, comp) toy_seed[[comp]][toy_seed$d == dd]
+
+# Reach into the per-component view: the measured share at the lowest or highest planted band.
+lrn <- function(dd, comp, top = TRUE) {
+  x <- toy_learn_bin[toy_learn_bin$d == dd & toy_learn_bin$component == comp, ]
+  x <- x[order(x$x), ]
+  x$med[if (top) nrow(x) else 1]
+}
+
+# Pooled composition by width, for the prose.
+toy_comp <- toy_long |> group_by(d, component) |>
+  summarize(n = n(), med = median(share),
+            lo = quantile(share, .025), hi = quantile(share, .975), .groups = "drop")
+
+# Pooled over languages, for the prose and for the width trend on its own.
+toy_width <- toy_long |> group_by(d, component) |>
+  summarize(n = n(), med = median(share), lo = quantile(share, .025),
+            hi = quantile(share, .975), .groups = "drop")
+cmp <- function(dd, comp, col = "med") {
+  toy_width[[col]][toy_width$d == dd & toy_width$component == comp]
+}
+cmpw <- function(dd, comp) cmp(dd, comp, "hi") - cmp(dd, comp, "lo")
+unbuilt <- function(dd, col = "pct") toy_unbuilt[[col]][toy_unbuilt$d == dd]
+
+# How the other properties of the language move the composition. Reported in the appendix rather
+# than folded into the figure, so nothing is collapsed without saying so.
+toy_bylang <- bind_rows(
+  toy_relu |> filter(resolved) |>
+    mutate(property = "context in the language",
+           level = cut(ach_ctx, c(-Inf, .3, .7, Inf),
+                       labels = c("under 30%", "30 to 70%", "over 70%"))),
+  toy_relu |> filter(resolved) |>
+    mutate(property = "item against class",
+           level = cut(w_item / pmax(w_class, 1e-9), c(-Inf, .95, 1.05, Inf),
+                       labels = c("item < class", "item = class", "item > class")))) |>
+  group_by(property, level) |>
+  summarize(runs = n(), item = median(size_item), class = median(size_class),
+            interaction = median(size_interaction), .groups = "drop")
+
+# Capacity: below 1 every component can have its own axis, above 1 they cannot.
+# One overlap for a table: the value, how many times its own null's median it is, and how many of
+# the measurements fall outside that null's 95% interval. The multiple is what makes overlaps
+# comparable across widths, since the null moves by orders of magnitude with d; the count is what
+# says the effect holds rather than resting on one measurement. Both tables use this, so they
+# report the same three things and differ only in what a row is and how many measurements it holds.
+# Per-model renderings, for tables whose rows are one model rather than six. These are the
+# quantities as measured, with no median taken across models: a value with its own re-split
+# interval, and an overlap with its own null's median. Vectorized, so they work inside mutate.
+ci <- function(m, lo, hi, digits = 3) {
+  f <- paste0("%.", digits, "f")
+  out <- sprintf(paste0(f, " [", f, ", ", f, "]"), m, lo, hi)
+  out[is.na(m)] <- "---"
+  out
+}
+ov1 <- function(v, med, digits = 3) {
+  out <- sprintf(paste0("%.", digits, "f (%.1f×)"), v, v / med)
+  out[is.na(v)] <- "---"
+  out
+}
+
+ov <- function(v, med, lo, hi, digits = 3) {
+  m <- median(v, na.rm = TRUE)
+  if (is.na(m)) return("---")
+  ratio <- m / median(med, na.rm = TRUE)
+  out <- sum(!is.na(v) & (v > hi | v < lo))
+  sprintf(paste0("%.", digits, "f  (%.1f×, %d/%d)"), m, ratio, out, sum(!is.na(v)))
+}
+
+# One size for a table: the median share, and how many measurements clear zero -- their re-split
+# 95% interval excludes zero. All three sizes are cross-split dot products with a null of exactly
+# zero, so there is no "x null median" multiple to report and no raw null band to read against;
+# `ez` is the per-measurement excludes-zero flag.
+# A size as the share, with an interval when one is supplied, and how many of the group's
+# measurements have a re-split interval clear of zero.
+#
+# What belongs in the brackets depends on what the row pools. Where a row is six models, the
+# re-split interval is the wrong interval to print: it is 35 to 110 times narrower than the
+# spread across those models, so it would claim the quantity is pinned to a thousandth while the
+# models themselves disagree in the second decimal. The across-model range is the honest spread
+# at that level. The re-split
+# interval still does its work through the count, which is what says each model is clear of zero.
+sz <- function(share, ez, lo = NULL, hi = NULL, digits = 3) {
+  m <- median(share, na.rm = TRUE)
+  if (is.na(m)) return("---")
+  f <- paste0("%.", digits, "f")
+  base <- if (is.null(lo)) sprintf(f, m) else
+    sprintf(paste0(f, " [", f, ", ", f, "]"), m, lo, hi)
+  n <- sum(!is.na(ez))
+  if (n == 0) return(base)                                   # intervals not measured yet
+  k <- sum(ez %in% c(TRUE, "TRUE"), na.rm = TRUE)
+  sprintf("%s (%d/%d)", base, k, n)
+}
+
+# "4 of 6", or "NA" before the intervals are measured, for use in prose. For a size, "clearing"
+# means its re-split 95% interval excludes zero.
+outof <- function(constr, stem) {
+  v <- llm_deep[[paste0(stem, "_excludes_zero")]][llm_deep$construction == constr]
+  if (!length(v) || all(is.na(v))) return("NA")
+  sprintf("%d of %d", sum(v %in% c(TRUE, "TRUE")), sum(!is.na(v)))
+}
+
+toy_cap <- toy |> filter(w_int > 0, w_item > 0, w_class > 0) |>
+  # Same inclusion rule as @fig-toy: a run contributes only if at least one component's re-split
+  # interval excludes zero, since otherwise the three shares divide noise.
+  filter(size_item_excludes_zero | size_class_excludes_zero | size_interaction_excludes_zero) |>
+  group_by(act, capacity) |>
+  # Formatted here rather than in the table, because `ov` needs the runs themselves to count how
+  # many fall outside their null; a summarized row no longer has them.
+  summarize(n = n(), size_int = median(size_interaction),
+            # median with the 95% range over the runs in the row. A row pools hundreds of runs
+            # that differ in seed and in what was planted, and the median alone said nothing
+            # about how much they differ.
+            sz_int = sz(size_interaction, size_interaction_excludes_zero,
+                        quantile(size_interaction, .025), quantile(size_interaction, .975),
+                        digits = 3),
+            ov_item = ov(leak_item_into_class, null_med, null_lo, null_hi, 4),
+            ov_int = ov(leak_int_into_margins, null_int_med, null_int_lo, null_int, 3),
+            overlap = median(leak_item_into_class, na.rm = TRUE),
+            floor = median(null_hi, na.rm = TRUE),
+            ratio = median(leak_item_into_class / null_hi, na.rm = TRUE),
+            .groups = "drop")
+
+# Context is the nuisance dial: how much of the target is about something other than the item,
+# the class and their conjunction. The high end is the regime Experiment 2 sits in.
+toy_noise <- toy |> filter(w_int > 0, w_item > 0, w_class > 0) |>
+  mutate(cbin = cut(ach_ctx, c(-Inf, .2, .5, .8, Inf),
+                    labels = c("<20%", "20-50%", "50-80%", ">80%"))) |>
+  group_by(act, cbin) |>
+  summarize(n = n(), size_int = median(size_interaction),
+            flagged = mean(sig_interaction),
+            flagged_ez = mean(ez, na.rm = TRUE), .groups = "drop")
+
+g <- function(x, digits = 3) formatC(x, format = "f", digits = digits)
+cm <- function(x) format(x, big.mark = ",")
+
+# Short display names for the two constructions. The data keeps the long ones, which the prose
+# and the inline expressions index by.
+SHORT <- c("POS (noun/verb)"               = "part of speech",
+           "role (subject/object)"         = "grammatical role")
+shortname <- function(x) unname(SHORT[as.character(x)])
+nullget <- function(a, pl, col) toy_null[[col]][toy_null$act == a & toy_null$planted == pl]
+capget <- function(a, cap, col) toy_cap[[col]][toy_cap$act == a & toy_cap$capacity == cap]
+
+# ---- Experiment 1: the component models ----------------------------------------------------
+# Written by scripts/toy/prepare_results.R from the fitted models, which are ~200MB each and stay
+# out of git, so every number the prose quotes comes from the fit without the fit being present.
+rcoef <- rd("results_coefficients.csv")
+rcrwd <- rd("results_contrasts.csv")
+rdiag <- rd("results_diagnostics.csv")
+rpred <- rd("results_predictions.csv")
+
+# One coefficient, as the prose quotes it: estimate with its 95% credible interval.
+cf <- function(comp, lab, armv = "relu", kindv = "size", dig = 3) {
+  r <- rcoef[rcoef$component == comp & rcoef$label == lab &
+             rcoef$arm == armv & rcoef$kind == kindv, ]
+  sprintf("%+.*f [%+.*f, %+.*f]", dig, r$estimate, dig, r$lo95, dig, r$hi95)
+}
+
+# A fitted share at one width, from the grid that holds effect sizes at their means.
+# The overlap models are fitted on the log of the ratio to chance, so those fitted values are
+# exponentiated back to the multiple of chance the prose quotes. The size models are already on
+# the share scale.
+fv <- function(comp, w, armv = "relu", kindv = "size", dig = 2) {
+  r <- rpred[rpred$component == comp & rpred$width == w & rpred$arm == armv &
+             rpred$kind == kindv & rpred$grid == "arch", ]
+  v <- median(r$epred)
+  g(if (kindv == "overlap") exp(v) else v, dig)
+}
+
+# ---- Experiment 2: language model representations ----
+# Per-class token medians, from the per-item stimulus list rather than the pooled summary. A
+# single pooled median cannot say whether a form occurs that often in EACH class or that often in
+# total; both are reported instead, in the order of the contrast. The counts are corpus-level and
+# identical across all six models, so one model gives the figure.
+stim <- rd("stimuli_items.csv")
+# The span of those per-class medians, for prose, where a slash pair does not read as a sentence.
+stimrange <- function() {
+  v <- unlist(lapply(c("pos_noun_verb_form", "role_nsubj_obj"), function(k) {
+    g <- stim[stim$construction == k, ]
+    g <- g[g$model == g$model[1], ]
+    c(median(g$n_class_a), median(g$n_class_b))
+  }))
+  sprintf("%.0f to %.0f", min(v), max(v))
+}
+stimmed <- function(key) {
+  g <- stim[stim$construction == key, ]
+  g <- g[g$model == g$model[1], ]
+  sprintf("%.0f / %.0f", median(g$n_class_a), median(g$n_class_b))
+}
+
+grid_stats <- rd("methods_grid_stats.csv")
+gs <- function(constr, col) {
+  v <- grid_stats[[col]][grid_stats$construction == constr]
+  # median(numeric(0)) is NA, so a construction missing from the stats file used to reach the
+  # rendered PDF as a silent "NA". Refuse to render instead.
+  if (!length(v)) stop("methods_grid_stats.csv has no rows for construction '", constr,
+                       "'; regenerate it with scripts/llm/dataset_stats.py", call. = FALSE)
+  if (is.numeric(v)) round(median(v)) else v[1]
+}
+
+# The same, but falling back to the last typed value rather than stopping the render, for
+# construction keys the stats file only grows on its next regeneration (the role and
+# form-keyed POS rows and the corpus counts). Once the stats file carries the key, the data
+# wins and the fallback is dead weight.
+gsf <- function(constr, col, fallback = NA_real_) {
+  v <- grid_stats[[col]][grid_stats$construction == constr]
+  v <- v[!is.na(v)]
+  if (!length(v)) return(fallback)
+  if (is.numeric(v)) round(median(v)) else v[1]
+}
+
+# Deepest-layer medians, so the prose cannot drift from the table: every figure quoted in the
+# text is read from here rather than typed in. `ld` is the median across models.
+llm_deep <- NULL   # filled once `llm` exists, below
+ld <- function(constr, col) median(llm_deep[[col]][llm_deep$construction == constr], na.rm = TRUE)
+# Same, at the embedding layer, and a range of either across the two constructions. Both read
+# NA through rather than erroring, so a column the CSVs predate degrades to a blank in the text.
+l0 <- function(constr, col) median(llm[[col]][llm$construction == constr & llm$layer == 0],
+                                   na.rm = TRUE)
+# A size as a share of the whole representation rather than of the grid: the grid's share of the
+# total, times the component's share of the item-by-class structure.
+tot <- function(constr, col) ld(constr, col) * ld(constr, "between_adj")
+
+# Range of a column across every category and model at one depth (embeddings, or deepest),
+# for prose that quotes a spread over all twelve grids rather than one construction's medians.
+allrange <- function(col, deep = TRUE, digits = 4) {
+  d <- if (deep) llm_deep else llm[llm$layer == 0, ]
+  v <- d[[col]]; v <- v[!is.na(v)]
+  sprintf("%s to %s", g(min(v), digits), g(max(v), digits))
+}
+
+rng <- function(f, col, digits = 2) {
+  v <- vapply(levels(llm_deep$construction), function(k) f(k, col), numeric(1))
+  if (all(is.na(v))) return("NA")
+  paste0(g(min(v, na.rm = TRUE), digits), " to ", g(max(v, na.rm = TRUE), digits))
+}
+
+# The range of a column across the six models at one construction's deepest layer, for the
+# few places the prose quotes a spread rather than a median. Same NA-through convention.
+# deep = FALSE reads the embedding layer instead, which is where the keying comparison lives.
+ldrng <- function(constr, col, digits = 4, deep = TRUE) {
+  d <- if (deep) llm_deep else llm[llm$layer == 0, ]
+  v <- d[[col]][d$construction == constr]
+  if (all(is.na(v))) return("NA")
+  sprintf("%s to %s", g(min(v, na.rm = TRUE), digits), g(max(v, na.rm = TRUE), digits))
+}
+
+# `scale` pairs the two families at the three matched widths, so a figure can separate the six
+# models with three linetypes and two colors rather than leaving three of them on one color.
+MODELS <- tibble::tribble(
+  ~model,                                       ~family,  ~size,  ~scale,
+  "znhoughton/opt-babylm-125m-20eps-seed964",   "BabyLM", "125M", "125M/160M",
+  "znhoughton/opt-babylm-350m-20eps-seed964",   "BabyLM", "350M", "350M/410M",
+  "znhoughton/opt-babylm-1.3B-20eps-seed964",   "BabyLM", "1.3B", "1.3B/1.4B",
+  "EleutherAI/pythia-160m",                     "Pythia", "160M", "125M/160M",
+  "EleutherAI/pythia-410m",                     "Pythia", "410M", "350M/410M",
+  "EleutherAI/pythia-1.4b",                     "Pythia", "1.4B", "1.3B/1.4B") |>
+  dplyr::mutate(scale = factor(scale, c("125M/160M", "350M/410M", "1.3B/1.4B")))
+
+# The three same-token constructions carried in the body. Each file reports the same measure;
+# the POS file prefixes its columns std_ because it also stores an unstandardized read.
+# POS is read from the SURFACE-FORM-keyed run. Keyed on the lemma instead, an item pools every
+# inflected form (run/runs as a noun against run/runs/ran/running as a verb), which are
+# different tokens, and the static embedding layer separates them: the layer-0 interaction is
+# 0.083-0.172 keyed on the lemma against 0.0010-0.0028 keyed on the form, a 50-100x difference
+# that is inflectional rather than representational. The file also holds random-init rows, which
+# the paper makes no claim about -- these are endpoint measurements -- so they are filtered out.
+# These carry the orientation nulls and the between-grid share. They also hold the random and
+# position-ablated inits, so all three sources need the pretrained filter.
+llm <- bind_rows(
+  rd("llm_unified_form.csv") |>
+    ensure("std_size_item_ci_med", "std_size_class_ci_med", "std_size_interaction_ci_med", "std_between_share_adj", "std_obs_size_class", "std_size_class_excludes_zero", "std_obs_size_interaction", "std_size_interaction_excludes_zero", "std_obs_size_item", "std_size_item_excludes_zero") |>
+    filter(init == "pretrained") |>
+    transmute(model, layer, d, n_items = std_n_items, construction = "POS (noun/verb)",
+              size_item = std_size_item, size_class = std_size_class,
+              size_int = std_size_interaction,
+              leak = std_leak_item_into_class, leak_int = std_leak_int_into_margins,
+              leak_null = std_leak_item_into_class_null_hi,
+              leak_null_lo = std_leak_item_into_class_null_lo,
+              leak_null_med = std_leak_item_into_class_null_med,
+              leak_int_null = std_leak_int_into_margins_null_hi,
+              leak_int_null_lo = std_leak_int_into_margins_null_lo,
+              leak_int_null_med = std_leak_int_into_margins_null_med,
+              between = std_between_share, between_adj = std_between_share_adj,
+              obs_size_class = std_obs_size_class,
+              size_class_excludes_zero = std_size_class_excludes_zero,
+              obs_size_interaction = std_obs_size_interaction,
+              size_interaction_excludes_zero = std_size_interaction_excludes_zero,
+              obs_size_item = std_obs_size_item,
+              size_item_excludes_zero = std_size_item_excludes_zero,
+              size_item_ci_lo = std_size_item_ci_lo, size_item_ci_med = std_size_item_ci_med,
+              size_item_ci_hi = std_size_item_ci_hi,
+              size_class_ci_lo = std_size_class_ci_lo, size_class_ci_med = std_size_class_ci_med,
+              size_class_ci_hi = std_size_class_ci_hi,
+              size_interaction_ci_lo = std_size_interaction_ci_lo,
+              size_interaction_ci_med = std_size_interaction_ci_med,
+              size_interaction_ci_hi = std_size_interaction_ci_hi),
+  rd("llm_role.csv") |>
+    ensure("size_item_ci_med", "size_class_ci_med", "size_interaction_ci_med", "between_share_adj", "obs_size_class", "size_class_excludes_zero", "obs_size_interaction", "size_interaction_excludes_zero", "obs_size_item", "size_item_excludes_zero") |>
+    filter(init == "pretrained") |>
+    transmute(model, layer, d, n_items, construction = "role (subject/object)",
+              size_item, size_class, size_int = size_interaction,
+              leak = leak_item_into_class,
+              leak_int = leak_int_into_margins,
+              leak_null = leak_item_into_class_null_hi,
+              leak_null_lo = leak_item_into_class_null_lo,
+              leak_null_med = leak_item_into_class_null_med,
+              leak_int_null = leak_int_into_margins_null_hi,
+              leak_int_null_lo = leak_int_into_margins_null_lo,
+              leak_int_null_med = leak_int_into_margins_null_med,
+              between = between_share, between_adj = between_share_adj,
+              obs_size_class = obs_size_class,
+              size_class_excludes_zero = size_class_excludes_zero,
+              obs_size_interaction = obs_size_interaction,
+              size_interaction_excludes_zero = size_interaction_excludes_zero,
+              obs_size_item = obs_size_item,
+              size_item_excludes_zero = size_item_excludes_zero,
+              size_item_ci_lo, size_item_ci_med, size_item_ci_hi,
+              size_class_ci_lo, size_class_ci_med, size_class_ci_hi,
+              size_interaction_ci_lo, size_interaction_ci_med, size_interaction_ci_hi)) |>
+  left_join(MODELS, by = "model") |>
+  mutate(construction = factor(construction, c("POS (noun/verb)", "role (subject/object)")),
+         depth = layer / ave(layer, model, construction, FUN = max),  # 0 = embeddings, 1 = final
+         # Sizes are shares of the re-split medians, not of the permutation-denoised single
+         # split. The cross-split product already has a null of exactly zero, so the permutation
+         # baseline was subtracting an estimate of nothing, and it was subtracted from the item
+         # and interaction but not from the class, which left the three on different footings.
+         # The medians carry no permutation at all and are on the same scale as the intervals
+         # quoted beside them, so a share and its interval are finally the same quantity.
+         sz_denom = size_item_ci_med + size_class_ci_med + size_interaction_ci_med,
+         size_item = size_item_ci_med / sz_denom,
+         size_class = size_class_ci_med / sz_denom,
+         size_int = size_interaction_ci_med / sz_denom,
+         size_item_lo = size_item_ci_lo / sz_denom,
+         size_item_hi = size_item_ci_hi / sz_denom,
+         size_class_lo = size_class_ci_lo / sz_denom,
+         size_class_hi = size_class_ci_hi / sz_denom,
+         size_int_lo = size_interaction_ci_lo / sz_denom,
+         size_int_hi = size_interaction_ci_hi / sz_denom)
+
+llm_deep <- llm |> group_by(construction, model) |> filter(layer == max(layer)) |> ungroup()
+
+# A construction measured on fewer than six models would silently report a median over whatever
+# happened to finish, so say so loudly instead.
+local({
+  n <- table(droplevels(llm_deep$construction))
+  if (any(n < 6)) warning("under-covered constructions: ",
+                          paste(names(n)[n < 6], n[n < 6], sep = "=", collapse = ", "),
+                          call. = FALSE)
+})
+```
+
+# Introduction
+
+Lexical representations are deceptively complex: a single word often carries vastly different meanings depending on the context, yet these meanings remain recognizably related. The categorization literature has long recognized this tension, noting that assigning a novel meaning to a specific category (or word) is rarely straightforward. Simple rule-based approaches, such as rigid feature lists, quickly break down: a three-legged cat is undeniably a cat, even if it violates one of the criteria used to define the category. Ultimately, defining a lexical category in precise terms may be nearly impossible. Yet, as U.S. Supreme Court Justice Potter Stewart famously observed in another context, we may not be able to define a category precisely, but we nevertheless "know it when \[we\] see it."[^1]
+
+[^1]: In *Jacobellis v. Ohio* (1964), Justice Stewart famously addressed the difficulty of defining obscenity, remarking that while formulating a precise definition might be a herculean task, he could still recognize obscene material when he saw it.
+
+This central paradox, that representations are simultaneously context-specific yet broadly generalizable, has fueled long-standing debates over the nature of lexical representations. The two leading frameworks offer distinct solutions: **abstraction theories** posit that humans construct generalized mental representations stripped of specific context, while **exemplar theories** argue that representations are built from distinct, context-rich memory traces.
+
+In the present study, we investigate how Large Language Models (LLMs) navigate this paradox. Specifically, we examine the extent to which LLM lexical representations comprise abstract, generalizable features versus context-specific exemplars.
+
+## Evidence for Abstractions
+
+Abstraction theories offer an intuitive account of the context invariance of language. At every level of language, there is substantial variability across contexts, from phonetic differences between speakers, to syntactic constructions that can take on a variety of lexical items, to the same word taking on different meanings in different contexts. The existence of abstractions accounts for the ability of humans to generalize across these contexts and recognize the same underlying representation despite this variability. Evidence for abstraction comes from linguistic productivity [@berkoChildsLearningEnglish1958], semantic extension [@harmon2017puttingoldtools], priming, word order preferences, and other phenomena.
+
+Even something as deceptively simple as word order preferences, such as binomial ordering preferences, is shaped by abstract preferences [@morgan2016abstractknowledgedirect; @morgan2024productiveknowledgeitemspecific; @morganModelingIdiosyncraticPreferences2015]. For example, humans have strong preferences for binomial orderings such as *bread and butter* over *butter and bread*, or *bishops and seamstresses* over *seamstresses and bishops*. Those preferences are to some extent driven by abstract preferences such as a preference for male-coded words before female-coded words. Crucially, speakers' preferences for binomials that they have never encountered before are driven by these abstract properties, so the preferences cannot be stored with any particular pair of words.
+
+## Evidence for Exemplars
+
+Exemplar theories, in contrast, argue that abstract representations are not necessary. Instead, linguistic knowledge may be stored as context-rich memory traces whose properties vary with experience. Evidence for this view comes from both the gradient perception of phonetic cues [@mcmurrayGradientSensitivityWithincategory2008] and the representation of larger linguistic units, including multi-word phrases [@morgan2024productiveknowledgeitemspecific; @bybee1999usagebasedphonology; @houghton2025roleabstractrepresentations; @morgan2016abstractknowledgedirect; @houghton2026holisticstorageverb+up; @houghton2023doespredictabilitydrive].
+
+More specifically, there's evidence that humans are sensitive to within-category changes in voice onset time [@mcmurrayGradientSensitivityWithincategory2008], produce *don't* in a more reduced manner in high-frequency phrases than in lower-frequency phrases [@bybee1999usagebasedphonology], have stronger word order preferences for high-frequency binomials [@morgan2024productiveknowledgeitemspecific], and recognize *up* less well in high-frequency and high-predictability V+*up* phrases [@kapatsinski2010frequencyuseleads; @houghton2025multiwordrepresentationsminds]. These findings suggest that linguistic representations retain information specific to the contexts in which their components occur, rather than being fully abstracted across contexts.
+
+Most of the evidence above concerns sequences of words, but the same question arises within a single word. Whether regularly inflected forms are retrieved whole or assembled from a stem and an affix has been debated on much the same grounds, with frequency again playing a central role [@stembergerAreInflectedForms2004; @stembergerFrequencyLexicalStorage1986]. But the same logic applies even when there is no overt morphological combination. *Walk*, for example, occurs as both a noun and a verb. If the representation of *walk* as a verb was fully determined by a representation of *walk* together with a representation of the verb category, then nothing in that representation would be specific to that pairing. If instead some part of the representation is unique to *walk* as a verb, then the representation contains information about a particular combination that cannot be reduced to its parts.
+
+## Present study
+
+The evidence for both abstraction and item-specificity therefore raises a broader question about the structure of linguistic representations: is a representation of a specific linguistic construction a combination of abstract features, or does that representation also contain item-specific knowledge that is irreducible to these component parts? This is difficult to settle behaviorally, since a learner with no abstract representations at all can look like one that abstracts [@houghton2026exemplars], but it is a property of a representation, and unlike in humans, model representations can be examined directly [@pluthInterpretabilityWhisperEncodings2026; @elhage2022superposition].
+
+We hypothesize that linguistic representations can contain both abstract and item-specific information. We therefore decompose a word-in-class representation into three components: the item-component, the component that generalizes across different classes of the same word (the part of *walk* as a noun that is shared by *walk* as a verb), the class-component, the component that generalizes across all items of the same class (e.g., the part of *walk* as a noun that is shared by *run* as a noun, and *plant* as a noun) and what belongs to that word in that class alone (e.g., the part of the representation unique to *walk* as a noun). We first validate this decomposition in an artificial language with controlled representational structure, then apply it to six pretrained language models across part of speech and grammatical role.
+
+Our main contributions are as follows:
+
+-   We introduce a method for decomposing word-in-context representations into lexical, grammatical, and word-class components, and validate it in an artificial language.
+
+-   Across six pretrained models, the word-class component is consistently present and grows with depth, with its size governed more by representational capacity than by language. The lexical and grammatical components occupy nearly separate axes, while the word-class component overlaps with both.
+
+-   We show that the word-class component contains information about the class itself beyond the shared class representation.
+
+# Experiment 1: Artificial Languages {#sec-exp1}
+
+In Experiment 1 we test our measurement on an artificial language whose features we control. This allows us to validate our measurement while simultaneously examining how different features of the language affect a model's representations.
+
+## Dataset {#sec-exp1-data}
+
+In order to examine the separability of linguistic representations, we constructed an artificial language which comprises a probability distribution over a vocabulary of `r cm(600)` tokens. Every observation is a combination of a **form** (one of `r max(toy$n_form)`), a **class** (one of `r max(toy$n_class)`), and a **context** (drawn from a pool of 400). The motivation for this setup is to give each word a naturalistic environment: the word occurs in a context that favors a specific class-membership (e.g., *walk* as a verb occurs in a different context than *walk* as a noun). Each form is observed `r max(toy$n_obs)` times in each class, every time in a different context, mirroring the patterns of human language. Consider *walk* used as a verb in one of those contexts. Four things determine the distribution over the next token. *Walk* itself contributes the same amount regardless of the class it is used in, and the verb class also contributes the same amount for every item. The third contribution is what is specific to *walk*-as-a-verb over and above those two: every form and every class has its own random vector, and this term multiplies *walk*'s by the verb's, entry by entry. The context contributes the rest, which is noise as far as our question goes, though the model still has to encode it in order to accurately learn the language. The four are weighted, summed and passed through a softmax layer:
+
+$$
+\begin{aligned}
+&P(\text{next token} \mid f, c, x) = \\
+&\quad \operatorname{softmax}\Big( s\big[\, w_\alpha\,\text{item}(f)
+  + w_\beta\,\text{class}(c) \\
+&\qquad + w_\gamma\,\text{int}(f,c)
+  + w_{\text{ctx}}\,\text{context}(x) \,\big] \Big)
+\end{aligned}
+$$ {#eq-toy}
+
+Each term is isotropically scaled to unit variance before it is weighted,[^2] so changing the weights changes the mix of the three effects without changing how much signal there is in total.
+
+[^2]: Specifically, each observation consists of a form in a specific class and context, paired with that term's raw contribution to the next-token distribution for that observation. We normalize this dataset by dividing each value in it by the total standard deviation across all observations. This is necessary because different matrices can contain the same information at different scales. For example, imagine a matrix with random numbers, and that same matrix with each number multiplied by two. The information is the same, but the weights will have a larger effect on the latter dataset.
+
+The weights $w_\alpha$, $w_\beta$, and $w_\gamma$ in @eq-toy control how much of the true distribution each of the three effects contributes, and we cross them factorially over $\{0, 0.5, 1, 2\}$: zero removes an effect from the language altogether, and the other three values make an effect half as strong as another, equal to it, or twice it. Similarly, $w_{\text{ctx}}$ governs how much the context contributes, so we cross those languages with three context weights: $\{0.5, 2.0, 6.0\}$, ranging from context being a minor part of the true distribution to the dominant one. These terms are subsequently scaled to unit length, such that their squared lengths sum to 1.[^3] The ranks of the item and class are held fixed at `r unique(toy$r_item)` and `r unique(toy$r_class)` respectively but each language is crossed with four different ranks of the interaction: $\{4, 16, 64, 177\}$. Additionally, we train a model on each of the resulting languages at hidden widths of `r paste(sort(unique(toy$d)), collapse = ", ")`, with either a linear or a ReLU activation. The whole grid is then run with five random seeds giving `r format(nrow(toy), big.mark = ",")` runs in all, of which `r sprintf("%.1f%%", 100 * mean(toy$converged))` trained to convergence; Appendix \ref{sec-appendix-grid} lists every factor and its levels.
+
+[^3]: This makes the resulting languages more comparable by enforcing the same total signal (i.e., the variance of the weighted sum in @eq-toy is held constant), despite individual differences in the amount that each individual term contributes.
+
+## Method {#sec-exp1-method}
+
+All code and analyses in this paper can be found here: <https://github.com/znhoughton/representation-separability>.
+
+### The learner
+
+The learner model is a multi-layer perceptron (MLP) with a single hidden layer of width $d$ and either a linear or a ReLU activation function. The model takes as its input three pieces of information: form, class, and context. Each has its own embedding, and the three are concatenated and passed through the model which then outputs a probability distribution over the vocabulary (@fig-training). The training objective is thus to minimize cross-entropy between the model's predicted distribution over the vocabulary and the ground-truth distribution.
+
+![Model structure. Every form is observed 24 times at each class, each time in a different context; that variation across contexts is what the measurement later splits in two.](fig-training.pdf){#fig-training width="100%" fig-env="figure*"}
+
+### Decomposing a representation {#sec-measure}
+
+We measure separability by decomposing a word-in-context representation into a lexical component, a class component, and an idiosyncratic component. The representation is the MLP's hidden layer, which for a given form and class varies across the contexts it is observed in. Let $M[i,c] \in \mathbb{R}^d$ be the mean of those hidden states for item $i$ used at class $c$. We decompose those item-by-class means by centering, so that:
+
+$$
+M[i,c] \;=\; \mu + \alpha(i) + \beta(c) + \gamma(i,c),
+$$ {#eq-decomp}
+
+where $\mu$ is the grand mean; $\alpha(i)$, item $i$'s mean across classes minus $\mu$, is the representation unique to the item; $\beta(c)$, the mean across items at class $c$ minus $\mu$, is the representation unique to the class (e.g., noun vs verb); and $\gamma(i,c)$ is the item-specific representation in a specific class, what item $i$ at class $c$ holds that neither marginal accounts for (@fig-measurement). Because every item is observed in every class with equal weight, averaging over class isolates the item effect, and averaging over items isolates the class effect, without distortion. The four terms add back to the typical representation for a given item in a given class ($M[i,c]$) exactly, and no two of them vary together across those representations, so the squared lengths of each term (excluding $\mu$) sum to the total and we report each as a share.
+
+Each of these averages is taken over a sample of observations that differ only in context, so each carries some of the context term of @eq-toy as noise. We remove it by dividing the observations into two even-sized splits, running the decomposition on each split separately, and estimating each component's size as the dot product of its two split estimates, which is large when the splits agree about the component and near zero when they do not. As a result, noise that differs between the splits is independent and cancels.
+
+For each representation we report two measurements. The first measure is the fraction of the representation accounted for by lexical, class, and idiosyncratic information: each component's squared length, summed over its vectors and divided by the total, so that the three fractions sum to one. The second measure quantifies the extent to which those components occupy the same directions. Specifically, we project the item vectors onto the class direction and record the fraction of their squared length that survives, and we project the interaction onto the smallest subspace containing both the item and the class vectors (i.e., the span of the two subspaces).[^4] A representation is separable if a word's representation is the sum of an item part and a class part, each on its own axis. Separability can fail in two ways: the parts may be non-orthogonal, so that projecting out the class also removes item information, or there may be a third component that is neither, whatever its orientation. The question is accordingly not whether class information is present, but how it is represented: on a single direction shared across words, or on a separate direction for each of them.
+
+[^4]: Since there are only two classes, $\beta$ spans at most one direction and its projection into the item subspace, which has many more dimensions, has high overlap by chance; we therefore do not report it.
+
+To quantify whether a size is meaningful, we compare each against zero, which is the null because the dot product of two independent split estimates has an expected value of zero if there is no structure in the underlying representations. We redraw the split two hundred times and call a size meaningful when its confidence interval excludes zero; for components whose value is exactly zero this flags an effect about 5% of the time (Appendix \ref{sec-appendix-validate}), the false-positive rate expected of a 95% confidence interval.
+
+To quantify whether an overlap is meaningful, we project the effect, held exactly as measured, onto two hundred random subspaces of the same rank, which gives the distribution of overlaps an unrelated subspace would yield. An overlap below that baseline indicates meaningful orthogonality and one above it meaningful non-orthogonality. We report each overlap as a multiple of the baseline's median, with how many measurements fall outside its 95% interval.
+
+![The four item-by-class means formed by two items in two classes. Under an item part plus a class part, three corners fix the fourth and the parallelogram closes. The arrow is $\gamma(i,c)$, the displacement between the fourth mean and the point that additive account places it at, with length $\lVert \gamma(i,c) \rVert$.](fig-measurement.pdf){#fig-measurement width="78%"}
+
+It's important to note that the weights in @eq-toy describe the distribution the model is trained to match, while the measure decomposes the representation that the model learns, so the two sets of numbers are not on a common scale: a learner handed a language that is 85% interaction can represent it with the interaction taking a far smaller share. Appendix \ref{sec-appendix-validate} reports a separate check in which components were set directly in a representation and recovered almost exactly, which is what licenses reading the results below as facts about the learner rather than about the measure. We include runs only if at least one of the three components has a re-split interval excluding zero; where none does, the three shares divide noise and whichever lands slightly positive takes all of it.
+
+### Analysis {#sec-exp1-analysis}
+
+Each component's share of the representation is bounded between zero and one and takes both bounds exactly, so we model it with an ordered beta regression [@kubinec2023ordbeta] in *brms* [@burkner2017brms] with default priors, fitting one model per measured component and activation. Writing $y_k$ for the share component $k$ takes and $x_k$ for that component's size in the language,
+
+$$
+y_k \;\sim\; x_k \times \log_2 d \times \log_2 r \;+\; \sum_{j \neq k} x_j \;+\; (1 \mid \text{language}),
+$$ {#eq-ordbeta}
+
+where $d$ is the hidden width and $r$ the rank of the structure in the language. All predictors are centered, and a language is a unique combination of the generating weights and the interaction's rank, so the five random seeds of one combination share an intercept. Width and rank enter separately rather than as their ratio, which is not estimable alongside them; the claim that only the ratio matters is then the hypothesis that the two coefficients are equal and opposite. The two overlaps are modeled the same way with a Gaussian family, the outcome being an overlap divided by its own chance level and logged, and are conditional on a component being large enough to have a direction. Experiment 2 is not modeled this way, its six models being fixed architectures with nothing crossed.
+
+## Results {#sec-exp1-results}
+
+Results are shown in @fig-toy; the effects of width are reported in Appendix \ref{sec-appendix-capacity}.
+
+```{r}
+#| label: fig-toy
+#| fig-env: figure*
+#| fig-width: 6.3
+#| fig-height: 3.6
+#| out-width: "100%"
+#| fig-cap: "Each component's share of the representation against its share of the language, by activation. Each faint point is one run. Lines are fitted values from the ordered beta models of @eq-ordbeta with 95% intervals, taken at the mean of the other two effect sizes and of the interaction's rank, which is why they need not pass through the centre of a cloud spanning every combination of those. The dashed diagonal is where a representation would sit had it reproduced the language's composition exactly. Runs in which none of the three components had a re-split 95% interval excluding zero are not plotted, since the three shares then divide noise."
+#|
+.fit <- rpred |>
+  filter(kind == "size", grid == "planted") |>
+  mutate(component = factor(component, c("item", "class", "interaction")),
+         act = factor(arm, c("relu", "linear"), c("ReLU", "linear")))
+ggplot(toy_learn_both, aes(planted, measured, color = factor(d), fill = factor(d))) +
+  geom_abline(slope = 1, intercept = 0, linetype = 2, linewidth = .3, color = UO[["grey"]]) +
+  geom_point(size = .3, alpha = .18, stroke = 0) +
+  geom_ribbon(data = .fit, aes(x = own, y = epred, ymin = lo, ymax = hi, fill = factor(width)),
+              inherit.aes = FALSE, alpha = .16) +
+  geom_line(data = .fit, aes(x = own, y = epred, color = factor(width)),
+            inherit.aes = FALSE, linewidth = .55) +
+  facet_grid(act ~ component) +
+  scale_color_manual(values = WIDC, name = "hidden width") +
+  scale_fill_manual(values = WIDC, guide = "none") +
+  scale_x_continuous(limits = c(0, 1), breaks = c(0, .5, 1)) +
+  coord_cartesian(ylim = c(0, 1)) +
+  labs(x = "effect size in the language", y = "effect size in the representation") +
+  theme_paper(8) +
+  theme(legend.position = "top", legend.margin = margin(0, 0, -6, 0),
+        panel.grid.minor = element_blank())
+```
+
+The interaction effect in the linear condition was zero only where the language was additive. On the other hand, across the `r cm(nullget("linear", TRUE, "n"))` runs whose language contained an interaction, the linear model's interaction interval excludes zero in `r sprintf("%.0f%%", 100 * nullget("linear", TRUE, "flagged_ez"))` of them, against `r sprintf("%.0f%%", 100 * nullget("ReLU", TRUE, "flagged_ez"))` for ReLU. In contrast, where the language contained no interaction, the rates were `r sprintf("%.0f%%", 100 * nullget("linear", FALSE, "flagged_ez"))` and `r sprintf("%.0f%%", 100 * nullget("ReLU", FALSE, "flagged_ez"))`. The linear model has no parameter depending on the form and the class together beyond a linear combination of them, yet represents an interaction anyway. One possible explanation for this is that the model can still learn context-specific representations for different items, by learning that a specific item in a specific class occurs with a specific context (and then subsequently representing that information within the context weights). In the models with a ReLU activation function, surprisingly we see an interaction effect represented in the model even in cases where the language is additive. One potential explanation is that the model only ever encounters words in specific contexts; the additive structure of the language is visible across the corpus rather than in any single observation, and the model does not seem to abstract away the interaction completely.
+
+Full model results are in Appendix \ref{sec-appendix-component-models}; we describe them here and visualize them in @fig-toy.
+
+Each effect's size in the language predicts its own size in the representation and not the others', so the decomposition is specific to the component it names, and of the three the item effect takes the largest share at every width.
+
+The extent to which the interaction is encoded in the model's representation does not depend on its rank in the language (`r cf("interaction", "rank")`). Instead, it is the size of the hidden layer that determines how much of the interaction is encoded (`r cf("interaction", "width")`): the larger the hidden layer, the larger the size of the interaction it encodes. This is not the case for the item effect, which decreases as the hidden layer grows (`r cf("item", "width")`), or for the class effect, which barely changes (`r cf("class", "width")`). In the linear condition the hidden layer is spent the other way, on the item effect, leaving the interaction near zero throughout; rank does register there (`r cf("interaction", "rank", "linear")`), but well below width (`r cf("interaction", "width", "linear")`).
+
+Width governs geometry as well as magnitude. At a hidden width of 8 the item and class effects overlap `r fv("item_class", 8, kindv = "overlap")` times as much as an arbitrary orientation would give; by width 256 they overlap `r fv("item_class", 256, kindv = "overlap")` times as much, which is below chance (`r cf("item_class", "width", kindv = "overlap")`). The interaction's overlap with the two margins follows the same course more weakly. Under a linear learner the two move the other way: item-class overlap rises with width, from `r fv("item_class", 8, "linear", "overlap")` to `r fv("item_class", 256, "linear", "overlap")` times chance, and stays well below it throughout (@fig-toy-overlap). A narrow layer thus does not merely represent less of the interaction, it also forces the components it does represent onto shared directions, and given room the learner separates them by more than chance.
+
+Which components are forced together depends on which subspaces compete, not on the total structure. The item and class effects need a fixed twelve directions between them however much interaction structure the language holds, and their overlap accordingly crosses chance at the same width whether the interaction spans 4 dimensions or 177. A large interaction runs out of room for itself well before it pushes the item and class effects together. How much of each component the model builds, and how separately it keeps them, therefore depends on how wide the hidden layer is rather than on how many dimensions the interaction spans.
+
+# Experiment 2: Language Models {#sec-exp2}
+
+Experiment 1 established that if the language a learner model encounters is not purely additive, the model will represent the language in a non-separable manner, with the extent governed by the width of the model. Experiment 2 applies the same decomposition to the contextual representations of pretrained language models, across two linguistic categories: part of speech and grammatical role.
+
+## Dataset {#sec-exp2-data}
+
+In order to examine the separability of linguistic representations in models, we examined two linguistic categories: part of speech and grammatical role. For both, we concatenate six general-domain English Universal Dependencies treebanks [@nivre2020ud]: EWT [@silveira2014ewt], GUM [@zeldes2017gum], LinES [@ahrenberg2007lines], ParTUT [@sanguinetti2015partut], GENTLE [@aoyama2023gentle], and PUD [@zeman2017pud], giving `r cm(gsf("ud_corpus", "n_sentences", 41095))` sentences and `r cm(gsf("ud_corpus", "n_pre_grid_tokens", 706323))` tokens. We measure two model families at three matched scales: OPT-BabyLM, trained on developmentally plausible quantities of child-available language [@warstadt2023babylm; @houghton2026holisticstorageverb+up], and Pythia, trained on the Pile [@biderman2023pythia], at 125M/160M, 350M/410M, and 1.3B/1.4B parameters, with widths of 768, 1024, and 2048. Appendix \ref{sec-appendix-models} gives parameter counts and training-token estimates.
+
+## Stimuli {#sec-exp2-stimuli}
+
+Our stimuli comprise two linguistic categories: part of speech ([noun]{.smallcaps} versus [verb]{.smallcaps}) and grammatical role (*nsubj* versus *obj*, restricted to nouns). For each category we select items that occur in both of its classes, such as *walk*, which occurs as both a noun and a verb. An item is a single inflected word form, not a lemma, so different inflections of one lemma are separate items: *walk* and *walking* are both items, each included only if it is itself attested in both classes. Pooling them under one lemma would collect *walk*, *walks*, *walked*, and *walking* into a single item, and the two classes would then be read at different tokens, which the embedding layer could then separate before any contextualization has occurred. Capitalization is ignored when occurrences are grouped, but not in the text the models read, so a sentence-initial *Walk* counts toward the item *walk* and is tokenized as it appears there.[^5]
+
+[^5]: OPT-BabyLM's tokenizer is uncased, so this choice has no effect for that family of models. On the other hand, Pythia's tokenizer is not uncased; however, lowercasing the input would be the larger distortion, since a sentence-initial word is capitalized in written English which the model was trained on.
+
+An item is included only if it occurs at least ten times in each class; forms occurring in only one are excluded, which makes part of speech the more restrictive of the two. This yields `r max(llm$n_items[llm$construction == "POS (noun/verb)"])` items for part of speech and `r max(llm$n_items[llm$construction == "role (subject/object)"])` for grammatical role, with median counts per class running from `r stimrange()` (@tbl-constructions), inside the range we validated for the measurement (Appendix \ref{sec-appendix-validate}).
+
+## Method {#sec-exp2-method}
+
+The decomposition, the two reported quantities, and the replication logic are identical to Experiment 1. For every token we take the hidden state of the word's **last subword** at every layer of each model (using the model's own tokenizer).[^6]
+
+[^6]: Almost every item is a single subword, so this choice has little bearing on the results: zero items are split into multiple subword tokens under Pythia's tokenizer, and only eight are split into multiple subword tokens under OPT-BabyLM's tokenizer.
+
+Transformer hidden states contain a few *rogue* dimensions whose variance exceeds the rest by two to three orders of magnitude [@timkey2021bark], and these would otherwise dominate any subspace estimated from the raw scatter, so we divide each dimension by its standard deviation before decomposing.
+
+## Results {#sec-exp2-results}
+
+The results for the final layer are reported in @tbl-llm; the layer-by-layer results are shown in @fig-llm.
+
+The item effect is the largest component in both categories, running from `r ldrng("POS (noun/verb)", "size_item", 3)` for part of speech and `r ldrng("role (subject/object)", "size_item", 3)` for grammatical role. What differs between them is how the remainder divides. For grammatical role the class effect, at `r ldrng("role (subject/object)", "size_class", 3)`, is comparable to the interaction at `r ldrng("role (subject/object)", "size_int", 3)`; for part of speech the interaction, at `r ldrng("POS (noun/verb)", "size_int", 3)`, runs well above the class effect at `r ldrng("POS (noun/verb)", "size_class", 3)`.
+
+Both the class effect and the interaction grow stronger through the layers of the model. The interaction is essentially absent at layer 0 in both categories, between `r allrange("size_int", deep = FALSE)` across every category and model, and rises to between `r allrange("size_int")` (@fig-llm, top row). This is not surprising since at the first layer, the model has yet to integrate enough context into the representation to commit to the class of the representation. What the network builds over those layers is also not an artifact of where a word sits in the sentence: zeroing OPT-BabyLM's learned absolute position embeddings leaves the class structure more word-specific rather than less, and Pythia, which has no such embeddings to remove, shows the interaction at least as strongly (Appendix \ref{sec-appendix-positions}).
+
+Turning to how those components are oriented, the class direction carries almost none of the item effect. At the deepest layer, item-class overlap runs `r ldrng("POS (noun/verb)", "leak")` for part of speech and `r ldrng("role (subject/object)", "leak")` for grammatical role, so projecting out the class direction leaves more than 99% of the item effect intact. While both overlaps are technically less orthogonal than a random subspace, the overlap itself is tiny, so the two are near-orthogonal rather than exactly orthogonal.
+
+In contrast to the main effects, the interaction is not orthogonal to class or item. Across the six models, `r ldrng("POS (noun/verb)", "leak_int", 3)` of the interaction for part of speech is in the span of the two main effects, and for grammatical role `r ldrng("role (subject/object)", "leak_int", 3)` is, against nulls whose upper ends run `r ldrng("POS (noun/verb)", "leak_int_null", 3)` and `r ldrng("role (subject/object)", "leak_int_null", 3)` respectively. The smallest of these overlaps exceeds the largest of the nulls, so the pattern holds in every model. In other words, the small departure from orthogonality between item and class becomes a large one for the interaction.
+
+```{r}
+#| label: fig-llm
+#| fig-env: figure*
+#| fig-width: 6.3
+#| fig-height: 2.5
+#| out-width: "100%"
+#| fig-cap: "The three components through the network, for every model and linguistic category. Relative depth runs from the static embedding layer (0) to the final block (1). Rows are the three components' shares of the item-by-class structure, which sum to one within each model and layer. Each line is one model: color distinguishes the training corpus, linetype the three matched widths. The shaded band is that model's re-split 95% interval."
+# Built by hand rather than pivoted, because each component carries its own re-split interval.
+band <- function(d, val, lo, hi, label) {
+  tibble(construction = d$construction, family = d$family, scale = d$scale, depth = d$depth,
+         component = label, share = d[[val]],
+         lo = if (is.null(lo)) NA_real_ else d[[lo]],
+         hi = if (is.null(hi)) NA_real_ else d[[hi]])
+}
+plt <- llm
+plt <- bind_rows(
+  band(plt, "size_item", "size_item_lo", "size_item_hi", "item effect"),
+  band(plt, "size_class", "size_class_lo", "size_class_hi", "class effect"),
+  band(plt, "size_int", "size_int_lo", "size_int_hi", "interaction")) |>
+  mutate(component = factor(component, c("item effect", "class effect", "interaction")))
+# Color separates the two corpora, linetype the three matched widths, so each of the six lines
+# is identifiable rather than three of them sharing one color. The shaded band is each model's
+# re-split 95% interval; it is narrow enough to read as a thickening of the line, which is the
+# point: the spread that matters here is between models, not within a measurement.
+ggplot(plt, aes(depth, share, color = family, linetype = scale,
+                group = interaction(family, scale))) +
+  geom_ribbon(aes(ymin = lo, ymax = hi, fill = family), color = NA, alpha = .3,
+              show.legend = FALSE, na.rm = TRUE) +
+  geom_line(linewidth = .55, alpha = .85) +
+  facet_grid(component ~ construction, scales = "free_y", switch = "y") +
+  scale_color_manual(values = c(BabyLM = UO[["gold"]], Pythia = UO[["blue"]]), name = NULL) +
+  scale_fill_manual(values = c(BabyLM = UO[["gold"]], Pythia = UO[["blue"]]), guide = "none") +
+  scale_linetype_manual(values = c("125M/160M" = "dotted", "350M/410M" = "dashed",
+                                   "1.3B/1.4B" = "solid"), name = NULL) +
+  scale_x_continuous(breaks = c(0, .5, 1)) +
+  labs(x = "relative depth", y = NULL) +
+  theme_paper(8) + theme(strip.placement = "outside")
+```
+
+# Experiment 3: Probing the Interaction {#sec-exp3}
+
+Experiment 2 shows that the interaction is large and that it replicates across independent splits of a word's occurrences, but neither shows what information is contained within the interaction. An item-by-class term captures any reliable difference between a word's uses in the two classes, and some of that difference may be correlated with the context, since subjects appear in different constructions from objects.
+
+## Method {#sec-exp3-method}
+
+We test whether the interaction encodes class information with a probe. If $\gamma$ encodes the class, the class should be recoverable from the part of a token's representation that is neither the item effect nor the shared class direction, and we remove both explicitly. All probing happens *within* a single word, so we ask whether *walk*'s noun uses can be told from *walk*'s verb uses; the item effect is constant within a word and so cannot contribute. We then estimate $\beta$ as the difference between the two class means pooled over all items, normalize it, and remove that component from every token, so that whatever separates the classes afterwards is not the direction they share.
+
+What remains is the interaction: the part of a word of a specific class that is neither a fact about the word nor a fact about the class. We fit a cross-validated logistic probe to it, five folds, with classes balanced by subsampling within each word so that chance is 0.50, and average the resulting accuracies over words, with a word contributing only if it has at least eight tokens in each class. Some words rest on few tokens, so the mean carries a percentile bootstrap interval over words. The whole procedure is then repeated with the class labels permutated within each word, which preserves every word's token count and class balance while destroying the labeling, and that null is where a probe reading its own cross-validation folds would land [@hewitt2019control]. We run this at the deepest layer of the largest model in each family, for both categories.
+
+## Results {#sec-exp3-results}
+
+Results are reported in @tbl-decode.
+
+```{r}
+#| label: tbl-decode
+#| tbl-cap: "Recovering the class from the interaction with a probe, at the deepest layer of the largest model in each family. The item is held fixed and the shared class direction is projected out, so neither main effect can contribute. *Accuracy* is the mean over them; *null* repeats the probe with the class labels permutated within each form. Brackets are percentile bootstrap intervals over forms, and chance is 0.50."
+dec <- bind_rows(
+  rd("llm_decode_pos_form.csv") |> mutate(construction = "POS (noun/verb)"),
+  rd("llm_decode_interaction.csv") |>
+    filter(construction == "role") |>
+    mutate(construction = recode(construction,
+                                 role = "role (subject/object)"))) |>
+  left_join(MODELS, by = "model") |>
+  mutate(construction = factor(construction, c("POS (noun/verb)", "role (subject/object)")))
+
+dec |>
+  arrange(construction, family) |>
+  transmute(class = shortname(construction), model = paste(family, size),
+            accuracy = sprintf("%.2f [%.2f, %.2f]", class_peritem,
+                            class_peritem_lo, class_peritem_hi),
+            null = sprintf("%.2f [%.2f, %.2f]", class_peritem_null,
+                           class_peritem_null_lo, class_peritem_null_hi)) |>
+  kbl(booktabs = TRUE, align = "llll", linesep = "") |>
+  kable_styling(latex_options = c("HOLD_position"), font_size = 7)
+```
+
+For both families of LLMs across both linguistic categories, the class is recoverable from the interaction at well above chance while the permutated null sits on chance, reaching `r g(dec$class_peritem[dec$construction == "POS (noun/verb)" & dec$family == "Pythia"], 2)` for part of speech and `r g(dec$class_peritem[dec$construction == "role (subject/object)" & dec$family == "Pythia"], 2)` for grammatical role, with bootstrap intervals excluding the nulls in all four cases. The null landing on chance is what makes those accuracies interpretable, since it is the same probe, the same folds, and the same word-level averaging with only the labeling destroyed.
+
+The probe accuracies follow the same ordering across categories as the interaction sizes (@tbl-llm), providing converging evidence from the geometric and functional measures.
+
+The results demonstrate that $\gamma$ carries class information rather than generic correlated context, since generic context would not survive holding the word fixed and removing the shared axis. It does not show that $\gamma$ is *only* the label: context correlated with the class within a word survives both removals, so the interaction remains an upper bound.
+
+# Discussion and Conclusion {#sec-discussion}
+
+The present study examined whether a word's representation in a language model is exemplar-like or abstract and found that it contains elements of both. We decomposed a word's representation in a class into an item effect, a class effect, and a word-class interaction. The first two capture information shared across classes or words, respectively, while the interaction captures information specific to a particular word-class combination. Across six pretrained language models and two linguistic categories, this interaction was present in every model and category, nearly absent at the embedding layer, and grew throughout the network. The abstract components were nearly orthogonal, whereas the interaction overlapped with both, indicating that abstract and item-specific information are represented together rather than on separate axes.
+
+Overall, the central result is not simply that language-model representations are sensitive to context, but that this context sensitivity is organized around particular word-class combinations. Language-model representations therefore combine abstraction with item-specific structure: they generalize across words and classes while retaining information about particular combinations.
+
+# Limitations {.unnumbered}
+
+Our evaluation is restricted to English and relies on two linguistic categories tested across two model families (OPT-BabyLM and Pythia) at three parameter scales. While these choices cover a range of architectures and linguistic phenomena, broader typological, categorical, and architectural validation remains a direction for future work.
+
+```{=latex}
+\bibliography{refs}
+% The references go here, before the appendix, as ACL requires. The template emits its own
+% \bibliography at the end of the document; left active it would give BibTeX a second \bibdata
+% command and it would error out, so it is made a no-op from here on.
+\renewcommand{\bibliography}[1]{}
+\clearpage
+```
+
+\onecolumn
+
+\appendix
+
+```{=latex}
+% Appendix layout, following the same reasoning as the companion papers.
+%
+% \raggedbottom matters most. acl.sty sets \flushbottom, which forces each page to exact
+% height by stretching the glue between paragraphs and around headings. On an appendix page
+% that cannot fill naturally that stretch becomes a gap in the middle of the page with text
+% stranded either side. \raggedbottom lets the slack collect at the foot instead. Main-text
+% pages keep \flushbottom and the two-column setting.
+%
+% Appendix tables are longtables, so they typeset inline and break across pages rather than
+% floating away from the prose that introduces them. Figures stay floats, pinned with [H].
+\raggedbottom
+\floatplacement{figure}{H}
+\floatplacement{table}{H}
+```
+
+# The Artificial-Language Grid {#sec-appendix-grid}
+
+Table \ref{tbl-grid} lists every factor crossed in Experiment 1 and its levels. The three effect weights and the context weight define the language; the interaction's rank is a property of the language too, since it sets how many directions the interaction spans. Hidden width and activation belong to the learner, and the seed redraws both the language's realization and the model's initialization.
+
+```{r}
+#| label: tbl-grid
+#| tbl-cap: "The Experiment 1 grid. The first five rows define an artificial language, the next two the learner, and the last is replication. Item and class ranks are held fixed so that the interaction's rank is the only one that varies. Crossing every level gives 38,400 cells; the three languages in which all three effect weights are zero contain no item-by-class structure at all and are excluded, leaving the reported total."
+.k <- toy$key |> strsplit("_") |> do.call(what = rbind) |>
+  as.data.frame() |> lapply(\(x) sort(unique(as.numeric(x))))
+lv <- function(x) paste(formatC(x, format = "g"), collapse = ", ")
+tibble::tribble(
+  ~factor,              ~levels,
+  "item weight",        lv(.k[[1]]),
+  "class weight",       lv(.k[[2]]),
+  "interaction weight", lv(.k[[3]]),
+  "context weight",     lv(.k[[4]]),
+  "interaction rank",   lv(sort(unique(toy$r_int))),
+  "hidden width",       lv(sort(unique(toy$d))),
+  "activation",         "linear, ReLU",
+  "seed",               lv(sort(unique(toy$seed)))) |>
+  kbl(booktabs = TRUE, align = "ll", linesep = "", escape = TRUE,
+      col.names = c("factor", "levels")) |>
+  kable_styling(latex_options = c("HOLD_position"), font_size = 8) |>
+  pack_rows("language", 1, 5) |>
+  pack_rows("learner", 6, 7) |>
+  pack_rows("replication", 8, 8)
+```
+
+Item rank is fixed at `r unique(toy$r_item)` and class rank at `r unique(toy$r_class)`, so the structure a language requires is `r unique(toy$r_item) + unique(toy$r_class)` directions plus the interaction's rank, running from `r min(toy$rank)` to `r max(toy$rank)`. Against the widths above, a language needs between `r g(min(toy$capacity), 3)` and `r g(max(toy$capacity), 1)` times as many dimensions as the layer has. Of the `r cm(nrow(toy))` runs, `r sprintf("%.1f%%", 100 * mean(toy$converged))` trained to convergence.
+
+{{< pagebreak >}}
+
+# Validating the Measure {#sec-appendix-validate}
+
+Experiment 1 builds structure into a language and measures a trained model's representation. However, that approach cannot distinguish a failure of the measure from the model representing the language differently than the structure it was given. Here we remove that ambiguity by constructing representations in which $\mu$, $\alpha$, $\beta$, and $\gamma$ are set directly, with no model or training, and passing the result through the same analysis used for the language models. Ground truth therefore exists at the level where the measure operates.
+
+```{r}
+#| label: setup-validate
+#| include: false
+val <- rd("validate_measure.csv")
+v_rec <- val |> filter(n_obs == 24, d >= 768) |> group_by(planted_int) |>
+  summarize(n = n(), measured = median(size_interaction),
+            lo = quantile(size_interaction, .025), hi = quantile(size_interaction, .975),
+            flagged = mean(size_interaction_excludes_zero), .groups = "drop")
+v_null <- bind_rows(
+  val |> filter(planted_int == 0) |> group_by(n_obs) |>
+    summarize(effect = "interaction", med = median(size_interaction),
+              p95 = quantile(size_interaction, .95),
+              flagged = mean(size_interaction_excludes_zero), .groups = "drop"),
+  val |> filter(planted_class == 0) |> group_by(n_obs) |>
+    summarize(effect = "class effect", med = median(size_class),
+              p95 = quantile(size_class, .95),
+              flagged = mean(size_class_excludes_zero), .groups = "drop"),
+  val |> filter(planted_item == 0) |> group_by(n_obs) |>
+    summarize(effect = "item effect", med = median(size_item),
+              p95 = quantile(size_item, .95),
+              flagged = mean(size_item_excludes_zero), .groups = "drop"))
+# False-positive rate of the re-split test BY WIDTH: how often a truly-zero effect's interval
+# excludes zero. This is what says whether a small measured effect at a given width is a real
+# detection or the test's own floor, and it tells the reader where the test is calibrated.
+v_fp_d <- bind_rows(
+  val |> filter(planted_int == 0, n_obs == 24) |> group_by(d) |>
+    summarize(effect = "interaction", fp = mean(size_interaction_excludes_zero), .groups = "drop"),
+  val |> filter(planted_class == 0, n_obs == 24) |> group_by(d) |>
+    summarize(effect = "class", fp = mean(size_class_excludes_zero), .groups = "drop"),
+  val |> filter(planted_item == 0, n_obs == 24) |> group_by(d) |>
+    summarize(effect = "item", fp = mean(size_item_excludes_zero), .groups = "drop"))
+fpget <- function(eff, dd) v_fp_d$fp[v_fp_d$effect == eff & v_fp_d$d == dd]
+v_ov <- val |> filter(!is.na(leak_item_into_class), n_obs == 24, planted_overlap == 0) |>
+  group_by(d) |> summarize(measured = median(leak_item_into_class),
+                           lo = quantile(leak_item_into_class, .025),
+                           hi = quantile(leak_item_into_class, .975),
+                           chance = median(k_class / d), .groups = "drop")
+# The power side: a KNOWN fraction of the class direction placed inside the item subspace. The
+# measured overlap should rise above chance and be flagged outside its own random-orientation null.
+v_ov_power <- val |> filter(!is.na(leak_item_into_class), n_obs == 24, planted_overlap > 0) |>
+  group_by(d) |> summarize(measured = median(leak_item_into_class),
+                           lo = quantile(leak_item_into_class, .025),
+                           hi = quantile(leak_item_into_class, .975),
+                           chance = median(k_class / d),
+                           detected = mean(leak_item_into_class_outside %in% c(TRUE, "TRUE")),
+                           .groups = "drop")
+vget <- function(eff, obs, col) v_null[[col]][v_null$effect == eff & v_null$n_obs == obs]
+```
+
+Specifically, we generated representations with known values of $\mu$, $\alpha$, $\beta$, and $\gamma$, varying the number of items, classes, representation dimensions, observations per pairing, and noise level across the range used in the experiments. Components were centered to satisfy their defining constraints and rescaled to predetermined shares of the total squared length. The grid included the same factorial Experiment 1 runs, mapped into share space, the three compositions measured in Experiment 2, item counts from 27 to 180, two and four classes, widths from 8 to 2048, 10, 24, and 100 observations per item and class, three noise levels, and five seeds. We also generated orthogonal and known non-orthogonal item and class effects: the orthogonal condition draws $\alpha$ and $\beta$ independently, while the non-orthogonal condition places a known fraction of $\beta$ along $\alpha$'s leading singular direction. In total, this gave `r cm(nrow(val))` runs.
+
+At 24 observations per item and class, the measured interaction matches the one it was given across the whole range (Table \ref{tbl-val-recovery}), and is flagged in essentially every run where anything was present and about one in twenty where nothing was.
+
+```{r}
+#| label: tbl-val-recovery
+#| tbl-cap: "Recovery at 24 observations per item and class in 768 or more dimensions, pooled over noise levels, item counts, and widths. Brackets are the 2.5th and 97.5th percentiles across runs."
+v_rec |> filter(planted_int == 0 | planted_int > 0.02) |> head(12) |>
+  transmute(`specified` = g(planted_int, 3),
+            runs = n,
+            `measured` = sprintf("%.4f [%.4f, %.4f]", measured, lo, hi),
+            `flagged` = sprintf("%.0f%%", 100 * flagged)) |>
+  kbl(longtable = FALSE, booktabs = TRUE, align = "rrrr", linesep = "") |>
+  kable_styling(font_size = 9)
+```
+
+All three effects read essentially zero when a component is set to zero, at every sample size, and each is flagged at approximately the nominal 5% rate (Table \ref{tbl-val-null}).
+
+```{r}
+#| label: tbl-val-null
+#| tbl-cap: "What the measure reports when an effect is set to exactly zero, by observations per item and class, pooled over every other axis of the validation grid."
+v_null |>
+  transmute(effect, observations = n_obs,
+            median = g(med, 5), `95th pct` = g(p95, 4),
+            flagged = ifelse(is.na(flagged), "---", sprintf("%.1f%%", 100 * flagged))) |>
+  arrange(effect, observations) |>
+  kbl(longtable = FALSE, booktabs = TRUE, align = "lrrrr", linesep = "") |>
+  kable_styling(font_size = 9)
+```
+
+The false-positive rate varies somewhat with representation width and component, particularly at small widths, but remains below 10% throughout the validation grid (Table \ref{tbl-val-fpd}). The language-model analyses use $d\geq768$, where the rates are closer to the nominal level.
+
+```{r}
+#| label: tbl-val-fpd
+#| tbl-cap: "How often a component set to exactly zero is flagged, by width and by effect."
+v_fp_d |>
+  tidyr::pivot_wider(names_from = effect, values_from = fp) |>
+  transmute(`width d` = d,
+            item = sprintf("%.0f%%", 100 * item),
+            class = sprintf("%.0f%%", 100 * class),
+            interaction = sprintf("%.0f%%", 100 * interaction)) |>
+  kbl(longtable = FALSE, booktabs = TRUE, align = "rrrr", linesep = "") |>
+  kable_styling(font_size = 9)
+```
+
+```{r}
+#| label: tbl-val-overlap
+#| tbl-cap: "Measured item-class overlap when the two effects are constructed orthogonal, at 24 observations per item and class. *Measured* is the median over the runs at that width with the 2.5th and 97.5th percentiles in brackets. The *chance* column is the analytic level of Appendix \\ref{sec-appendix-math}."
+v_ov |>
+  transmute(`width d` = d, measured = ci(measured, lo, hi, 5),
+            `analytic chance` = g(chance, 5)) |>
+  kbl(longtable = FALSE, booktabs = TRUE, align = "rrr", linesep = "") |>
+  kable_styling(font_size = 9)
+```
+
+With orthogonal item and class effects, the measured overlap tracks the chance level across representation widths (Table \ref{tbl-val-overlap}). When a known fraction of the class direction is placed inside the item subspace, the measured overlap rises above chance and is detected in `r sprintf("%.0f%%", 100 * v_ov_power$detected[v_ov_power$d == 2048])` of runs at $d=2048$ (Table \ref{tbl-val-power}). Thus, the measure recovers both the expected chance overlap under orthogonality and genuine non-orthogonality.
+
+```{r}
+#| label: tbl-val-power
+#| tbl-cap: "Measured item-class overlap when a fraction of the class direction is placed INSIDE the item subspace (non-orthogonal), at 24 observations per item and class. *Measured* is the median over the runs at that width with the 2.5th and 97.5th percentiles in brackets; *chance* is the analytic random-orientation level; *detected* is the fraction of runs whose overlap falls outside that null's 95% interval."
+v_ov_power |>
+  transmute(`width d` = d, measured = ci(measured, lo, hi, 4), chance = g(chance, 5),
+            detected = sprintf("%.0f%%", 100 * detected)) |>
+  kbl(longtable = FALSE, booktabs = TRUE, align = "rrrr", linesep = "") |>
+  kable_styling(font_size = 9)
+```
+
+{{< pagebreak >}}
+
+# Width and Orthogonality {#sec-appendix-capacity}
+
+Whether the item and class effects are orthogonal depends on the width of the representation. @fig-toy-overlap reports that relationship from the fitted models; this appendix gives the remaining properties of the artificial-language runs.
+
+Under ReLU, overlap stays below chance at wide layers and rises above it as the layer narrows, while the linear condition stays well below chance at every width. Varying the rank of the interaction does not move the point at which that crossing happens.
+
+At low widths, the representations also vary substantially across runs, with this variability decreasing as width increases. For example, two runs of the same language differ by `r g(seedspan(8, "item"), 2)` in the item effect and `r g(seedspan(8, "class"), 2)` in the class effect at width 8, compared with `r g(seedspan(32, "item"), 2)` and `r g(seedspan(32, "class"), 2)` at width 32. This variability reflects the different ways models can distribute information when representational capacity is limited.
+
+Two properties of the language also affect the composition of the item-by-class structure (Table \ref{tbl-lang}). Increasing the contribution of context reduces the interaction share, while increasing the item's share in the language produces a corresponding increase in its share of the representation.
+
+```{r}
+#| label: tbl-lang
+#| tbl-cap: "How two other properties of the artificial language move the composition of the item-by-class structure, under ReLU, pooled over widths. Rows within a property partition the same runs. Values are medians of the three shares over the runs in the row."
+toy_bylang |>
+  transmute(property, level, runs,
+            item = g(item, 3), class = g(class, 3), interaction = g(interaction, 3)) |>
+  kbl(booktabs = TRUE, align = "llrrrr", linesep = "") |>
+  kable_styling(latex_options = c("HOLD_position"), font_size = 8) |>
+  collapse_rows(1, latex_hline = "major", valign = "top")
+```
+
+{{< pagebreak >}}
+
+## Component models {#sec-appendix-component-models}
+
+Table \ref{tbl-component-coefs} reports every coefficient of @eq-ordbeta and @fig-toy-coefs shows them.
+
+We fit each activation separately, giving six models in all, so that the linear arm is described by the same model as the ReLU arm rather than by medians alone. We keep only runs that converged and in which at least one of the three components has a re-split interval excluding zero. That second criterion matters more here than it does for the descriptive figure: where nothing resolves, each of the three shares is a noise-sized quantity divided by a noise-sized total, so whichever component happens to land slightly positive takes nearly all of it, and the resulting value is arbitrary rather than small. Unlike the descriptive figure, we do keep languages in which a component was given no weight at all, since those runs anchor the low end of the effect-size predictors and are what identify the off-diagonal terms.
+
+Every component and overlap model used at least `r cm(min(rdiag$n_draws))` post-warmup draws, produced no divergent transitions, and reached a bulk effective sample size of at least `r cm(round(min(rdiag$min_ess_bulk)))`. The largest $\hat{R}$ across them is `r g(max(rdiag$max_rhat), 2)`.
+
+Because @eq-ordbeta carries a three-way interaction, the width and rank coefficients are conditional main effects: each is the effect at the mean of the other predictors rather than an effect averaged over them. The contrast in Table \ref{tbl-component-ratio} is evaluated at the same point.
+
+@fig-toy-effects holds rank at its mean, which is the right simplification for the main text but leaves the three-way term invisible. @fig-toy-effects-full shows the same fitted surface with rank broken out as a row of facets, so the question of whether the rank an interaction requires constrains what the model represents can be read directly: were it to constrain it, the rows would differ, most visibly in the interaction column.
+
+```{r}
+#| label: tbl-component-coefs
+#| tbl-cap: "Every coefficient of @eq-ordbeta, in one block per measured component. *Estimate* is the posterior mean and *error* its standard deviation; the interval runs from the 2.5th to the 97.5th percentile of the posterior. The last column is the share of posterior draws above zero. Within each block the first three rows are the three effect sizes in the language and the rest are the architecture terms, where *effect size* means that block's own component."
+rcoef |> filter(kind == "size") |>
+  transmute(arm, component, term = label,
+            estimate = g(estimate, 2), error = g(error, 2),
+            ci = paste0("[", g(lo95, 2), ", ", g(hi95, 2), "]"),
+            p_gt0 = g(p_gt0, 2)) |>
+  kbl(booktabs = TRUE, align = "lllrrrr", linesep = "", escape = TRUE,
+      col.names = c("arm", "component", "term", "estimate", "error", "95% CI", "P(b > 0)")) |>
+  kable_styling(latex_options = c("HOLD_position"), font_size = 7) |>
+  collapse_rows(1, latex_hline = "major", valign = "top")
+```
+
+```{r}
+#| label: tbl-component-ratio
+#| tbl-cap: "The sum of the width and rank coefficients, for each measured component and activation. A representation limited by how many dimensions its structure needs relative to the layer would give width and rank equal and opposite coefficients, so a sum whose interval excludes zero is evidence against that account. The rightmost column marks the rows where the rank we varied is the rank that measure depends on; where it is not, the sum cannot ask the question."
+rcrwd |>
+  transmute(arm, component, estimate = g(estimate, 2), error = g(error, 2),
+            ci = paste0("[", g(lo95, 2), ", ", g(hi95, 2), "]"),
+            ez = ifelse(excludes_zero, "yes", "no"),
+            rel = ifelse(rank_is_relevant, "yes", "no")) |>
+  kbl(booktabs = TRUE, align = "llrrrrr", linesep = "", escape = TRUE,
+      col.names = c("arm", "component", "estimate", "error", "95% CI",
+                    "excludes zero", "rank relevant")) |>
+  kable_styling(latex_options = c("HOLD_position"), font_size = 7)
+```
+
+![Every coefficient of @eq-ordbeta, with 66% and 95% posterior intervals. Columns are the three measured components, one fitted model each. The upper block is the three effect sizes in the language, whose diagonal is the specificity check; the lower block is the architecture terms, where *effect size* refers to the panel's own component. The two blocks are drawn on separate x scales, since the language terms span a range several times wider than the architecture terms.](fig-toy-coefs.pdf){#fig-toy-coefs width="100%"}
+
+![The fitted surface of @eq-ordbeta with the rank of the interaction in the language broken out as rows, rather than held at its mean as in @fig-toy-effects. Columns are the three measured components and lines are hidden widths, with 95% intervals. Rows that look alike indicate that the rank an interaction requires does not constrain what the learner represents of it.](fig-toy-effects-full.pdf){#fig-toy-effects-full width="100%"}
+
+```{r}
+#| label: fig-toy-overlap
+#| fig-width: 6.3
+#| fig-height: 2.7
+#| out-width: "100%"
+#| fig-cap: "Fitted overlap between components, as a multiple of the level an arbitrary orientation would give, against hidden width. Left: the item effect projected onto the class direction. Right: the interaction projected onto the span of both margins. The dashed line is chance; above it components share directions more than orientation alone explains, below it the learner has separated them by more than chance. Widths are drawn evenly spaced rather than to scale, since width 64 was not trained. Effect sizes are held at their means, and each estimate is conditional on the component being large enough to have a direction."
+#|
+ARMC <- c(ReLU = UO[["gold"]], linear = UO[["green2"]])
+OVLAB <- c(item_class = "item into class", int_margins = "interaction into margins",
+           int_margins_int = "interaction into margins")
+rpred |>
+  filter(kind == "overlap", grid == "arch") |>
+  mutate(arm = factor(arm, c("relu", "linear"), c("ReLU", "linear")),
+         measure = factor(unname(OVLAB[component]), unname(OVLAB[c(1, 2)])),
+         # Width is a designed factor with five levels and no 64, so plotting it to scale leaves
+         # a double-width gap that says nothing about the result. The models fit log2(width).
+         wpos = as.integer(factor(width, sort(unique(width))))) |>
+  group_by(arm, measure, width, wpos) |>
+  summarize(epred = median(exp(epred)), lo = median(exp(lo)), hi = median(exp(hi)),
+            .groups = "drop") |>
+  ggplot(aes(wpos, epred, color = arm, fill = arm)) +
+  geom_hline(yintercept = 1, linetype = 2, linewidth = .35, color = UO[["grey"]]) +
+  geom_ribbon(aes(ymin = lo, ymax = hi), alpha = .16, color = NA) +
+  geom_line(linewidth = .7) + geom_point(size = 1.4) +
+  facet_wrap(~ measure, nrow = 1) +
+  scale_color_manual(values = ARMC, name = NULL) +
+  scale_fill_manual(values = ARMC, guide = "none") +
+  scale_x_continuous(breaks = seq_along(sort(unique(rpred$width))),
+                     labels = sort(unique(rpred$width))) +
+  scale_y_log10() +
+  labs(x = "hidden width", y = "overlap (multiple of chance)") +
+  theme_paper(9) + theme(legend.position = "top",
+                         legend.margin = margin(0, 0, -6, 0),
+                         panel.grid.minor = element_blank())
+```
+
+```{r}
+#| label: fig-toy-effects
+#| fig-width: 6.3
+#| fig-height: 3.4
+#| out-width: "100%"
+#| fig-cap: "Fitted share of the representation taken by each component, against hidden width, with one line per rank of the interaction planted in the language and 95% intervals. Rows are the two activations, columns the three measured components. Effect sizes are held at their means. Were capacity the governing quantity, rank would separate the lines as strongly as width slopes them."
+RNKC <- setNames(colorRampPalette(c("#F2D493", "#7A5407"))(4), sort(unique(rpred$r_int[!is.na(rpred$r_int)])))
+rpred |>
+  filter(kind == "size", grid == "arch") |>
+  mutate(component = factor(component, c("item", "class", "interaction")),
+         arm = factor(arm, c("relu", "linear"), c("ReLU", "linear"))) |>
+  ggplot(aes(width, epred, color = factor(r_int), fill = factor(r_int))) +
+  geom_ribbon(aes(ymin = lo, ymax = hi), alpha = .14, color = NA) +
+  geom_line(linewidth = .6) +
+  facet_grid(arm ~ component,
+             labeller = labeller(component = function(z) paste("measured", z))) +
+  scale_color_manual(values = RNKC, name = "interaction rank\nin the language") +
+  scale_fill_manual(values = RNKC, guide = "none") +
+  scale_x_continuous(trans = "log2", breaks = sort(unique(rpred$width))) +
+  coord_cartesian(ylim = c(0, 1)) +
+  labs(x = "hidden width", y = "share of the representation") +
+  theme_paper(8) + theme(legend.position = "right")
+```
+
+# Model Details {#sec-appendix-models}
+
+```{r}
+#| label: tbl-models
+#| tbl-cap: "The six models, paired by width. Training-token counts are approximate; the OPT-BabyLM models train for 20 epochs over a 100M-word corpus, which is roughly 150M tokens, so their effective token exposure is about twenty times that. *Layers* counts the transformer blocks, and the measure is applied to each block's output plus the embedding layer."
+tibble::tribble(
+  ~family,  ~model,          ~params, ~width, ~layers, ~`training data`,     ~`tokens`,
+  "BabyLM", "opt-babylm-125m", "125M",   768,      12, "BabyLM (child-available)", "~3B",
+  "BabyLM", "opt-babylm-350m", "350M",  1024,      24, "BabyLM (child-available)", "~3B",
+  "BabyLM", "opt-babylm-1.3B", "1.3B",  2048,      24, "BabyLM (child-available)", "~3B",
+  "Pythia", "pythia-160m",     "160M",   768,      12, "the Pile",                 "~300B",
+  "Pythia", "pythia-410m",     "410M",  1024,      24, "the Pile",                 "~300B",
+  "Pythia", "pythia-1.4b",     "1.4B",  2048,      24, "the Pile",                 "~300B") |>
+  kbl(longtable = FALSE, booktabs = TRUE, align = "llrrrlr", linesep = "") |>
+  kable_styling(font_size = 9) |>
+  collapse_rows(columns = 1, latex_hline = "major")
+```
+
+The six models are listed in @tbl-models. The two families are matched on width rather than on parameter count, which is what the measure is sensitive to: the chance level for overlap is the class subspace rank over the width (Appendix \ref{sec-appendix-math}), so a comparison across models of different width has to be read against different chance levels. Pairing at 768, 1024, and 2048 removes that from the family comparison.
+
+They differ in two ways that matter elsewhere in the paper. The training corpora differ by more than two orders of magnitude in size, which is the manipulation of interest. And they position tokens differently: Pythia uses rotary embeddings, applied inside attention, while OPT learns absolute position embeddings added at the input. Appendix \ref{sec-appendix-positions} uses that difference to rule out absolute position as the source of the interaction.
+
+{{< pagebreak >}}
+
+# Stimulus Counts {#sec-appendix-stimuli}
+
+```{r}
+#| label: tbl-constructions
+#| tbl-cap: "Stimuli for the two linguistic categories, with the two classes of each in parentheses. *Item types* is how many word forms occur in both of them at least ten times; forms occurring in only one are excluded. *Median tokens* is how often a typical form occurs in each of its two classes, in the order they are listed."
+tibble::tribble(
+  ~class,                                  ~`item types`,
+  "part of speech (noun / verb)",          max(llm$n_items[llm$construction == "POS (noun/verb)"]),
+  "grammatical role (subject / object)",   max(llm$n_items[llm$construction == "role (subject/object)"])) |>
+  mutate(`median tokens` = c(stimmed("pos_noun_verb_form"),
+                             stimmed("role_nsubj_obj"))) |>
+  kbl(booktabs = TRUE, align = "lrl", linesep = "", escape = FALSE) |>
+  kable_styling(latex_options = c("HOLD_position"), font_size = 8)
+```
+
+{{< pagebreak >}}
+
+# Deepest-Layer Measurements {#sec-appendix-llm}
+
+Table \ref{tbl-llm} gives the deepest-layer values behind the curves of @fig-llm, together with the null each overlap is read against.
+
+```{r}
+#| label: tbl-llm
+#| tbl-cap: "Deepest-layer measurements, one row per model. The two overlaps are the fraction of the item effect lying in the class subspace and the fraction of the interaction lying in the span of the two main effects, each followed in parentheses by how many times its own rotation null's median it is. That null holds the effect fixed and rotates the target subspace at random 200 times. The class effect and the interaction are shares of the item-by-class structure, with each model's re-split 95% interval in brackets."
+llm |> group_by(construction, model) |>
+  filter(layer == max(layer)) |> ungroup() |>
+  arrange(construction, family, scale) |>
+  # One row per model. A median across the six hid exactly what the six are being compared for,
+  # and the sizes' re-split intervals are far narrower than the spread across models, so pooling
+  # them reported a precision that belonged to a single measurement rather than to the set.
+  # Each overlap is against its own model's null rather than r/d: the two differ, since r/d
+  # assumes the subspace has its algebraic maximum rank while the projection uses the rank
+  # actually fitted, roughly half of it for the marginal subspace.
+  transmute(class = shortname(construction),
+            model = paste(family, size),
+            `item-class overlap` = ov1(leak, leak_null_med, 4),
+            `interaction overlap` = ov1(leak_int, leak_int_null_med, 3),
+            `class effect` = ci(size_class, size_class_lo, size_class_hi),
+            `interaction` = ci(size_int, size_int_lo, size_int_hi)) |>
+  kbl(longtable = FALSE, booktabs = TRUE, align = "llrrrr", linesep = "") |>
+  kable_styling(font_size = 7) |>
+  collapse_rows(1, latex_hline = "major", valign = "top")
+```
+
+{{< pagebreak >}}
+
+# Read from the main POS file. It carries the \*\_noposemb inits for every OPT-BabyLM
+
+# size under the current estimator, so this table is on the same footing as every
+
+# other table in the paper. (An older, separate ablation CSV used to hold these rows
+
+# but was written by a superseded measure.py; it has been removed.)
+
+rd("llm_unified_form.csv") \|\> filter(grepl("babylm", model), grepl("\^pretrained", init)) \|\> group_by(model, init) \|\> slice_max(layer, n = 1, with_ties = FALSE) \|\> ungroup() \|\> transmute(model = sub(".\*/", "", sub("-20eps-seed964", "", model)), positions = ifelse(grepl("noposemb\$", init), "zeroed", "intact"), class = std_size_class, interaction = std_size_interaction, portable = std_size_class / (std_size_class + std_size_interaction)) \|\> arrange(match(model, c("opt-babylm-125m", "opt-babylm-350m", "opt-babylm-1.3B")), desc(positions)) \|\> transmute(model, positions, `class` = g(class, 3), `interaction` = g(interaction, 3), `portable fraction` = g(portable, 3)) \|\> kbl(longtable = FALSE, booktabs = TRUE, align = "llrrr", linesep = "") \|\> kable_styling(font_size = 9) \`\`\`
+
+Removing the position embeddings makes these representations *less* separable, not more. The portable fraction falls in every model, from 0.439 to 0.264, from 0.468 to 0.253, and from 0.333 to 0.198 (Table \ref{tbl-posabl}). Whatever the absolute position embedding contributes, it is contributing to the part of class structure that *is* carried by a shared direction. Take it away and what remains is more word-specific, not less. The interaction is not an artifact of position.
+
+# Positional Embeddings Are Not the Source {#sec-appendix-positions}
+
+One architectural explanation of the interaction has to be ruled out before it can be read as a fact about lexical representations. The BabyLMs add a *learned absolute position embedding* at the input. The two classes of a linguistic category are not positionally interchangeable in a sentence, since subjects precede objects and nouns and verbs occupy different slots, so a representation that varies with position varies with the class. If that is what the decomposition is picking up, the interaction would be an artifact of where words sit rather than of how they are represented.
+
+We re-extracted every OPT-BabyLM model with the positional embeddings zeroed out and measured it identically. The ablation was verified per model rather than assumed: with the embedding zeroed, the same token at two different offsets must give identical layer-0 states, and it does, in every model (drift $0.0$ to machine precision). Pythia has no such module, so there is nothing to zero there.
+
+We measure the class effect's share of class-relevant structure which is the class effect divided by the sum of the class effect and the interaction, which we call the *portable fraction*. If positions were manufacturing the interaction, removing them should leave a larger share of what distinguishes the two classes in a direction shared across words. Absolute sizes cannot be compared here: zeroing the embeddings in a model that was trained with them is a heavy intervention, and it shrinks every component at once, the class effect included.
+
+```{r}
+#| label: tbl-posabl
+#| tbl-cap: "Trained OPT-BabyLM at the deepest layer, with absolute position embeddings intact and zeroed. Sizes are shares of the item-by-class structure and the portable fraction is the class effect divided by the sum of the class effect and the interaction."
+# The ablation rows live in llm_unified_form.csv alongside the intact ones, keyed by
+# `init`; the separate ablation export they were read from no longer exists.
+rd("llm_unified_form.csv") |>
+  filter(grepl("babylm", model), grepl("^pretrained", init)) |>
+  group_by(model, init) |>
+  slice_max(layer, n = 1, with_ties = FALSE) |>
+  ungroup() |>
+  transmute(model = sub(".*/", "", sub("-20eps-seed964", "", model)),
+            positions = ifelse(grepl("noposemb$", init), "zeroed", "intact"),
+            class = std_size_class, interaction = std_size_interaction,
+            portable = std_size_class / (std_size_class + std_size_interaction)) |>
+  arrange(match(model, c("opt-babylm-125m", "opt-babylm-350m", "opt-babylm-1.3B")),
+          desc(positions)) |>
+  transmute(model, positions, `class` = g(class, 3), `interaction` = g(interaction, 3),
+            `portable fraction` = g(portable, 3)) |>
+  kbl(longtable = FALSE, booktabs = TRUE, align = "llrrr", linesep = "") |>
+  kable_styling(font_size = 9)
+```
+
+# The Decomposition {#sec-appendix-math}
+
+## The item-by-class means {#sec-appendix-math-grid}
+
+![Each word in each class is observed in many contexts, and those observations are averaged within the pairing to give one of the item-by-class means. Every one of them is a vector in $\mathbb{R}^d$, and every item appears in every class.](fig-grid.pdf){#fig-grid width="100%"}
+
+A word used in a given class is observed in many contexts, and the representation differs a little in each. Averaging those observations within the pairing gives one of the item-by-class means: for items $i \in \{1,\dots,I\}$ crossed with classes $c \in \{1,\dots,C\}$, $M[i,c] \in \mathbb{R}^d$ is the mean representation of item $i$ in class $c$ (@fig-grid). An item observed in only one class is dropped, as is an item with fewer than 10 tokens in either class, so the set is complete and every mean rests on a comparable number of observations. Because every item appears at every class, the means arrange into $I$ by $C$ positions, and the rest of this appendix calls that arrangement the grid when what matters is the positions rather than the vectors sitting at them. The variation across contexts that the averaging sets aside is not discarded; it is what the two splits of @sec-measure are drawn from.
+
+## Sizes {#sec-appendix-math-sizes}
+
+![How many positions of the grid each component occupies. $\alpha_i$ does not depend on the class, so it occupies all $C$ positions of its row; $\beta_c$ does not depend on the item, so it occupies all $I$ positions of its column; $\gamma_{ic}$ takes its own value at every position and is never repeated.](fig-replication.pdf){#fig-replication width="100%"}
+
+Since the effects are centered along their respective axes, their cross-terms cancel when summed over the full grid. Thus the total squared length partitions exactly:
+
+$$
+\sum_{i,c}\lVert M[i,c]-\mu\rVert^{2}
+= C\sum_{i}\lVert\alpha_i\rVert^{2}
++ I\sum_{c}\lVert\beta_c\rVert^{2}
++ \sum_{i,c}\lVert\gamma_{ic}\rVert^{2},
+$$
+
+Sizes are reported as shares of the total. All three terms scale linearly in $I$, so the shares do not depend on how many items there are and are comparable across categories of different size.
+
+The above decomposition, however, ignores the role of context. In order to estimate how the three components and context vary in size, we can instead decompose each representation into its pairing mean and its deviation from that mean, giving the standard within–between partition:
+
+$$
+\sum_{x}\lVert x-\bar x\rVert^{2}
+=
+\underbrace{\sum_{i,c}\sum_{x\in(i,c)}
+\lVert x-\hat M[i,c]\rVert^{2}}_{\text{within a pairing}}
++
+\underbrace{\sum_{i,c}n_{ic}
+\lVert\hat M[i,c]-\bar x\rVert^{2}}_{\text{between pairings}}.
+$$
+
+The between-pairing term is the variation partitioned into item, class, and item-by-class components above, while the within-pairing term captures variation across contexts. The resulting context variance and the $\alpha$, $\beta$, and $\gamma$ variance components together partition the variance of the original representations.
+
+## The overlaps and their chance level {#sec-appendix-math-overlap}
+
+The component sizes describe how much variation each component accounts for, but not whether the components occupy the same directions in $\mathbb{R}^d$. To measure their overlap, we project each component into a target subspace and ask how much of its squared length is retained. Specifically, we project $\alpha$ into the subspace spanned by $\beta$, $\beta$ into the subspace spanned by $\alpha$, and $\gamma$ into the subspace jointly spanned by $\alpha$ and $\beta$. If $S$ is an orthonormal basis for the target subspace and $V$ is the component being projected, the overlap is
+
+$$
+\frac{\lVert VS\rVert_F^2}{\lVert V\rVert_F^2}
+$$ Thus, an overlap of zero means that the component is orthogonal to the target subspace, whereas an overlap of one means that it lies entirely within it. Because the projection uses squared lengths, opposite directions contribute equally rather than canceling. We use the leading singular vectors of each target component to define its subspace, with the number of directions determined by its participation ratio. The number of directions in the target subspace therefore determines its chance overlap under random orientation.
+
+The chance level for overlap is $r/d$, where $r$ is the dimensionality of the target subspace and $d$ is the full representation dimension. A randomly oriented component therefore has an expected fraction $r/d$ of its squared length in the target subspace. At $d=2048$, for example, the chance level is $0.0005$ for a one-dimensional class subspace. We therefore interpret observed overlaps relative to this chance level.
+
+{{< pagebreak >}}
