@@ -676,7 +676,7 @@ There is little doubt that idiosyncratic words or phrases, such as idioms, must 
 
 Usage-based theories have argued that even regular forms are stored holistically as a function of usage. Bybee [@bybee2001] and later Goldberg [@goldberg2019explain] have proposed that frequent words and phrases can be stored even when their properties are fully predictable. From this view, storage need not be a consequence of idiosyncrasy. In fact, it has even been argued that storage is a prerequisite for a representation to become idiosyncratic in the first place [@bybee2001; @goldberg2019explain].
 
-These debates about the nature of lexical representations often center around two competing possible explanations. On one hand, if item-specific representations arise primarily because linguistic forms have properties that cannot be predicted from their component parts, then regular forms should not necessarily have representations that contain information irreducible to those parts. On the other hand, if frequent forms are stored with information specific to their use, item-specific representations may emerge even when a form's behavior is fully predictable from its component parts.
+These debates about the nature of lexical representations often center around two competing explanations. On one hand, if item-specific representations arise primarily because linguistic forms have properties that cannot be predicted from their component parts, then regular forms should not necessarily have representations that contain information irreducible to those parts. On the other hand, if frequent forms are stored with information specific to their use, item-specific representations may emerge even when a form's behavior is fully predictable from its component parts.
 
 ## Present study
 
@@ -686,7 +686,7 @@ Our main contributions are as follows:
 
 -   We introduce a method for decomposing word-in-context representations into item, class, and idiosyncratic components, and validate it on an artificial language.
 
--   We show that both MLPs trained on an artificial language and LLMs both learn representations that contain both abstract, generalizable parts along with item-specific parts.
+-   We show that MLPs trained on an artificial language and pretrained LLMs both learn representations that contain abstract, generalizable parts alongside item-specific parts.
 
 -   We further show that this learned item-specific knowledge is not represented orthogonally to class or item knowledge.
 
@@ -756,7 +756,7 @@ It's important to note that the weights in @eq-toy describe the ground-truth dis
 
 ### Analysis {#sec-exp1-analysis}
 
-We model our data using an ordered beta regression [@kubinec2023ordbeta] for the sizes and a Gaussian model for the overlaps, both in *brms* [@burkner2017brms] with weakly informative priors (See Appendix \ref{sec-appendix-grid} for full details). For the sizes we fit one model over all three components, where the outcome variable is the component's share of the representation and group is that component. Fixed-effects for each component, the width of the hidden-layer, and total rank of the language were included along with maximal random effects [@barr2013maximal]. @eq-model gives the full model equation. All predictors are centered. A language here is one combination of the four weights and the interaction rank; A run here are the five seeds for a given language.
+We model our data using an ordered beta regression [@kubinec2023ordbeta] for the sizes and a Gaussian model for the overlaps, both in *brms* [@burkner2017brms] with weakly informative priors (See Appendix \ref{sec-appendix-grid} for full details). For the sizes we fit one model over all three components, where the outcome variable is the component's share of the representation and group is that component. Fixed-effects for each component, the width of the hidden-layer, and total rank of the language were included along with maximal random effects [@barr2013maximal]. @eq-model gives the full model equation. All predictors are centered. A language here is one combination of the four weights and the interaction rank; a run here is the five seeds for a given language.
 
 The overlaps are likewise fit as one model over both overlap measures, with the same structure. Outcome is the log of an overlap divided by its own chance level, and Group is the overlap measure: the item effect's overlap with the class direction, or the interaction's overlap with the span of the item and class subspaces.
 
@@ -801,7 +801,7 @@ ggplot(toy_learn_both, aes(planted, measured, color = factor(d), fill = factor(d
   guides(color = guide_legend(nrow = 1))
 ```
 
-Unsurprisingly, the effect size for each component increases as a function of the size of the effect planted in the language (and since the three components sum to 1, the other 2 components definitionally decrease). Of the three components, the item effect is strongest across every width (@fig-toy).
+Unsurprisingly, the effect size for each component increases as a function of the size of the effect planted in the language (and since the three components sum to 1, the other two components definitionally decrease). Of the three components, the item effect is strongest across every width (@fig-toy).
 
 The size of the interaction barely depends on its rank on its own (`r b("interaction", "rank")`), which is by design: the interaction is scaled to the same variance at every rank, so raising its rank spreads it over more directions rather than making it larger. What governs how much of the interaction is encoded is the width of the hidden layer (`r b("interaction", "width")`). While rank alone does not affect the size of the interaction, it does interact with width (`r b("interaction", "width x rank")`): at narrow widths a higher-rank interaction needs more directions than the layer has and the excess is lost, while once the layer is wide enough the model represents more of it. This is not the case for the item effect, which decreases as the hidden layer grows (`r b("item", "width")`), or for the class effect, which barely changes (`r b("class", "width")`). In the linear condition width is spent on the item effect at the class effect's expense (`r b("item", "width", "linear")` against `r b("class", "width", "linear")`); the interaction grows with width there too (`r b("interaction", "width", "linear")`) but stays small throughout.
 
@@ -839,7 +839,7 @@ The results are visualized in @fig-llm, but further details can be found in Appe
 
 The item effect is the largest component in both categories, running from `r ldrng("POS (noun/verb)", "size_item", 3)` for part of speech and `r ldrng("role (subject/object)", "size_item", 3)` for grammatical role. Similarly, the effect of class is mostly comparable across the two linguistic constructions (`r ldrng("role (subject/object)", "size_class", 3)` vs `r ldrng("POS (noun/verb)", "size_class", 3)` for part of speech and grammatical role respectively). On the other hand, while the interaction effect is larger than the class effect for part of speech (`r ldrng("POS (noun/verb)", "size_int", 3)`), the same is not true for grammatical role (`r ldrng("role (subject/object)", "size_int", 3)`). This may indicate that part of speech is more lexicalized than grammatical role, perhaps unsurprisingly.
 
-Another way to describe these results is with respect to the whole representation rather than the item-by-class structure: the item effect accounts for `r gr("ga")` of what varies in a token, the class effect `r gr("gb")`, and the interaction `r gr("gg")`, with the remaining `r gr("gctx")` being specific to the context a word appears in (See Appendix \ref{sec-appendix-llm}). The interaction is not, however, inherited from that context: at the deepest layer only a small fraction of it is attributable to the context the word appears in, the majority of the interaction is unique to the lexical representation itself (Appendix \ref{sec-appendix-context}).
+Another way to describe these results is with respect to the whole representation rather than the item-by-class structure: the item effect accounts for `r gr("ga")` of what varies in a token, the class effect `r gr("gb")`, and the interaction `r gr("gg")`, with the remaining `r gr("gctx")` being specific to the context a word appears in (See Appendix \ref{sec-appendix-llm}). The interaction is not, however, inherited from that context: at the deepest layer only a small fraction of it is attributable to the context the word appears in; the majority of the interaction is unique to the lexical representation itself (Appendix \ref{sec-appendix-context}).
 
 Both the class effect and the interaction effect increase as a function of layer depth. The interaction is essentially absent at layer 0 in both categories, between `r allrange("size_int", deep = FALSE)` across every category and model, and rises to between `r allrange("size_int")` (@fig-llm). This is not surprising since at the first layer, the model has yet to integrate enough context to commit to the class of the representation.
 
@@ -1077,7 +1077,7 @@ A word used in a given class is observed in many contexts, and the representatio
 
 # Validating the Measure {#sec-appendix-validate}
 
-Experiment 1 defines a ground truth language, however, it cannot distinguish a failure of the measure from the model representing the language differently than the structure it was given. Here we remove that ambiguity by constructing representations in which $\mu$, $\alpha$, $\beta$, and $\gamma$ are set directly, with no model or training, and passing the result through the same analysis used for the language models. Ground truth therefore exists at the level where the measure operates.
+Experiment 1 defines a ground truth language; however, it cannot distinguish a failure of the measure from the model representing the language differently than the structure it was given. Here we remove that ambiguity by constructing representations in which $\mu$, $\alpha$, $\beta$, and $\gamma$ are set directly, with no model or training, and passing the result through the same analysis used for the language models. Ground truth therefore exists at the level where the measure operates.
 
 ```{r}
 #| label: setup-validate
@@ -1522,7 +1522,7 @@ babylm_shallow_ctx <- sprintf("%.2f", max(resid_shallow$explained[resid_shallow$
 
 Across all six models and both categories, the context accounts for only a small part of the interaction. At the deepest layer the word-dependent share runs `r rrng("residual")` (@tbl-residual), with the context explaining `r rrng("explained")`, against a null, computed by mismatching items before the comparison, that is indistinguishable from zero (at most `r sprintf("%.3f", max(abs(resid_deep$null)))` in absolute value). The context-explained share is larger at shallow layers for the OPT-BabyLM models, up to `r babylm_shallow_ctx` at a quarter of the model's depth, and falls as depth increases; for Pythia it is small at every depth. Because the carry-over map is linear, this establishes that the interaction is not a linear image of the context, the same standard of linear decodability used for the probe in Experiment 3.[^6]
 
-[^6]: Replacing the linear carry-over with a nonlinear one (a one-hidden-layer MLP initialized at the linear map and fit on the same held-out token pairs) does not recover more of the interaction. The MLP learns a better carry-over, reducing held-out prediction error on the word states relative to the linear map, yet it leaves the context-explained share unchanged (within 0.03 at every layer), so the residual is not an artifact of a carry-over too weak to find context structure.
+[^6]: Replacing the linear carry-over with a nonlinear one (a one-hidden-layer MLP initialized at the linear map and fit on the same held-out token pairs) does not recover more of the interaction. The MLP learns a better carry-over, reducing held-out prediction error on the word states by 5--25% (median about 13%) relative to the linear map, yet it leaves the context-explained share unchanged (within 0.03 at every layer), so the residual is not an artifact of a carry-over too weak to find context structure.
 
 A simpler magnitude control agrees. Running the same decomposition on the pre-word state itself, the context with the target word removed, yields an interaction that is both smaller as a fraction of the whole representation and flat across depth, rather than growing with depth as it does at the word position.
 
