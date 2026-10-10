@@ -680,7 +680,7 @@ The strongest evidence for context-specific storage comes from frequency in favo
 
 These findings establish that linguistic representations can encode information specific to particular words and contexts, but they do not tell us how widespread such information is. Consider *walk*, which can function as both a noun and a verb. If its representation as a verb was fully determined by a representation of *walk* and a representation of the verb category, then nothing in its representation would be specific to the *walk*-verb combination. If, instead, *walk* as a verb had a representation of its own, that representation would contain information that cannot be reduced to its constituent parts.
 
-## Storage Without Idiosyncracy
+## Storage Without Idiosyncrasy
 
 There is little doubt that idiosyncratic words or phrases, such as idioms, must be stored in some form, since their properties are not reducible to those of their individual component parts. However, it is less clear to what extent forms that could in principle be represented compositionally (i.e., fully regular forms) are, in fact, represented compositionally.
 
@@ -813,7 +813,7 @@ The size of the interaction barely depends on its rank on its own (`r b("interac
 
 Where no interaction is planted, a ReLU learner still represents one: the measured value is small (median `r addint(max(toy$d))` at the widest layer) but its interval excludes zero in `r addflag(max(toy$d))` of runs, against a nominal 5%. The linear arm cannot do this at any width, since a linear map of additive inputs is additive.
 
-The amount of overlap is also affected by the width of the hidden layer as well: For the ReLU models, the wider the hidden layer, the less the item and class effects share directions (`r b("item_class", "width", kindv = "overlap")`). Similarly, the overlap between the interaction and the item-class subspace follows the same pattern (`r b("int_margins", "width", kindv = "overlap")`). The linear models show a different pattern, however. The item-class overlap shows no effect as a function of width, and the interaction effect's overlap with the item-class space grows as a function of the width (`r b("int_margins", "width", armv = "linear", kindv = "overlap")`), climbing from `r fv("int_margins", 8, "linear", "overlap")` to `r fv("int_margins", 256, "linear", "overlap")` times chance. It approaches chance without reaching it, and both overlaps stay below chance at every width under the linear learner (Appendix \ref{sec-appendix-capacity}). Smaller hidden layers thus do not merely represent less of the interaction, they also force the components onto shared directions.
+The amount of overlap is also affected by the width of the hidden layer: For the ReLU models, the wider the hidden layer, the less the item and class effects share directions (`r b("item_class", "width", kindv = "overlap")`). Similarly, the overlap between the interaction and the item-class subspace follows the same pattern (`r b("int_margins", "width", kindv = "overlap")`). The linear models show a different pattern, however. The item-class overlap shows no effect as a function of width, and the interaction effect's overlap with the item-class space grows as a function of the width (`r b("int_margins", "width", armv = "linear", kindv = "overlap")`), climbing from `r fv("int_margins", 8, "linear", "overlap")` to `r fv("int_margins", 256, "linear", "overlap")` times chance. It approaches chance without reaching it, and both overlaps stay below chance at every width under the linear learner (Appendix \ref{sec-appendix-capacity}). Smaller hidden layers thus do not merely represent less of the interaction, they also force the components onto shared directions.
 
 # Experiment 2: Language Models {#sec-exp2}
 
@@ -845,7 +845,7 @@ The results for the final layer are visualized in @fig-llm (full breakdown can b
 
 The item effect is the largest component in both categories, running from `r ldrng("POS (noun/verb)", "size_item", 3)` for part of speech and `r ldrng("role (subject/object)", "size_item", 3)` for grammatical role. Similarly, the effect of class is mostly comparable across the two linguistic constructions (`r ldrng("role (subject/object)", "size_class", 3)` vs `r ldrng("POS (noun/verb)", "size_class", 3)` for part of speech and grammatical role respectively). On the other hand, while the interaction effect is larger than the class effect for part of speech (`r ldrng("POS (noun/verb)", "size_int", 3)`), the same is not true for grammatical role (`r ldrng("role (subject/object)", "size_int", 3)`). This may indicate that part of speech is more lexicalized than grammatical role, perhaps unsurprisingly.
 
-Another way to describe these results is with respect to the whole representation rather than the item-by-class structure: the item effect accounts for `r gr("ga")` of what varies in a token, the class effect `r gr("gb")`, and the interaction `r gr("gg")`, with the remaining `r gr("gctx")` being specific to the context a word appears in (See Appendix \ref{sec-appendix-llm}).
+Another way to describe these results is with respect to the whole representation rather than the item-by-class structure: the item effect accounts for `r gr("ga")` of what varies in a token, the class effect `r gr("gb")`, and the interaction `r gr("gg")`, with the remaining `r gr("gctx")` being specific to the context a word appears in (See Appendix \ref{sec-appendix-llm}). The interaction is not, however, inherited from that context: at the deepest layer only a small fraction of it is attributable to the context the word appears in, the rest requiring word-dependent processing (Appendix \ref{sec-appendix-context}).
 
 Both the class effect and the interaction effect increase as a function of layer depth. The interaction is essentially absent at layer 0 in both categories, between `r allrange("size_int", deep = FALSE)` across every category and model, and rises to between `r allrange("size_int")` (@fig-llm). This is not surprising since at the first layer, the model has yet to integrate enough context to commit to the class of the representation.[^8]
 
@@ -908,7 +908,7 @@ ggplot(plt, aes(depth, share, color = family, linetype = scale,
 
 # Experiment 3: Probing the Interaction {#sec-exp3}
 
-Experiment 2 shows that lexical representations contain an idiosyncratic component that can't be separated out into simple item and class representations, but neither shows what information is contained within the interaction. An item-by-class term captures any reliable difference between a word's uses in the two classes, and some of that difference may be correlated with the context, since subjects appear in different constructions from objects.
+Experiment 2 shows that lexical representations contain an idiosyncratic component that can't be separated out into simple item and class representations, but neither shows what information is contained within the interaction. An item-by-class term captures any reliable difference between a word's uses in the two classes; that difference is not an artifact of the differing contexts in which the two classes occur (Appendix \ref{sec-appendix-context}), and here we ask what it encodes.
 
 ## Method {#sec-exp3-method}
 
@@ -957,7 +957,7 @@ local({
 })
 ```
 
-The results demonstrate that $\gamma$ carries class information rather than generic correlated context.
+The results demonstrate that $\gamma$ carries class information.
 
 # Discussion and Conclusion {#sec-discussion}
 
@@ -1504,6 +1504,52 @@ llm_gain |>
       col.names = c("class", "model", "word", "class effect", "interaction")) |>
   kable_styling(latex_options = c("HOLD_position"), font_size = 7) |>
   collapse_rows(1, latex_hline = "major", valign = "top")
+```
+
+{{< pagebreak >}}
+
+# Ruling Out Context {#sec-appendix-context}
+
+Because our stimuli are same-token, at the word position the two uses of an item are distinguished only by their left context, raising the possibility that the item-by-class interaction reflects the differing contexts in which the two classes occur rather than lexical structure the model builds. We test this directly. In a causal model the hidden state at a word's position is a function of the word and of everything to its left, so we ask how much of the interaction there is already predictable from the left context alone. For each layer we fit the model's generic, item-independent carry-over from one position to the next, $h_t \approx W\,h_{t-1}$, by evidence-optimized (empirical-Bayes) ridge regression on token pairs whose target word is not one of our grid items, so the map never sees the items it is later applied to. Applying $W$ to the interaction computed from the preceding word's states gives the interaction that an item-independent reading of the context predicts; we report the noise-corrected squared cosine between that prediction and the true word-position interaction, using the same cross-split products as the rest of the paper, which is the share of the interaction the context accounts for. Its complement is the share that requires word-dependent processing.
+
+```{r}
+#| label: resid-setup
+#| include: false
+resid <- bind_rows(
+  rd("llm_residual_pos.csv")  |> mutate(construction = "POS (noun/verb)"),
+  rd("llm_residual_role.csv") |> mutate(construction = "role (subject/object)")) |>
+  left_join(MODELS, by = "model") |>
+  mutate(construction = factor(construction, c("POS (noun/verb)", "role (subject/object)")))
+resid_deep <- resid |>
+  group_by(construction, model) |> slice_max(layer, n = 1, with_ties = FALSE) |> ungroup()
+resid_shallow <- resid |>
+  group_by(construction, model) |> slice_min(layer, n = 1, with_ties = FALSE) |> ungroup()
+rrng <- function(col) sprintf("%.2f--%.2f", min(resid_deep[[col]]), max(resid_deep[[col]]))
+babylm_shallow_ctx <- sprintf("%.2f", max(resid_shallow$explained[resid_shallow$family == "BabyLM"]))
+```
+
+Across all six models and both categories, the context accounts for only a small part of the interaction. At the deepest layer the word-dependent share runs `r rrng("residual")` (@tbl-residual), with the context explaining `r rrng("explained")`, against a null, computed by mismatching items before the comparison, that is indistinguishable from zero (at most `r sprintf("%.3f", max(abs(resid_deep$null)))` in absolute value). The context-explained share is larger at shallow layers for the OPT-BabyLM models, up to `r babylm_shallow_ctx` at a quarter of the model's depth, and falls as depth increases, consistent with the learned-position artifact of Appendix \ref{sec-appendix-positions}; for Pythia it is small at every depth. Because the carry-over map is linear, this establishes that the interaction is not a linear image of the context, the same standard of linear decodability used for the probe in Experiment 3.
+
+A simpler magnitude control agrees. Running the same decomposition on the pre-word state itself, the context with the target word removed, yields an interaction that is both smaller as a fraction of the whole representation and flat across depth, rather than growing with depth as it does at the word position.
+
+```{r}
+#| label: tbl-residual
+#| tbl-cap: "How much of the deepest-layer interaction is attributable to the left context, by model and category. *Word-built* is the share requiring word-dependent processing, with its bootstrap interval; *context* is the share an item-independent carry-over of the context predicts; *null* mismatches items before the comparison."
+local({
+  d <- resid_deep |>
+    arrange(construction, scale, family) |>
+    transmute(construction,
+              model = paste(family, size),
+              word_built = sprintf("%.2f [%.2f, %.2f]", residual, residual_lo, residual_hi),
+              context = sprintf("%.2f", explained),
+              null = sprintf("%.2f", null))
+  r <- rle(as.character(d$construction))
+  d |> select(-construction) |>
+    kbl(booktabs = TRUE, align = "lrrr", linesep = "",
+        col.names = c("model", "word-built", "context", "null")) |>
+    kable_styling(latex_options = c("HOLD_position"), font_size = 7) |>
+    pack_rows(index = setNames(r$lengths, r$values))
+})
 ```
 
 {{< pagebreak >}}
