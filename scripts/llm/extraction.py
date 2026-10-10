@@ -94,7 +94,7 @@ def derive_labels(model_name, sentences, seed=0, max_length=0, batch_size=32):
     if not tok.is_fast:
         raise RuntimeError(f"{model_name} lacks a fast tokenizer; word_ids() alignment needs one.")
     order = np.random.default_rng(seed).permutation(len(sentences)).tolist()
-    form, upos, lemma, number, tense, deprel = [], [], [], [], [], []
+    form, upos, lemma, number, tense, deprel, has_prev = [], [], [], [], [], [], []
     for start in range(0, len(order), batch_size):
         chunk = order[start:start + batch_size]
         chunk.sort(key=lambda si: len(sentences[si]))
@@ -118,8 +118,12 @@ def derive_labels(model_name, sentences, seed=0, max_length=0, batch_size=32):
                 fe = w[3] if len(w) > 3 else "_"
                 number.append(feat_value(fe, "Number") or ""); tense.append(feat_value(fe, "Tense") or "")
                 deprel.append((w[4] if len(w) > 4 else "").split(":")[0])   # base deprel (drop subtype)
+                # False for a sentence's first word: there is no preceding word to read a
+                # context-only state from, and in a cased tokenizer it is often capitalized.
+                has_prev.append(wid > 0)
     return dict(form=np.array(form), upos=np.array(upos), lemma=np.array(lemma),
-                number=np.array(number), tense=np.array(tense), deprel=np.array(deprel))
+                number=np.array(number), tense=np.array(tense), deprel=np.array(deprel),
+                has_prev=np.array(has_prev, dtype=bool))
 
 
 def aligned_labels(z, conllu, candidates=(32, 128, 192, 256, 64, 16, 8)):
@@ -150,13 +154,22 @@ def aligned_labels(z, conllu, candidates=(32, 128, 192, 256, 64, 16, 8)):
 
 def extract_stream_to_npz(out_path, model_name, sentences, layer_idxs, max_tokens, device, seed=0,
                           max_length=0, random_init=False, batch_size=32, scratch_dir=None,
-                          ablate_positions=False):
+                          ablate_positions=False, target="word"):
     """MEMORY-FLAT extraction for LARGE models: identical logic to extract() but each layer's
     per-token vectors stream straight into a disk-backed np.memmap (never a growing in-RAM list),
     then compress to `out_path` one layer at a time. Peak host RAM ~= one forward batch + one
     layer being compressed (a few GB), independent of model size / #layers -- extract()'s in-RAM
     accumulation was O(max_tokens x d x n_layers) (~120 GB at the asarray peak for a 1.3B model)
-    and OOM'd the pod. Writes the same .npz as save_reps. Returns (upos, lemma, n_tok)."""
+    and OOM'd the pod. Writes the same .npz as save_reps. Returns (upos, lemma, n_tok).
+
+    target="word" (default) reads each word's last subword, as before. target="prev" reads the
+    position just BEFORE the word's first subword -- the last subword of the preceding word --
+    so in a causal model the state has not seen the target word at all. Running the item-by-class
+    decomposition on those states measures how much interaction the CONTEXT DISTRIBUTIONS alone
+    produce. Token order and count are unchanged (sentence-initial words keep their own position
+    as a placeholder), so label alignment is identical; drop them with has_prev at measure time."""
+    if target not in ("word", "prev"):
+        raise ValueError(f"target must be 'word' or 'prev', got {target!r}")
     import os
     import shutil
     import tempfile
@@ -182,7 +195,7 @@ def extract_stream_to_npz(out_path, model_name, sentences, layer_idxs, max_token
         drift = verify_position_ablation(model, tok, device)
         # one structured line per model so the check survives as data, not just as a
         # terminal message -- the representations themselves are deleted after measuring
-        print(f"POSABL	model={model_name}	init={init_tag(random_init, ablate_positions)}"
+        print(f"POSABL	model={model_name}	init={init_tag(random_init, ablate_positions, target)}"
               f"	zeroed={';'.join(z) if z else 'NONE'}	drift={drift:.3e}", flush=True)
     d = int(model.config.hidden_size)
 
@@ -217,13 +230,20 @@ def extract_stream_to_npz(out_path, model_name, sentences, layer_idxs, max_token
             stop = False
             for row, si in enumerate(chunk):
                 sent = sentences[si]
-                last_sub = {}
+                last_sub, first_sub = {}, {}
                 for pos, wid in enumerate(enc.word_ids(batch_index=row)):
                     if wid is not None:
                         last_sub[wid] = pos
+                        first_sub.setdefault(wid, pos)
                 for wid, sub in sorted(last_sub.items()):
                     if n_tok + len(rows) >= max_tokens:            # STRICT cap, memmap can't overflow
                         stop = True; break
+                    if target == "prev" and wid > 0:
+                        # the token immediately before this word's first subword -- a context-only
+                        # state the causal model formed without seeing the target word. Using
+                        # first_sub[wid] - 1 rather than last_sub[wid - 1] is robust to a preceding
+                        # word that tokenized to nothing (its wid is then absent from last_sub).
+                        sub = first_sub[wid] - 1
                     rows.append(row); subs.append(sub); keep.append(sent[wid])
                 if stop:
                     break
@@ -254,7 +274,7 @@ def extract_stream_to_npz(out_path, model_name, sentences, layer_idxs, max_token
                 rate = n_tok / el if el > 0 else 0.0
                 eta = (max_tokens - n_tok) / rate if rate > 0 else 0.0
                 pct = 100.0 * n_tok / max_tokens
-                print(f"    {model_name} [{init_tag(random_init, ablate_positions)}]: "
+                print(f"    {model_name} [{init_tag(random_init, ablate_positions, target)}]: "
                       f"{pct:5.1f}%  {n_tok}/{max_tokens} tokens  {rate:.0f} tok/s  "
                       f"eta {int(eta // 60)}m{int(eta % 60):02d}s", flush=True)
             if stop or n_tok >= max_tokens:
@@ -273,21 +293,21 @@ def extract_stream_to_npz(out_path, model_name, sentences, layer_idxs, max_token
         # the extraction itself took. Uncompressed is a straight disk write. np.load reads either
         # format, so files written both ways mix freely.
         save = np.savez_compressed if COMPRESS_REPS else np.savez
-        print(f"    {model_name} [{init_tag(random_init, ablate_positions)}]: extraction done, "
+        print(f"    {model_name} [{init_tag(random_init, ablate_positions, target)}]: extraction done, "
               f"writing {raw_gb:.0f} GB to {Path(out_path).name}"
               + (" (COMPRESSED, single-threaded, GPU idle, expect many minutes; "
                  "COMPRESS_REPS=0 to skip)" if COMPRESS_REPS else " (uncompressed)"), flush=True)
         t_z = time.time()
         save(out_path, upos=upos, lemma=lemma,
              layer_idxs=np.array(sorted(layer_idxs)), model=model_name,
-             init=init_tag(random_init, ablate_positions),
+             init=init_tag(random_init, ablate_positions, target),
              # Token ORDER is a function of these three: the seed sets the sentence permutation,
              # batch_size sets the chunks that get length-sorted inside, and max_length sets what
              # gets truncated. derive_labels must be given the same values or it reproduces a
              # different order, and the alignment assertion fails on reps that are perfectly good.
              batch_size=batch_size, seed=seed, max_length=max_length,
              **arrs)
-        print(f"    {model_name} [{init_tag(random_init, ablate_positions)}]: compressed in "
+        print(f"    {model_name} [{init_tag(random_init, ablate_positions, target)}]: compressed in "
               f"{(time.time() - t_z) / 60:.1f} min -> "
               f"{Path(out_path).stat().st_size / 1e9:.1f} GB", flush=True)
     finally:
@@ -296,9 +316,13 @@ def extract_stream_to_npz(out_path, model_name, sentences, layer_idxs, max_token
     return upos, lemma, n_tok
 
 
-def init_tag(random_init, ablate_positions=False):
+def init_tag(random_init, ablate_positions=False, target="word"):
     tag = "random" if random_init else "pretrained"
-    return tag + "_noposemb" if ablate_positions else tag
+    if ablate_positions:
+        tag += "_noposemb"
+    if target == "prev":
+        tag += "_prevtok"
+    return tag
 
 
 # --------------------------------------------------- learned-position ablation

@@ -114,10 +114,32 @@ def _item_labels(z, item_key, conllu):
     return np.array([f.lower() for f in lab["form"]])
 
 
+def _keep_mask(z, args):
+    """Boolean mask of tokens to keep, or None to keep all. --drop-initial (and --prev-context,
+    which implies it) removes each sentence's first word: required for the context-only control
+    (no preceding state exists), and applied to the word-position reps too so the two are measured
+    on identical tokens."""
+    if not (getattr(args, "drop_initial", False) or getattr(args, "prev_context", False)):
+        return None
+    if not args.conllu:
+        raise SystemExit("--conllu is required with --drop-initial / --prev-context")
+    from extraction import aligned_labels
+    lab, _bs = aligned_labels(z, args.conllu)
+    return lab["has_prev"]
+
+
 def measure_pos(path, args, layers):
     z = np.load(path, allow_pickle=True)                      # lazy: arrays decompress on access
     upos = z["upos"]; model = str(z["model"]); init = _init_of(z)
     item = _item_labels(z, args.item_key, args.conllu)
+    keep = _keep_mask(z, args)
+    # --prev-context: the representation for each kept token is the PRECEDING token's state (the
+    # context-only state before the word), which is the saved rep one row earlier -- see the note
+    # on extract_stream_to_npz's target="prev". keep is has_prev here, so every kept row has a
+    # within-sentence predecessor at row-1 and sel is always >= 0.
+    sel = (np.where(keep)[0] - 1) if (keep is not None and getattr(args, "prev_context", False)) else None
+    if keep is not None:
+        upos, item = upos[keep], item[keep]
     classes = tuple(args.classes.split(","))
     have = set(np.unique(upos).tolist())
     use = [c for c in classes if c in have]   # only classes that occur -> avoids an empty-class NaN
@@ -130,6 +152,10 @@ def measure_pos(path, args, layers):
         if layers is not None and li not in layers:
             continue
         X = z[f"layer_{li}"]; d = int(X.shape[1])
+        if sel is not None:
+            X = X[sel]            # context-only: predecessor state, labelled by the current word
+        elif keep is not None:
+            X = X[keep]
         # two independent estimates = two token-context halves (same model -> same frame).
         # raw = unstandardized, kept for the rogue-dimension contrast.
         std = unified_split(X, item, upos, min_cell=args.min_cell, classes=use, standardize=True,
@@ -167,6 +193,9 @@ def measure_role(path, args, layers):
     lab, _bs = aligned_labels(z, args.conllu)                 # reproduces the extraction order
     form = np.array([f.lower() for f in lab["form"]])         # same token in both roles
     deprel = lab["deprel"]
+    prevc = getattr(args, "prev_context", False)
+    if getattr(args, "drop_initial", False) or prevc:
+        up = np.where(lab["has_prev"], up, "_DROPPED_")         # excluded by the ROLE_POS test below
     rows = []
     draws = {}
     for li in [int(x) for x in z["layer_idxs"]]:
@@ -175,7 +204,10 @@ def measure_role(path, args, layers):
         X = z[f"layer_{li}"]; d = int(X.shape[1])
         m = (up == ROLE_POS) & np.isin(deprel, ROLE_CLASSES)
         if m.sum() >= 2 * args.min_cell:
-            r = unified_split(X[m], form[m], deprel[m], min_cell=args.min_cell,
+            # prev-context: predecessor state (row-1), labelled by the current word; m already
+            # excludes sentence-initial tokens (set to _DROPPED_ above), so row-1 is always valid.
+            Xm = X[np.where(m)[0] - 1] if prevc else X[m]
+            r = unified_split(Xm, form[m], deprel[m], min_cell=args.min_cell,
                               classes=list(ROLE_CLASSES), keep_null_draws=True, n_resplit=getattr(args, "n_resplit", 200))
             if "error" not in r:
                 _stash_draws(draws, f"layer{li}", r)
@@ -330,6 +362,13 @@ def main():
     ap.add_argument("--item-key", choices=["lemma", "form"], default="lemma",
                     help="pos only: what counts as an ITEM. 'form' makes it same-token; needs --conllu")
     ap.add_argument("--min-cell", type=int, default=10)
+    ap.add_argument("--drop-initial", action="store_true",
+                    help="drop sentence-initial words (pos, role); needs --conllu")
+    ap.add_argument("--prev-context", action="store_true",
+                    help="CONTEXT-ONLY control (pos, role): measure each token on the PRECEDING "
+                         "token's state -- the causal state formed before the word was read, taken "
+                         "from the saved reps one row earlier. Implies --drop-initial; needs --conllu. "
+                         "Runs on the ordinary word reps; no re-extraction.")
     ap.add_argument("--nulls-dir", default=str(REPO_ROOT / "data" / "llm_nulls"),
                     help="save the raw null draws here (a few hundred KB); lets an overlap be "
                          "re-summarised without measuring again. Default on; pass '' to disable.")

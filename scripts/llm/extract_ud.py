@@ -33,6 +33,18 @@ def _resolve_layers(model_name):
     return list(range(n + 1))            # 0 = embeddings ... n = final block
 
 
+def _pick_layers(model_name, args):
+    """All layers by default. --layers takes RELATIVE depths in [0, 1] (e.g. 0,0.25,0.5,0.75,1)
+    so one setting picks matched depths across models with different layer counts; it overrides
+    --final-layer-only. The forward pass computes every layer regardless, so this saves disk and
+    measurement time, not forward-pass time."""
+    allL = _resolve_layers(model_name)
+    if args.layers:
+        n = allL[-1]
+        return sorted({int(round(float(f) * n)) for f in args.layers.split(",")})
+    return allL[-1:] if args.final_layer_only else allL
+
+
 def _reps_complete(path):
     """Cheap check that a saved reps .npz is fully written (zip central directory readable and
     the label arrays present) -- lets a crashed sweep RESUME without re-extracting good files, and
@@ -95,7 +107,7 @@ def run_one(model_name, family, size_bin, init, sentences, args):
     saved file. Resumable: complete files are skipped."""
     if not args.reps_dir:
         raise SystemExit("--reps-dir is required: extraction streams reps to disk; measure via measure_pos.py")
-    tag = L.init_tag(init == "random", args.ablate_positions)
+    tag = L.init_tag(init == "random", args.ablate_positions, args.target)
     p = Path(args.reps_dir) / f"{model_name.replace('/', '__')}__{tag}.npz"
     if _reps_complete(p):
         print(f"  [{init:>10}] {model_name}: reps already complete, skipping -> {p}", flush=True)
@@ -114,10 +126,12 @@ def run_one(model_name, family, size_bin, init, sentences, args):
     while True:
         try:
             upos, lemma, n_tok = L.extract_stream_to_npz(
-                str(p), model_name, sentences, _resolve_layers(model_name), args.max_tokens,
+                str(p), model_name, sentences,
+                _pick_layers(model_name, args), args.max_tokens,
                 args.device, args.seed, max_length=args.max_length,
                 random_init=(init == "random"), batch_size=bs,
-                ablate_positions=args.ablate_positions, scratch_dir=args.scratch_dir)
+                ablate_positions=args.ablate_positions, scratch_dir=args.scratch_dir,
+                target=args.target)
             break
         except torch.cuda.OutOfMemoryError:
             import gc
@@ -142,6 +156,13 @@ def main():
     ap.add_argument("--max-tokens", type=int, default=100000)
     ap.add_argument("--device", default="cuda")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--layers", default=None,
+                    help="comma list of RELATIVE depths in [0,1] to extract, e.g. 0,0.25,0.5,0.75,1")
+    ap.add_argument("--final-layer-only", action="store_true",
+                    help="extract only the deepest layer (much faster, ~1/(n_layers+1) the disk)")
+    ap.add_argument("--target", choices=["word", "prev"], default="word",
+                    help="word: the word's last subword (default). prev: the position before the "
+                         "word, i.e. a context-only state; writes *_prevtok.npz")
     ap.add_argument("--ablate-positions", action="store_true",
                     help="zero learned absolute position embeddings before extracting "
                          "(see extraction.zero_position_embeddings). Writes to a separate "
