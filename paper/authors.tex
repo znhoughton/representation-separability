@@ -1,0 +1,22 @@
+% Author block, laid out by hand.
+%
+% acl.sty puts a 1in minimum gap between authors joined with \And. Five authors need 441pt of
+% names plus 288pt of gaps against 436pt of text width, so a single row cannot fit them even
+% with no gaps at all, and the last two names overlap with no warning from LaTeX. \AND ends the
+% row and starts a new one.
+%
+% The Quarto extension emits \And between every author and offers no way to request \AND, so the
+% block lives here and template.tex reads it when `author-file` is set in the YAML. Keep this in
+% sync with the `author` list in separability.qmd, which still drives metadata for the arXiv and
+% camera-ready builds.
+Zachary Nicholas Houghton \\
+Vail Systems, Inc. \\ University of Oregon \\
+\texttt{znh@uoregon.edu}
+\And Yu Zhou \\
+Vail Systems, Inc.
+\And Dan Pluth \\
+Vail Systems, Inc.
+\AND Vijay K. Gurbani \\
+Vail Systems, Inc.
+\And Vsevolod Kapatsinski \\
+University of Oregon

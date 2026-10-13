@@ -141,6 +141,13 @@ $endif$
 
 % In review mode, acl.sty replaces the author block with
 % "Anonymous ACL submission" automatically.
+% acl.sty joins authors with \And, which carries a 1in minimum gap, and the loop below
+% uses it for every author with no awareness of the text width. Past four authors the row
+% overruns and adjacent names overlap silently. ACL's own template expects \And and \AND
+% to be written by hand; set `author-file` in the YAML to supply such a block directly.
+$if(author-file)$
+\author{\input{$author-file$}}
+$else$
 $if(by-author)$
 \author{
 $for(by-author)$
@@ -154,6 +161,7 @@ $for(by-author)$
   $sep$ \And
 $endfor$
 }
+$endif$
 $endif$
 
 \begin{document}

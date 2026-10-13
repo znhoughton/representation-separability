@@ -183,5 +183,18 @@ seconds without a GPU. Worth running before spending hours on an extraction.
   before that change are handled by trying the batch sizes this project has used and keeping the one
   that reproduces the saved labels exactly.
 - **Figures:** the two diagrams are drawio sources; Quarto cannot read those, so `bash paper/make-figures.sh` exports the PDFs the qmd includes. Re-run it after editing a diagram.
-- **Paper:** the Quarto source is not included while the work is under review. It builds
-  with a custom ACL template (`quarto add <template-repo>/acl`, then `quarto render`).
+- **Paper:** `paper/separability.qmd`, built with the bundled ACL template in
+  `paper/_extensions/acl/`. `bash paper/_extensions/acl/render-both.sh separability.qmd`
+  (run from `paper/`) produces all three deliverables from the one source:
+  `*_anonymous.pdf` (review mode: no authors, line numbers, the anonymized code URL),
+  `*_camera_ready.pdf` (authors and real URLs), and `*_arxiv.zip` (the `.tex`, a
+  pre-built `.bbl` since arXiv does not reliably run bibtex, the style files, and only
+  the figures and `\input` files the `.tex` actually uses). Plain `quarto render` gives
+  the review build alone.
+- **Author block:** `paper/authors.tex`, written by hand and pulled in by the template.
+  `acl.sty` separates authors with `\And`, which carries a 1in minimum gap, and the
+  Quarto extension emits it for every author regardless of width. With five authors the
+  names need 441pt and the gaps 288pt against 436pt of text width, so a single row cannot
+  hold them and the last two overlap with no error from LaTeX. The file uses `\AND` to
+  break the row. Keep it in sync with the `author` list in the YAML, which still supplies
+  the metadata; it is excepted from the `paper/*.tex` ignore rule because it is a source.

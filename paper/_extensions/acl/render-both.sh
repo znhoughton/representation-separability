@@ -71,6 +71,14 @@ for f in acl.sty acl_natbib.bst *.bib; do
   fi
 done
 [ -d "${NAME}_files" ] && cp -r "${NAME}_files" "$TMP"/
+# Files pulled in with \input are sources too, and the bundle is useless without them.
+for f in $(grep -oE "[\\]input[{][^}]+[}]" "$BASE.tex" | sed 's/.*[{]//; s/[}]//'); do
+  for cand in "$f" "$f.tex"; do
+    if [ -f "$cand" ]; then
+      mkdir -p "$TMP/$(dirname "$cand")"; cp "$cand" "$TMP/$cand"; break
+    fi
+  done
+done
 ( cd "$TMP" && pdflatex -interaction=nonstopmode "$BASE.tex" >/dev/null 2>&1 || true
   bibtex "$BASE" >/dev/null 2>&1 || true
   pdflatex -interaction=nonstopmode "$BASE.tex" >/dev/null 2>&1 || true )
@@ -88,6 +96,14 @@ for f in acl.sty acl_natbib.bst *.bib; do
   if   [ -e "$f" ];                   then cp "$f" "$OUT"/
   elif [ -e "_extensions/acl/$f" ];   then cp "_extensions/acl/$f" "$OUT"/
   fi
+done
+# Files pulled in with \input are sources too, and the bundle is useless without them.
+for f in $(grep -oE "[\\]input[{][^}]+[}]" "$BASE.tex" | sed 's/.*[{]//; s/[}]//'); do
+  for cand in "$f" "$f.tex"; do
+    if [ -f "$cand" ]; then
+      mkdir -p "$OUT/$(dirname "$cand")"; cp "$cand" "$OUT/$cand"; break
+    fi
+  done
 done
 # Copy only the figures the .tex includes, not the whole _files tree.
 n=0

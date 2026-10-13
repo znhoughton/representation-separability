@@ -61,6 +61,8 @@ paper/*.pdf
 !paper/fig-replication.pdf
 !paper/separability.pdf
 paper/*.tex
+# ...but authors.tex is a source file the build \inputs, not a Quarto artifact.
+!paper/authors.tex
 # Quarto copies these out of the extension into paper/ at render time
 paper/acl.sty
 paper/acl_natbib.bst
